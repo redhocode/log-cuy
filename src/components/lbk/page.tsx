@@ -3,7 +3,7 @@ import * as React from "react";
 import { useEffect, useState } from "react";
 import { DataTable } from "../data-table";
 import { columns } from "./columns"; // Ensure this import is correct
-import { ProduksiType } from "@/lib/types";
+import { LbkType } from "@/lib/types";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import DateRangePicker from "../datarangepicker"; // Ensure this path is correct
@@ -13,7 +13,7 @@ import { Input } from "../ui/input";
 import { Card, CardContent, CardHeader } from "../ui/card";
 
 const DataLBKPage: React.FC = () => {
-  const [data, setData] = useState<ProduksiType[]>([]);
+  const [data, setData] = useState<LbkType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
    const [searchTerm, setSearchTerm] = useState<string>("");
@@ -24,7 +24,7 @@ const DataLBKPage: React.FC = () => {
   const fetchData = async (startDate?: string, endDate?: string) => {
     setLoading(false);
     try {
-      const url = new URL("/api/produksi", window.location.origin);
+      const url = new URL("/api/lbk", window.location.origin);
       if (startDate && endDate) {
         url.searchParams.append("startDate", startDate);
         url.searchParams.append("endDate", endDate);
@@ -33,7 +33,7 @@ const DataLBKPage: React.FC = () => {
       if (!response.ok) {
         throw new Error("Network response was not ok");
       }
-      const result: ProduksiType[] = await response.json();
+      const result: LbkType[] = await response.json();
       setData(result);
       return Promise.resolve(); // Successfully fetched
     } catch (error: unknown) {
@@ -102,6 +102,7 @@ const DataLBKPage: React.FC = () => {
       <Card className="mb-4">
       <CardHeader>
           <DateRangePicker onDateRangeChange={handleDateRangeChange} />
+
       </CardHeader>
         <CardContent>
           <Input

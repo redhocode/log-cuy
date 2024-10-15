@@ -1,36 +1,10 @@
 import { NextResponse } from "next/server";
 import sql from "mssql";
-
+import { ProduksiType } from "@/lib/types";
 // SQL Server Configuration
-const config = {
-  user: "sa",
-  password: "",
-  server: "",
-  port: 1433,
-  database: "cp",
-  options: {
-    encrypt: false,
-    trustServerCertificate: true,
-  },
-};
+import {getPool} from "@/lib/config";
 
-let poolPromise: Promise<sql.ConnectionPool> | undefined;
-
-const getPool = async () => {
-  if (!poolPromise) {
-    poolPromise = new sql.ConnectionPool(config)
-      .connect()
-      .then((pool) => {
-        console.log("Connected to MSSQL");
-        return pool;
-      })
-      .catch((err) => {
-        console.error("Database connection failed: ", err);
-        throw err;
-      });
-  }
-  return poolPromise;
-};
+// Define a type for the record structure
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -41,10 +15,11 @@ export async function GET(request: Request) {
     const pool = await getPool();
 
     let query = `
-      SELECT TOP (1000)
+      SELECT TOP (10000)
         hd.[ProdID],
-        hd.[ProdType] AS HeaderProdType,
         hd.[ProdDate] AS HeaderProdDate,
+        hd.[ProdType] AS HeaderProdType,
+        dt.[ProdType],
         hd.[DeptID],
         hd.[OrderID],
         hd.[OrderType],
@@ -54,18 +29,18 @@ export async function GET(request: Request) {
         dt.[ItemType],
         dt.[Bags],
         dt.[Kgs],
-        dt.[BagsLeft],
-        dt.[KgsLeft],
         dt.[UserName],
         dt.[UserDateTime] 
       FROM [cp].[dbo].[taPRProdHd] AS hd
-      JOIN [cp].[dbo].[taPRProdDt] AS dt ON hd.[ProdID] = dt.[ProdID]
+      JOIN [cp].[dbo].[taPRProdDt] AS dt ON hd.[ProdID] = dt.[ProdID] and hd.[ProdType] = dt.[ProdType]
+
     `;
 
     if (startDate && endDate) {
-      query += ` WHERE hd.[ProdDate] BETWEEN @StartDate AND @EndDate`;
+      query += ` WHERE hd.[ProdDate] BETWEEN @StartDate AND @EndDate 
+`;
     }
-    query += ` ORDER BY hd.[ProdID] DESC`;
+    query += ` ORDER BY hd.[ProdDate] DESC`;
 
     const requestQuery = pool.request();
 
@@ -74,9 +49,17 @@ export async function GET(request: Request) {
       requestQuery.input("EndDate", sql.Date, new Date(endDate));
     }
 
-    const result = await requestQuery.query(query);
+   const result = await requestQuery.query<ProduksiType>(query);
 
-    return NextResponse.json(result.recordset);
+   // Format the HeaderProdDate to show only the date part
+   const formattedRecords = result.recordset.map((record) => ({
+     ...record,
+     HeaderProdDate: record.HeaderProdDate.toISOString().split("T")[0],
+    
+   }));
+
+   return NextResponse.json(formattedRecords);
+   // return NextResponse.json(result.recordset);
   } catch (error) {
     console.error("Error fetching data:", error);
     return NextResponse.json({ error: "Error fetching data" }, { status: 500 });

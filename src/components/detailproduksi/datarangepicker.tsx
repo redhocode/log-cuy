@@ -1,7 +1,8 @@
-// components/DateRangePicker.tsx
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { Input } from "../ui/input";
+import { Button } from "../ui/button";
 
 interface DateRangePickerProps {
   onDateRangeChange: (startDate: string | null, endDate: string | null) => void;
@@ -13,34 +14,52 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
   const [startDate, setStartDate] = useState<string | null>(null);
   const [endDate, setEndDate] = useState<string | null>(null);
 
+  useEffect(() => {
+    // Load the saved date range from local storage when the component mounts
+    const savedStartDate = localStorage.getItem("startDate");
+    const savedEndDate = localStorage.getItem("endDate");
+
+    if (savedStartDate) setStartDate(savedStartDate);
+    if (savedEndDate) setEndDate(savedEndDate);
+  }, []);
+
   const handleApply = () => {
     if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
       alert("Tanggal awal tidak boleh lebih besar dari tanggal akhir");
       return;
     }
+
+    // Save the selected dates to local storage
+    localStorage.setItem("startDate", startDate || "");
+    localStorage.setItem("endDate", endDate || "");
+
+    // Debugging output
+    console.log("Applying Date Range:", { startDate, endDate });
+
     onDateRangeChange(startDate, endDate);
   };
 
   return (
-    <div className="mb-4">
-      <input
+    <div className="flex flex-row gap-2 w-60 mb-4">
+      <Input
         type="date"
         value={startDate || ""}
         onChange={(e) => setStartDate(e.target.value)}
         className="mr-2"
       />
-      <input
+      <span className="mt-2">to</span>
+      <Input
         type="date"
         value={endDate || ""}
         onChange={(e) => setEndDate(e.target.value)}
         className="mr-2"
       />
-      <button
+      <Button
         onClick={handleApply}
         className="px-4 py-2 bg-blue-500 text-white rounded"
       >
-        Cari
-      </button>
+        Apply
+      </Button>
     </div>
   );
 };
