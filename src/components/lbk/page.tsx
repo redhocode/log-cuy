@@ -1,136 +1,130 @@
 "use client";
-import * as React from "react";
-import { useEffect, useState } from "react";
-import { DataTable } from "../data-table";
-import { columns } from "./columns"; // Ensure this import is correct
-import { LbkType } from "@/lib/types";
-import * as XLSX from "xlsx";
-import { saveAs } from "file-saver";
-import DateRangePicker from "../datarangepicker"; // Ensure this path is correct
-import toast from "react-hot-toast";
+import React, { useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { fetchLbkData } from "@/lib/features/lbkSlice";
+import { RootState, AppDispatch } from "@/lib/store"; // Ensure this path is correct
 import Loading from "@/app/loading";
+import { DataTable } from "../data-table";
+import { columns } from "./columns";
+import { saveAs } from "file-saver";
+import DateRangePicker from "../datarangepicker";
 import { Input } from "../ui/input";
 import { Card, CardContent, CardHeader } from "../ui/card";
+// import toast from "react-hot-toast";
+import { toast } from "sonner";
 
-const DataLBKPage: React.FC = () => {
-  const [data, setData] = useState<LbkType[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-   const [searchTerm, setSearchTerm] = useState<string>("");
+import * as XLSX from "xlsx";
+import { Button } from "../ui/button";
+import { FileUp, RefreshCcw, Search } from "lucide-react";
+// import BackButton from "../back-button";
+// Create a typed version of useDispatch
+const useAppDispatch = () => useDispatch<AppDispatch>();
+
+const DataLbkPage: React.FC = () => {
+  const dispatch = useAppDispatch();
+  const { data, loading, error } = useSelector((state: RootState) => state.lbk);
+
+  const [searchTerm, setSearchTerm] = React.useState<string>("");
   const EXCEL_TYPE =
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8";
   const EXCEL_EXTENSION = ".xlsx";
 
-  const fetchData = async (startDate?: string, endDate?: string) => {
-    setLoading(false);
-    try {
-      const url = new URL("/api/lbk", window.location.origin);
-      if (startDate && endDate) {
-        url.searchParams.append("startDate", startDate);
-        url.searchParams.append("endDate", endDate);
-      }
-      const response = await fetch(url.toString());
-      if (!response.ok) {
-        throw new Error("Network response was not ok");
-      }
-      const result: LbkType[] = await response.json();
-      setData(result);
-      return Promise.resolve(); // Successfully fetched
-    } catch (error: unknown) {
-      if (error instanceof Error) {
-        setError(error.message);
-      } else {
-        setError(String(error));
-      }
-      return Promise.reject(error); // Fetch failed
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    const myPromise = fetchData(); // Fetch data without filters on initial load
+    const myPromise = dispatch(fetchLbkData({}));
     toast.promise(myPromise, {
       loading: "Loading...",
       success: "Data fetched successfully!",
       error: "Error fetching data",
     });
-  }, []);
-
+  }, [dispatch]);
   const handleExport = () => {
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Data Produksi");
+    XLSX.utils.book_append_sheet(wb, ws, "Data LBK");
     const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
     const blob = new Blob([excelBuffer], { type: EXCEL_TYPE });
-    saveAs(blob, `DataProduksi${EXCEL_EXTENSION}`);
+    saveAs(blob, `Data_LBK${EXCEL_EXTENSION}`);
   };
-
+  const handleRefresh = () => {
+    const myPromise = dispatch(fetchLbkData({})); // Fetch data without filters on initial load
+    toast.promise(myPromise, {
+      loading: "Loading...",
+      success: "Data fetched successfully!",
+      error: "Error fetching data",
+    });
+  };
   const handleDateRangeChange = (
     startDate: string | null,
     endDate: string | null
   ) => {
-    fetchData(startDate || undefined, endDate || undefined);
-  }
+    if (!startDate || !endDate) {
+      console.log("Both start date and end date must be selected");
+      return; // Mungkin beri tahu pengguna
+    }
+    console.log("Dispatching fetchProduksiData with:", { startDate, endDate });
+    dispatch(fetchLbkData({ startDate, endDate }));
+  };
 
-  const handleRefresh = () => {
-   const myPromise = fetchData(); // Fetch data without filters on initial load
-   toast.promise(myPromise, {
-     loading: "Loading...",
-     success: "Data fetched successfully!",
-     error: "Error fetching data",
-   });
-  }
-    const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-      setSearchTerm(event.target.value);
-    };
+  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(event.target.value);
+  };
 
-    // Filter data based on search term
-    const filteredData = data.filter((item) =>
-      Object.values(item).some((value) =>
-        String(value).toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    );
-  if (loading) return <>
-    <Loading/>  
-    
-  </>;
+  const filteredData = data.filter((item) =>
+    Object.values(item).some((value) =>
+      String(value).toLowerCase().includes(searchTerm.toLowerCase())
+    )
+  );
+
+  if (loading) return <Loading />;
   if (error) return <div>Error: {error}</div>;
 
   return (
-    <div className="flex flex-col p-14">
+    <>
+    <div className="flex flex-col p-14 justify-center">
+      <h1 className="text-5xl font-bold mb-4 flex justify-end"> Data LBK</h1>
       <Card className="mb-4">
-      <CardHeader>
-          <DateRangePicker onDateRangeChange={handleDateRangeChange} />
-
-      </CardHeader>
-        <CardContent>
-          <Input
-            type="text"
-            placeholder="Search..."
-            value={searchTerm}
-            onChange={handleSearchChange}
-            style={{ marginBottom: "20px", padding: "10px", width: "100%" }}
-          />
-          <div className="flex gap-2">
-          <button
-            onClick={handleRefresh}
-            className="mb-4 px-4 py-2 bg-gray-500 text-white rounded-full w-full"
-            >
-            Refresh Data
-          </button>
-          <button
-            onClick={handleExport}
-            className="mb-4 px-4 py-2 bg-blue-500 text-white rounded-full w-full"
-            >
-            Eksport to Excel
-          </button>
+        <CardHeader>
+          <CardHeader>
+            <div className="flex justify-between">
+              <DateRangePicker onDateRangeChange={handleDateRangeChange} />
+              <form className="ml-auto flex-1 sm:flex-initial">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    onChange={handleSearchChange}
+                    value={searchTerm}
+                    placeholder="Search data"
+                    className="pl-8 sm:w-[300px] md:w-[200px] lg:w-[300px]"
+                  />
+                </div>
+              </form>
             </div>
+          </CardHeader>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleRefresh}
+              className="mb-4 px-6 py-6 bg-gray-500 text-white rounded-full w-full"
+            >
+              <RefreshCcw className="h-6 w-6 mr-3" />
+              Refresh Data
+            </Button>
+            <Button
+              onClick={handleExport}
+              className="mb-4 px-6 py-6 bg-green-500 text-white rounded-full w-full"
+            >
+              <FileUp className="h-6 w-6 mr-3" />
+              Eksport to Excel
+            </Button>
+          </div>
         </CardContent>
       </Card>
       <DataTable columns={columns} data={filteredData} />
     </div>
+    </>
   );
 };
 
-export default DataLBKPage;
+export default DataLbkPage;

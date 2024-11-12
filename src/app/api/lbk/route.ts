@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import sql from "mssql";
 import { LbkType } from "@/lib/types";
+import * as XLSX from "xlsx";
 // SQL Server Configuration
 import {getPool} from "@/lib/config";
 
@@ -16,7 +17,7 @@ export async function GET(request: Request) {
     const pool = await getPool();
 
     let query = `
-      SELECT TOP (5000)
+      SELECT TOP (10000)
         hd.[MoveID],
         hd.[MoveType],
         hd.[LocID],
@@ -33,7 +34,7 @@ export async function GET(request: Request) {
     `;
 
     if (startDate && endDate) {
-      query += ` WHERE hd.[MoveID] BETWEEN @StartDate AND @EndDate 
+      query += ` WHERE hd.[MoveDate] BETWEEN @StartDate AND @EndDate 
 `;
     }
     query += ` ORDER BY hd.[MoveID] DESC`;
@@ -58,6 +59,117 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("Error fetching data:", error);
     return NextResponse.json({ error: "Error fetching data" }, { status: 500 });
+  }
+}
+export async function POST(request: Request) {
+  try {
+    const body = await request.formData();
+    const file = body.get("file") as File;
+
+    if (!file) {
+      return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
+    }
+
+    const buffer = await file.arrayBuffer();
+    const data = Buffer.from(buffer);
+    const workbook = XLSX.read(data, { type: "buffer" });
+
+    console.log("Sheet Names:", workbook.SheetNames);
+
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+    console.log("Worksheet:", worksheet);
+
+    const jsonData: LbkType[] = XLSX.utils.sheet_to_json<LbkType>(worksheet);
+    console.log("Parsed JSON Data:", jsonData);
+
+    if (jsonData.length === 0) {
+      return NextResponse.json(
+        { error: "No data found in the uploaded file." },
+        { status: 400 }
+      );
+    }
+
+    const pool = await getPool();
+    const transaction = new sql.Transaction(pool);
+    await transaction.begin();
+
+    const errors: string[] = [];
+
+    for (const row of jsonData) {
+      try {
+        // MERGE untuk taOpNameOHD
+        const requestOHD = new sql.Request(transaction);
+        await requestOHD
+          .input("MoveID", sql.Int, row.MoveID)
+          .input("MoveType", sql.VarChar, row.MoveType)
+          .input("LocID", sql.VarChar, row.LocID)
+          .input("MoveDate", sql.DateTime, new Date(row.MoveDate))
+          .input("Remark", sql.VarChar, row.Remark).query(`
+            MERGE INTO [cp].[dbo].[taOpNameOHD] AS target
+            USING (SELECT @MoveID AS MoveID) AS source
+            ON target.MoveID = source.MoveID
+            WHEN MATCHED THEN
+                UPDATE SET 
+                    MoveType = @MoveType, 
+                    LocID = @LocID, 
+                    MoveDate = @MoveDate, 
+                    Remark = @Remark
+            WHEN NOT MATCHED THEN
+                INSERT (MoveID, MoveType, LocID, MoveDate, Remark)
+                VALUES (@MoveID, @MoveType, @LocID, @MoveDate, @Remark);
+          `);
+
+        // MERGE untuk taOpNameODT
+        const requestODT = new sql.Request(transaction);
+        await requestODT
+          .input("MoveID", sql.Int, row.MoveID)
+          .input("MoveType", sql.VarChar, row.MoveType)
+          .input("ItemID", sql.VarChar, row.ItemID)
+          .input("Bags", sql.Int, row.Bags)
+          .input("Kgs", sql.Float, row.Kgs)
+          .input("username", sql.VarChar, row.username)
+          .input("userdatetime", sql.DateTime, new Date(row.userdatetime))
+          .query(`
+            MERGE INTO [cp].[dbo].[taOpNameODT] AS target
+            USING (SELECT @MoveID AS MoveID, @ItemID AS ItemID) AS source
+            ON target.MoveID = source.MoveID AND target.ItemID = source.ItemID
+            WHEN MATCHED THEN
+                UPDATE SET 
+                    MoveType = @MoveType, 
+                    Bags = @Bags, 
+                    Kgs = @Kgs, 
+                    username = @username, 
+                    userdatetime = @userdatetime
+            WHEN NOT MATCHED THEN
+                INSERT (MoveID, MoveType, ItemID, Bags, Kgs, username, userdatetime)
+                VALUES (@MoveID, @MoveType, @ItemID, @Bags, @Kgs, @username, @userdatetime);
+          `);
+      } catch (rowError: unknown) {
+        console.error("SQL Error:", rowError);
+        errors.push(
+          `Error at row: ${
+            rowError instanceof Error ? rowError.message : String(rowError)
+          }`
+        );
+      }
+    }
+
+    if (errors.length > 0) {
+      await transaction.rollback();
+      return NextResponse.json({ errors }, { status: 400 });
+    }
+
+    await transaction.commit();
+    return NextResponse.json({
+      data: jsonData,
+      message: "Data uploaded successfully",
+    });
+  } catch (error) {
+    console.error("Error uploading data:", error);
+    return NextResponse.json(
+      { error: "Error uploading data" },
+      { status: 500 }
+    );
   }
 }
 

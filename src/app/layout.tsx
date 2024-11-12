@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
-import { Toaster } from "react-hot-toast";
-import Navbar from "@/components/header/navbar";
+import { Toaster } from "@/components/ui/sonner";
+// import Navbar from "@/components/header/navbar";
+import StoreProvider from "./StroreProvider";
+
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
   variable: "--font-geist-sans",
@@ -15,8 +17,20 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Next App",
+  title: "Kiw Kiw",
   description: "data",
+  icons: {
+    icon: [
+      {
+        media: "(prefers-color-scheme: light)",
+        url: "/favicon.png",
+      },
+      {
+        media: "(prefers-color-scheme: dark)",
+        url: "/favicon.png",
+      },
+    ],
+  },
 };
 
 export default function RootLayout({
@@ -29,9 +43,9 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <Navbar/>
+        
         <Toaster />
-        {children}
+        <StoreProvider>{children}</StoreProvider>
       </body>
     </html>
   );

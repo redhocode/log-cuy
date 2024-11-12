@@ -4,8 +4,56 @@ import { ColumnDef } from "@tanstack/react-table";
 import { ArrowUpDown } from "lucide-react";
 import { Button } from "../ui/button";
 import { ProduksiType } from "@/lib/types";
+ import { Checkbox } from "@/components/ui/checkbox";
+interface ColumnsProps {
+setSelectedRows: React.Dispatch<React.SetStateAction<ProduksiType[]>>;
+}
 
-export const columns: ColumnDef<ProduksiType>[] = [
+export const columns = (
+  setSelectedRows: ColumnsProps["setSelectedRows"]
+): ColumnDef<ProduksiType>[] => [
+ {
+  id: "select",
+  header: ({ table }) => (
+    <Checkbox
+      checked={table.getIsAllRowsSelected()} 
+      // indeterminate={table.getIsSomeRowsSelected()} // Menambahkan kondisi indeterminate
+      onCheckedChange={(value) => {
+        table.toggleAllRowsSelected(!!value);  // Pilih atau batalkan semua baris di seluruh dataset
+        if (value) {
+          // Update selectedRows jika memilih semua baris
+          setSelectedRows(table.getSelectedRowModel().rows.map(row => row.original));
+        } else {
+          // Kosongkan selectedRows jika batal memilih
+          setSelectedRows([]);
+        }
+      }}
+      aria-label="Select all"
+    />
+  ),
+  cell: ({ row }) => (
+    <Checkbox
+      checked={row.getIsSelected()}
+      onCheckedChange={(value) => {
+        row.toggleSelected(!!value);
+        if (value) {
+          // Tambahkan ke selectedRows jika memilih baris
+          setSelectedRows((prev) => [...prev, row.original]);
+        } else {
+          // Hapus dari selectedRows jika membatalkan pemilihan
+          setSelectedRows((prev) =>
+            prev.filter((selectedRow) => selectedRow.ProdID !== row.original.ProdID)
+          );
+        }
+      }}
+      aria-label="Select row"
+    />
+  ),
+},  {
+    id: "index",
+    header: "No",
+    cell: ({ row }) => row.index + 1,
+  },
   {
     accessorKey: "ProdID",
     header: ({ column }) => {
@@ -21,7 +69,7 @@ export const columns: ColumnDef<ProduksiType>[] = [
     },
   },
   {
-    accessorKey: "HeaderProdDate",
+    accessorKey: "ProdDate",
     header: ({ column }) => {
       return (
         <Button
@@ -35,18 +83,22 @@ export const columns: ColumnDef<ProduksiType>[] = [
     },
   },
 
-  { accessorKey: "HeaderProdType", header: "HeaderProdType" },
+  // { accessorKey: "HeaderProdType", header: "HeaderProdType" },
   { accessorKey: "ProdType", header: "ProdType" },
 
   { accessorKey: "DeptID", header: "DeptID" },
+
   { accessorKey: "OrderID", header: "SPK" },
   { accessorKey: "OrderType", header: "OrderType" },
-  { accessorKey: "LocID", header: "LocID" },
-  { accessorKey: "Remark", header: "Remark" },
+  { accessorKey: "Shift", header: "Shift" },
+  { accessorKey: "LocID", header: "WH" },
+  { accessorKey: "Remark", header: "Description" },
   { accessorKey: "ItemID", header: "ItemID" },
-  { accessorKey: "ItemType", header: "ItemType" },
+  { accessorKey: "ItemType", header: "Type" },
   { accessorKey: "Bags", header: "Bags" },
   { accessorKey: "Kgs", header: "Kgs" },
+  { accessorKey: "JamMulai", header: "Jam Mulai" },
+  { accessorKey: "JamSelesai", header: "Jam Selesai" },
   { accessorKey: "UserName", header: "User Name" },
   { accessorKey: "UserDateTime", header: "User DateTime" },
 ];
