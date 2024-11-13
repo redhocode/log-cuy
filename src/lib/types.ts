@@ -258,3 +258,13 @@ export interface kasType {
   username: string;
   userdatetime: string;
 }
+
+export interface logType{
+  Remark: string;
+  Username: string;
+  UserDateTime: string;
+  Kgs: number;
+  TransNo: number;
+  ItemID: string;
+  TransDateTime: Date;
+}
