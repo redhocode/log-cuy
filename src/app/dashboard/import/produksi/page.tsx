@@ -26,7 +26,7 @@ const DataProduksiPage: React.FC = () => {
   );
 
   const [searchTerm, setSearchTerm] = useState<string>("");
-
+ const [selectedRows, setSelectedRows] = React.useState<ProduksiType[]>([]);
   const EXCEL_TYPE =
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8";
   const EXCEL_EXTENSION = ".xlsx";
@@ -40,7 +40,12 @@ const DataProduksiPage: React.FC = () => {
     });
   }, [dispatch]);
   const handleExport = () => {
-    const ws = XLSX.utils.json_to_sheet(data);
+     const rowsToExport = selectedRows.length > 0 ? selectedRows : data;
+     if (rowsToExport.length === 0) {
+       toast.error("Please select rows to export");
+       return;
+     }
+    const ws = XLSX.utils.json_to_sheet(rowsToExport);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Data Produksi");
     const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
@@ -129,7 +134,7 @@ const DataProduksiPage: React.FC = () => {
           />
         </CardContent>
       </Card>
-      <DataTable columns={columns} data={filteredData} />
+      <DataTable columns={columns(setSelectedRows)} data={filteredData} />
     </div>
   );
 };
