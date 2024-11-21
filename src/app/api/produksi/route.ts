@@ -12,7 +12,8 @@ export async function GET(request: Request) {
   const startDate = url.searchParams.get("startDate");
   const endDate = url.searchParams.get("endDate");
   const remark = url.searchParams.get("remark"); // Ambil remark dari query string
-
+  const prodType = url.searchParams.get("prodType"); // Ambil prodType dari query string
+  const itemType = url.searchParams.get("itemType"); // Ambil itemType dari query string
   try {
     const pool = await getPool();
     let query = `
@@ -36,6 +37,7 @@ export async function GET(request: Request) {
         dt.[UserDateTime] 
       FROM [cp].[dbo].[taPRProdHd] AS hd
       JOIN [cp].[dbo].[taPRProdDt] AS dt ON hd.[ProdID] = dt.[ProdID] and hd.[ProdType] = dt.[ProdType]
+      WHERE hd.[ProdType] IN ('IN','SP','MO','PL','AS') AND dt.[ItemType] IN ('B','H')
     `;
 
     const conditions: string[] = [];
@@ -50,7 +52,15 @@ export async function GET(request: Request) {
       console.log("Using remark in SQL:", remark); // Debug: Cek nilai remark yang diterima
       conditions.push(`RIGHT(hd.[Remark], 5) = @Remark`);
     }
+    //
 
+    if (prodType) {
+      query += ` AND hd.[ProdType] = @ProdType`;
+    }
+
+    if (itemType) {
+      query += ` AND dt.[ItemType] = @ItemType`;
+    }
     // Gabungkan kondisi WHERE jika ada
     if (conditions.length > 0) {
       query += " WHERE " + conditions.join(" AND ");
@@ -69,7 +79,12 @@ export async function GET(request: Request) {
     if (remark) {
       requestQuery.input("Remark", sql.NVarChar, remark); // Pastikan remark diteruskan tanpa wildcard
     }
-
+    if (prodType) {
+      requestQuery.input("ProdType", sql.NVarChar, prodType);
+    }
+    if (itemType) {
+      requestQuery.input("ItemType", sql.NVarChar, itemType);
+    }
     const result = await requestQuery.query<ProduksiType>(query);
 
     // Format the HeaderProdDate to show only the date part

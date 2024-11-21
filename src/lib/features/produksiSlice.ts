@@ -17,7 +17,7 @@ const initialState: ProduksiState = {
 // Menambahkan parameter remark ke URL saat melakukan fetch data
 export const fetchProduksiData = createAsyncThunk(
   "produksi/fetchData",
-  async ({ startDate, endDate, remark }: { startDate?: string; endDate?: string; remark?: string }) => {
+  async ({ startDate, endDate, remark, prodType, itemType }: { startDate?: string; endDate?: string; remark?: string; prodType?: string; itemType?: string }) => {
     const url = new URL("/api/produksi", window.location.origin);
 
     if (startDate && endDate) {
@@ -28,7 +28,12 @@ export const fetchProduksiData = createAsyncThunk(
     if (remark) {
       url.searchParams.append("remark", remark); // pastikan remark ditambahkan
     }
-
+    if (prodType) {
+      url.searchParams.append("prodType", prodType); // pastikan prodType ditambahkan
+    }
+    if (itemType) {
+      url.searchParams.append("itemType", itemType); // pastikan itemType ditambahkan
+    }
     console.log("Fetching from URL:", url.toString()); // Cek apakah remark ditambahkan dengan benar
     const response = await fetch(url.toString());
     if (!response.ok) {

@@ -27,6 +27,8 @@ const DataProduksiPage: React.FC = () => {
   );
    const [selectedRows, setSelectedRows] = React.useState<ProduksiType[]>([]);
    const [searchTermRemark, setSearchTermRemark] = React.useState<string>("");
+   const [prodType, setProdType] = React.useState<string>("");
+   const [itemType, setitemType] = React.useState<string>("");
   const [searchTerm, setSearchTerm] = React.useState<string>("");
    const EXCEL_TYPE =
      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8";
@@ -34,7 +36,7 @@ const DataProduksiPage: React.FC = () => {
 
   useEffect(() => {
     const myPromise = dispatch(
-      fetchProduksiData({
+      fetchProduksiData({prodType, itemType
       })
     );
     toast.promise(myPromise, {
@@ -42,7 +44,7 @@ const DataProduksiPage: React.FC = () => {
       success: "Data fetched successfully!",
       error: "Error fetching data",
     });
-  }, [dispatch]);
+  }, [dispatch, prodType, itemType]);
   const handleExport = () => {
  const rowsToExport = selectedRows.length > 0 ? selectedRows : data;
  if (rowsToExport.length === 0) {
@@ -86,7 +88,12 @@ const handleRemarkSearchChange = (
 ) => {
   setSearchTermRemark(event.target.value);
 };
-
+const handleProdTypeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+  setProdType(event.target.value);
+};
+const handleItemTypeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+  setitemType(event.target.value);
+}
 const filteredData = data.filter((item) => {
   // Pencarian umum untuk semua kolom
   const matchesGeneralSearch = Object.values(item).some((value) =>
@@ -132,17 +139,40 @@ const filteredData = data.filter((item) => {
                 />
               </div>
               <div className="mt-3 relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                onChange={handleRemarkSearchChange}
-                value={searchTermRemark}
-                placeholder="Search by No Rator"
-                className="pl-8 sm:w-[300px] md:w-[200px] lg:w-[300px]"
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="search"
+                  onChange={handleRemarkSearchChange}
+                  value={searchTermRemark}
+                  placeholder="Search by No Rator"
+                  className="pl-8 sm:w-[300px] md:w-[200px] lg:w-[300px]"
                 />
-                </div>
+              </div>
             </form>
           </div>
+          <select
+            value={prodType}
+            onChange={handleProdTypeChange}
+            className="border p-2 rounded-md"
+          >
+            <option value="">-- Pilih Type --</option>
+            <option value="AS">Assembly</option>
+            <option value="IN">Injeksi</option>
+            <option value="MO">Molding</option>
+            <option value="SP">Spray</option>
+            <option value="PL">Platting</option>
+            {/* Add other RefType options as needed */}
+          </select>
+          <select
+            value={itemType}
+            onChange={handleItemTypeChange}
+            className="border p-2 rounded-md"
+          >
+            <option value="">-- Type Produksi --</option>
+            <option value="B">Bahan</option>
+            <option value="H">Hasil</option>
+            {/* Add other RefType options as needed */}
+          </select>
         </CardHeader>
         <CardContent>
           <div className="flex gap-2">
