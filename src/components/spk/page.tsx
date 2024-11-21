@@ -17,6 +17,7 @@ import * as XLSX from "xlsx";
 import { Button } from "../ui/button";
 import { FileUp, RefreshCcw, Search } from "lucide-react";
 // Create a typed version of useDispatch
+import { Spktype } from "@/lib/types";
 const useAppDispatch = () => useDispatch<AppDispatch>();
 
 const DataSpkPage: React.FC = () => {
@@ -24,7 +25,7 @@ const DataSpkPage: React.FC = () => {
   const { data, loading, error } = useSelector(
     (state: RootState) => state.spk
   );
-
+  const [selectedRows, setSelectedRow] = React.useState<Spktype[]>([]);
   const [searchTerm, setSearchTerm] = React.useState<string>("");
   const EXCEL_TYPE =
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8";
@@ -39,7 +40,12 @@ const DataSpkPage: React.FC = () => {
     });
   }, [dispatch]);
   const handleExport = () => {
-    const ws = XLSX.utils.json_to_sheet(data);
+    const rowsToExport = selectedRows.length > 0 ? selectedRows : data;
+    if (rowsToExport.length === 0) {
+      toast.error("Please select rows to export");
+      return;
+    }
+    const ws = XLSX.utils.json_to_sheet(rowsToExport);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Data SPK");
     const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
@@ -119,7 +125,7 @@ const DataSpkPage: React.FC = () => {
           </div>
         </CardContent>
       </Card>
-      <DataTable columns={columns} data={filteredData} />
+      <DataTable columns={columns(setSelectedRow)} data={filteredData} />
     </div>
   );
 };
