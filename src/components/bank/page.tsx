@@ -17,6 +17,7 @@ import { Button } from "../ui/button";
 import { FileUp, RefreshCcw, Search } from "lucide-react";
 // import BackButton from "../back-button";
 // Create a typed version of useDispatch
+import { kasType } from "@/lib/types";
 const useAppDispatch = () => useDispatch<AppDispatch>();
 
 const DataBankPage: React.FC = () => {
@@ -24,7 +25,7 @@ const DataBankPage: React.FC = () => {
   const { data, loading, error } = useSelector(
     (state: RootState) => state.bank
   );
-
+  const [selectedRows, setSelectedRows] = React.useState<kasType[]>([]);
   const [searchTerm, setSearchTerm] = React.useState<string>("");
   const [refType, setRefType] = React.useState<string>("");
   const EXCEL_TYPE =
@@ -40,7 +41,12 @@ const DataBankPage: React.FC = () => {
     });
   }, [dispatch, refType]);
   const handleExport = () => {
-    const ws = XLSX.utils.json_to_sheet(data);
+     const rowsToExport = selectedRows.length > 0 ? selectedRows : data;
+     if (rowsToExport.length === 0) {
+       toast.error("Please select rows to export");
+       return;
+     }
+     const ws = XLSX.utils.json_to_sheet(rowsToExport);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Data Bank");
     const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
@@ -135,7 +141,7 @@ const DataBankPage: React.FC = () => {
             </div>
           </CardContent>
         </Card>
-        <DataTable columns={columns} data={filteredData} />
+        <DataTable columns={columns(setSelectedRows)} data={filteredData} />
       </div>
     </>
   );

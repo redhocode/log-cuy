@@ -6,23 +6,50 @@ import { Button } from "../ui/button";
 import { kasType } from "@/lib/types";
 import { Checkbox } from "../ui/checkbox";
 
-export const columns: ColumnDef<kasType>[] = [
+interface ColumnsProps {
+  setSelectedRows: React.Dispatch<React.SetStateAction<kasType[]>>;
+}
+export const columns = (
+  setSelectedRows: ColumnsProps["setSelectedRows"]
+): ColumnDef<kasType>[] => [
   {
     id: "select",
     header: ({ table }) => (
       <Checkbox
-        checked={
-          table.getIsAllPageRowsSelected() ||
-          (table.getIsSomePageRowsSelected() && "indeterminate")
-        }
-        onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+        checked={table.getIsAllRowsSelected()}
+        // indeterminate={table.getIsSomeRowsSelected()} // Menambahkan kondisi indeterminate
+        onCheckedChange={(value) => {
+          table.toggleAllRowsSelected(!!value); // Pilih atau batalkan semua baris di seluruh dataset
+          if (value) {
+            // Update selectedRows jika memilih semua baris
+            setSelectedRows(
+              table.getSelectedRowModel().rows.map((row) => row.original)
+            );
+          } else {
+            // Kosongkan selectedRows jika batal memilih
+            setSelectedRows([]);
+          }
+        }}
         aria-label="Select all"
       />
     ),
     cell: ({ row }) => (
       <Checkbox
         checked={row.getIsSelected()}
-        onCheckedChange={(value) => row.toggleSelected(!!value)}
+        onCheckedChange={(value) => {
+          row.toggleSelected(!!value);
+          if (value) {
+            // Tambahkan ke selectedRows jika memilih baris
+            setSelectedRows((prev) => [...prev, row.original]);
+          } else {
+            // Hapus dari selectedRows jika membatalkan pemilihan
+            setSelectedRows((prev) =>
+              prev.filter(
+                (selectedRow) => selectedRow.RefNo !== row.original.RefNo
+              )
+            );
+          }
+        }}
         aria-label="Select row"
       />
     ),
