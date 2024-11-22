@@ -75,8 +75,8 @@ const DataProduksiPage: React.FC = () => {
       console.log("Both start date and end date must be selected");
       return; // Mungkin beri tahu pengguna
     }
-    console.log("Dispatching fetchProduksiData with:", { startDate, endDate });
-    dispatch(fetchProduksiData({ startDate, endDate }));
+    console.log("Dispatching fetchProduksiData with:", { startDate, endDate, prodType, itemType });
+    dispatch(fetchProduksiData({ startDate, endDate, prodType, itemType }));
   };
 
 const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {

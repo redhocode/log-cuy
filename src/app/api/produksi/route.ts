@@ -11,9 +11,10 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const startDate = url.searchParams.get("startDate");
   const endDate = url.searchParams.get("endDate");
-  const remark = url.searchParams.get("remark"); // Ambil remark dari query string
-  const prodType = url.searchParams.get("prodType"); // Ambil prodType dari query string
-  const itemType = url.searchParams.get("itemType"); // Ambil itemType dari query string
+  const remark = url.searchParams.get("remark");
+  const prodType = url.searchParams.get("prodType");
+  const itemType = url.searchParams.get("itemType");
+
   try {
     const pool = await getPool();
     let query = `
@@ -36,7 +37,7 @@ export async function GET(request: Request) {
         dt.[UserName],
         dt.[UserDateTime] 
       FROM [cp].[dbo].[taPRProdHd] AS hd
-      JOIN [cp].[dbo].[taPRProdDt] AS dt ON hd.[ProdID] = dt.[ProdID] and hd.[ProdType] = dt.[ProdType]
+      JOIN [cp].[dbo].[taPRProdDt] AS dt ON hd.[ProdID] = dt.[ProdID] AND hd.[ProdType] = dt.[ProdType]
       WHERE hd.[ProdType] IN ('IN','SP','MO','PL','AS') AND dt.[ItemType] IN ('B','H')
     `;
 
@@ -52,18 +53,20 @@ export async function GET(request: Request) {
       console.log("Using remark in SQL:", remark); // Debug: Cek nilai remark yang diterima
       conditions.push(`RIGHT(hd.[Remark], 5) = @Remark`);
     }
-    //
 
+    // Filter berdasarkan prodType, jika ada
     if (prodType) {
-      query += ` AND hd.[ProdType] = @ProdType`;
+      conditions.push(`hd.[ProdType] = @ProdType`);
     }
 
+    // Filter berdasarkan itemType, jika ada
     if (itemType) {
-      query += ` AND dt.[ItemType] = @ItemType`;
+      conditions.push(`dt.[ItemType] = @ItemType`);
     }
+
     // Gabungkan kondisi WHERE jika ada
     if (conditions.length > 0) {
-      query += " WHERE " + conditions.join(" AND ");
+      query += " AND " + conditions.join(" AND ");
     }
 
     query += ` ORDER BY hd.[ProdID] DESC`;
@@ -77,7 +80,7 @@ export async function GET(request: Request) {
     }
 
     if (remark) {
-      requestQuery.input("Remark", sql.NVarChar, remark); // Pastikan remark diteruskan tanpa wildcard
+      requestQuery.input("Remark", sql.NVarChar, remark);
     }
     if (prodType) {
       requestQuery.input("ProdType", sql.NVarChar, prodType);
@@ -85,6 +88,7 @@ export async function GET(request: Request) {
     if (itemType) {
       requestQuery.input("ItemType", sql.NVarChar, itemType);
     }
+
     const result = await requestQuery.query<ProduksiType>(query);
 
     // Format the HeaderProdDate to show only the date part
@@ -99,6 +103,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Error fetching data" }, { status: 500 });
   }
 }
+
 
 
 export async function POST(request: Request) {
