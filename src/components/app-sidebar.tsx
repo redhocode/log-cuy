@@ -1,6 +1,6 @@
 "use client";
 import { useRouter, usePathname } from "next/navigation";
-import {  Package2, Import, User2, ChevronUp } from "lucide-react";
+import {  Package2, Import, User2, ChevronUp, Annoyed } from "lucide-react";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +26,7 @@ import {
 import { useEffect } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import Link from "next/link";
+import { Label } from "./ui/label";
 const masterItems = [
   { href: "/dashboard/barang", label: "Master Barang", icon: Package2 },
 ]
@@ -81,7 +82,14 @@ export default function AppSidebar() {
     <Sidebar>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Application</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-lg">
+            <Annoyed className="h-5 w-5" />
+            <Label className="text-lg font-semibold">
+              <Link href="/dashboard" replace={false}>
+              Kiw-kiw
+              </Link>
+              </Label>
+            </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {/* Collapsible Section with Nav Links */}
