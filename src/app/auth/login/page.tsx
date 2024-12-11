@@ -50,7 +50,7 @@ export default function LoginPage() {
         <CardHeader>
           <CardTitle>Login</CardTitle>
           <CardDescription>
-            Enter your username and password to login
+            Enter your username and password WinCP to login
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
