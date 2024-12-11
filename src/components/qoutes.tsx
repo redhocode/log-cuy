@@ -37,6 +37,7 @@ const Quotes: React.FC = () => {
         } else {
           throw new Error("API did not return an array of quotes");
         }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (error: any) {
         setError(error.message);
       } finally {
