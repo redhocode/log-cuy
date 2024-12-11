@@ -10,6 +10,7 @@ import purchaseReducer from "./features/purchaseSlice";
 import kasReducer from "./features/kasSlice";
 import bankReducer from "./features/bankSlice";
 import jurnalReducer from "./features/jurnalSlice";
+import masterReducer from "./features/masterSlice";
 export const makeStore = () => {
   return configureStore({
     reducer: {
@@ -22,7 +23,8 @@ export const makeStore = () => {
       purchase: purchaseReducer,
       kas: kasReducer,
       bank: bankReducer,
-      jurnal: jurnalReducer
+      jurnal: jurnalReducer,
+      master: masterReducer,
     },
   });
 };

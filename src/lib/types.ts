@@ -268,3 +268,17 @@ export interface logType{
   ItemID: string;
   TransDateTime: Date;
 }
+
+export interface masterType{
+  Itemid: string;
+  ItemName: string;
+  ItemName2: string;
+  ItemNameBuy: string;
+  Mark: string;
+  KodeJenis: string;
+  SatuanKecil: string;
+  Spec: string;  
+  UserName: string;
+  UserDateTime: string;
+  NamaJenis: string;
+}
