@@ -54,7 +54,7 @@ const DashboardPage = () => {
               {userName && <p className="text-3xl">Welcome, {userName}!</p>}
             </CardTitle>
             <CardDescription>
-              Silahkan pilih menu yang ingin anda lihat
+              Qoutes for you
             </CardDescription>
           </CardHeader>
           <CardContent>
