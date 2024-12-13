@@ -1,6 +1,6 @@
 "use client";
 import { useRouter, usePathname } from "next/navigation";
-import {  Package2, Import, User2, ChevronUp, Annoyed } from "lucide-react";
+import {  Package2, Import, User2, ChevronUp, Annoyed, User } from "lucide-react";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -56,6 +56,9 @@ const Items3 = [
   { href: "/dashboard/bank", label: "Bank", icon: Package2 },
   { href: "/dashboard/jurnal", label: "Jurnal Umum", icon: Package2 },
 ];
+const Items4 = [
+  { href: "/dashboard/loguser", label: "Log Users", icon: User },
+]
 export default function AppSidebar() {
   const router = useRouter();
   const pathname = usePathname();
@@ -86,10 +89,10 @@ export default function AppSidebar() {
             <Annoyed className="h-5 w-5" />
             <Label className="text-lg font-semibold">
               <Link href="/dashboard" replace={false}>
-              Kiw-kiw
+                Kiw-kiw
               </Link>
-              </Label>
-            </SidebarGroupLabel>
+            </Label>
+          </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {/* Collapsible Section with Nav Links */}
@@ -208,26 +211,55 @@ export default function AppSidebar() {
                   </CollapsibleContent>
                 </SidebarMenuItem>
               </Collapsible>
+              {/* log */}
+              <Collapsible defaultOpen className="group/collapsible">
+                <SidebarMenuItem>
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuButton className="flex items-center gap-2">
+                      <Package2 className="h-5 w-5" />
+                      <span>Log</span>
+                    </SidebarMenuButton>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <SidebarMenuSub>
+                      {Items4.map(({ href, label, icon: Icon }) => (
+                        <SidebarMenuItem key={href}>
+                          <SidebarMenuButton asChild>
+                            <Button
+                              variant={pathname === href ? "outline" : "ghost"}
+                              onClick={() => router.push(href)}
+                              className="flex items-center gap-2 justify-start"
+                            >
+                              <Icon className="h-5 w-5" />
+                              <span>{label}</span>
+                            </Button>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      ))}
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </SidebarMenuItem>
+              </Collapsible>
             </SidebarMenu>
-          <SidebarMenu>
-            {items.map((item) => (
-              <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton asChild>
-                  {item.disabled ? (
-                    <span>
-                      <item.icon />
-                      <span className="text-gray-400">{item.title}</span>
-                    </span>
-                  ) : (
-                    <Link href={item.url}>
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </Link>
-                  )}
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
+            <SidebarMenu>
+              {items.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild>
+                    {item.disabled ? (
+                      <span>
+                        <item.icon />
+                        <span className="text-gray-400">{item.title}</span>
+                      </span>
+                    ) : (
+                      <Link href={item.url}>
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </Link>
+                    )}
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>

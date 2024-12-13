@@ -25,20 +25,21 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
     if (savedSingleDate) setSingleDate(savedSingleDate);
   }, []);
 
-  const handleApply = () => {
-    if (isSingleDate) {
-      localStorage.setItem("singleDate", singleDate || "");
-      onDateRangeChange(singleDate, null);
-    } else {
-      if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
-        alert("Tanggal awal tidak boleh lebih besar dari tanggal akhir");
-        return;
-      }
-      localStorage.setItem("startDate", startDate || "");
-      localStorage.setItem("endDate", endDate || "");
-      onDateRangeChange(startDate, endDate);
+const handleApply = () => {
+  if (isSingleDate) {
+    localStorage.setItem("singleDate", singleDate || "");
+    onDateRangeChange(singleDate, null); // Send single date to parent
+  } else {
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      alert("Tanggal awal tidak boleh lebih besar dari tanggal akhir");
+      return;
     }
-  };
+    localStorage.setItem("startDate", startDate || "");
+    localStorage.setItem("endDate", endDate || "");
+    onDateRangeChange(startDate, endDate); // Send date range to parent
+  }
+};
+
 
   return (
     <div className="flex flex-col gap-4 mb-4">

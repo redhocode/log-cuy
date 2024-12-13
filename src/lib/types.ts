@@ -282,3 +282,16 @@ export interface masterType{
   UserDateTime: string;
   NamaJenis: string;
 }
+
+export interface loguserType{
+  Username: string;
+  UserDateTime: Date;
+  Kgs: number;
+  TransNo: number;
+  ItemID: string;
+  TransDateTime: Date;
+  Remark: string;
+  UserDate: Date;
+  UserTime: Date;
+  TransDate: Date;
+}

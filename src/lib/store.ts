@@ -11,6 +11,7 @@ import kasReducer from "./features/kasSlice";
 import bankReducer from "./features/bankSlice";
 import jurnalReducer from "./features/jurnalSlice";
 import masterReducer from "./features/masterSlice";
+import loguserReducer from "./features/loguserSlice";
 export const makeStore = () => {
   return configureStore({
     reducer: {
@@ -25,6 +26,7 @@ export const makeStore = () => {
       bank: bankReducer,
       jurnal: jurnalReducer,
       master: masterReducer,
+      loguser: loguserReducer,
     },
   });
 };
