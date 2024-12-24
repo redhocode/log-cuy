@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import sql from "mssql";
+//import sql from "mssql";
 import { getPool } from "@/lib/config";
-import * as XLSX from "xlsx";
+//import * as XLSX from "xlsx";
 
 export async function GET(request: Request) {
   try {

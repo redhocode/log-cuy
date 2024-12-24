@@ -44,7 +44,7 @@ const items = [
     title: "Import",
     url: "/dashboard/import",
     icon: Import,
-    disabled: true,
+    disabled: false,
   },
 ]
 const Items2 = [
