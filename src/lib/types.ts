@@ -68,6 +68,7 @@ export type LbkType = {
   userdatetime: string;
   UserName: string;
   UserDateTime: string;
+  HPPPrice: number;
 };
 
 export type LbmType = {
