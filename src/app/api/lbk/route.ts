@@ -27,7 +27,8 @@ export async function GET(request: Request) {
         dt.[Bags],
         dt.[Kgs],
         dt.[username],
-        dt.[userdatetime] 
+        dt.[userdatetime],
+        dt.[HPPPrice] 
       FROM [cp].[dbo].[taOpNameOHD] AS hd
       INNER JOIN [cp].[dbo].[taOpNameODT]
       AS dt ON hd.[MoveID] = dt.[MoveID]
@@ -37,7 +38,7 @@ export async function GET(request: Request) {
       query += ` WHERE hd.[MoveDate] BETWEEN @StartDate AND @EndDate 
 `;
     }
-    query += ` ORDER BY hd.[MoveDate] DESC`;
+    query += ` ORDER BY hd.[MoveID] DESC`;
 
     const requestQuery = pool.request();
 

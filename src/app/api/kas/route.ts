@@ -27,7 +27,7 @@ export async function GET(request: Request) {
         dt.[username],
         dt.[userdatetime]
       FROM [cp].[dbo].[taGLJnlHD] AS hd
-      JOIN [cp].[dbo].[taGLJnlDT] AS dt ON hd.[RefNo] = dt.[RefNo] AND hd.[RefType] = dt.[RefType]
+      INNER JOIN [cp].[dbo].[taGLJnlDT] AS dt ON hd.[RefNo] = dt.[RefNo] AND hd.[RefType] = dt.[RefType]
       WHERE hd.[RefType] IN ('KK', 'KM')
     `;
 
