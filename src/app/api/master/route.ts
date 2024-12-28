@@ -28,7 +28,7 @@ for (const [key, value] of Array.from(queryParams)) {
         a.[UserDateTime]
       FROM [cp].[dbo].[taGoods] AS a
       INNER JOIN [cp].[dbo].[taKindofGoods] AS b
-      ON a.[KodeJenis] = b.[KodeJenis]
+      ON a.[KodeJenis] = b.[KodeJenis] ORDER BY a.[ItemID] DESC
     `;
 
     // Menjalankan query SQL dan mendapatkan hasilnya

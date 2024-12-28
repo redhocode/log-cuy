@@ -72,7 +72,7 @@ const DataMasterBarangPage: React.FC = () => {
     <div className="flex flex-col p-14">
       <h1 className="text-5xl font-bold mb-4 flex justify-end">
         {" "}
-        Data Penerimaan Barang
+        Master Kode Barang
       </h1>
       <Card className="mb-4">
         <CardHeader>
