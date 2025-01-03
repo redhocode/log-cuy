@@ -26,6 +26,7 @@ export async function GET(request: Request) {
         dt.[ItemID],
         dt.[Bags],
         dt.[Kgs],
+        dt.[HPPPrice],
         dt.[username],
         dt.[userdatetime] 
       FROM [cp].[dbo].[taOpNameIHD] AS hd
@@ -62,50 +63,74 @@ export async function GET(request: Request) {
   }
 }
 
+// Fungsi POST untuk meng-upload data dari file Excel
 export async function POST(request: Request) {
   try {
+    // Membaca form data (termasuk file yang di-upload)
     const body = await request.formData();
     const file = body.get("file") as File;
 
+    // Jika tidak ada file yang di-upload
     if (!file) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
     }
 
+    // Membaca buffer dari file yang di-upload
     const buffer = await file.arrayBuffer();
     const data = Buffer.from(buffer);
-    const workbook = XLSX.read(data, { type: "buffer" });
 
+    // Membaca workbook dari file Excel
+    const workbook = XLSX.read(data, { type: "buffer" });
     console.log("Sheet Names:", workbook.SheetNames);
 
+    // Mengambil worksheet pertama dari file Excel
     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
     console.log("Worksheet:", worksheet);
 
+    // Mengonversi worksheet ke dalam format JSON
     const jsonData: LbmType[] = XLSX.utils.sheet_to_json<LbmType>(worksheet);
     console.log("Parsed JSON Data:", jsonData);
 
+    // Jika data kosong
     if (jsonData.length === 0) {
-      return NextResponse.json(
-        { error: "No data found in the uploaded file." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "No data found in the uploaded file." }, { status: 400 });
     }
 
+    // Mengambil pool koneksi ke database
     const pool = await getPool();
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
 
     const errors: string[] = [];
 
+    // Query untuk mendapatkan LocID yang valid dari taLocation
+    const requestLocID = new sql.Request(transaction);
+    const validLocIDs = await requestLocID.query(`
+      SELECT LocID FROM [cp].[dbo].[taLocation]
+    `);
+    const validLocIDsSet = new Set(validLocIDs.recordset.map((row) => row.LocID));
+
+    console.log("Valid LocIDs:", validLocIDsSet);
+
+    // Memproses setiap baris data dari Excel
     for (const row of jsonData) {
       try {
-        // MERGE untuk taOpNameIHD
+        // Validasi LocID: Pastikan LocID ada di taLocation
+        if (!validLocIDsSet.has(row.LocID)) {
+          errors.push(`Invalid LocID: ${row.LocID} at row MoveID: ${row.MoveID}`);
+          console.log(`Invalid LocID at row ${row.MoveID}: ${row.LocID}`);
+          continue; // Jika LocID tidak valid, lewati baris ini
+        }
+
+        // Query MERGE untuk taOpNameIHD
         const requestIHD = new sql.Request(transaction);
         await requestIHD
           .input("MoveID", sql.Int, row.MoveID)
           .input("MoveType", sql.VarChar, row.MoveType)
           .input("LocID", sql.VarChar, row.LocID)
           .input("MoveDate", sql.DateTime, new Date(row.MoveDate))
-          .input("Remark", sql.VarChar, row.Remark).query(`
+          .input("Remark", sql.VarChar, row.Remark)
+          .query(`
             MERGE INTO [cp].[dbo].[taOpNameIHD] AS target
             USING (SELECT @MoveID AS MoveID) AS source
             ON target.MoveID = source.MoveID
@@ -119,15 +144,19 @@ export async function POST(request: Request) {
                 INSERT (MoveID, MoveType, LocID, MoveDate, Remark)
                 VALUES (@MoveID, @MoveType, @LocID, @MoveDate, @Remark);
           `);
+        console.log(`Processed MoveID: ${row.MoveID} for taOpNameOHD`);
 
-        // MERGE untuk taOpNameIDT
+        // Query MERGE untuk taOpNameIDT
         const requestIDT = new sql.Request(transaction);
         await requestIDT
           .input("MoveID", sql.Int, row.MoveID)
           .input("MoveType", sql.VarChar, row.MoveType)
+          .input("LocID", sql.VarChar, row.LocID)
+          .input("MoveDate", sql.DateTime, new Date(row.MoveDate))
           .input("ItemID", sql.VarChar, row.ItemID)
           .input("Bags", sql.Int, row.Bags)
           .input("Kgs", sql.Float, row.Kgs)
+          .input("HPPPrice", sql.Int, row.HPPPrice)
           .input("username", sql.VarChar, row.username)
           .input("userdatetime", sql.DateTime, new Date(row.userdatetime))
           .query(`
@@ -137,38 +166,46 @@ export async function POST(request: Request) {
             WHEN MATCHED THEN
                 UPDATE SET 
                     MoveType = @MoveType, 
+                    MoveDate = @MoveDate,
+                    LocID = @LocID, 
                     Bags = @Bags, 
                     Kgs = @Kgs, 
+                    HPPPrice = @HPPPrice,
                     username = @username, 
                     userdatetime = @userdatetime
             WHEN NOT MATCHED THEN
-                INSERT (MoveID, MoveType, ItemID, Bags, Kgs, username, userdatetime)
-                VALUES (@MoveID, @MoveType, @ItemID, @Bags, @Kgs, @username, @userdatetime);
+                INSERT (MoveID, MoveType, MoveDate, LocID, ItemID, Bags, Kgs, HPPPrice, username, userdatetime)
+                VALUES (@MoveID, @MoveType,@MoveDate, @LocID, @ItemID, @Bags, @Kgs, @HPPPrice, @username, @userdatetime);
           `);
+        console.log(`Processed MoveID: ${row.MoveID} for taOpNameIDT`);
+
       } catch (rowError: unknown) {
-        console.error("SQL Error:", rowError);
-        errors.push(
-          `Error at row: ${
-            rowError instanceof Error ? rowError.message : String(rowError)
-          }`
-        );
+        // Menangani kesalahan dalam proses tiap baris
+        console.error(`Error at MoveID: ${row.MoveID}`, rowError);
+        errors.push(`Error at row MoveID ${row.MoveID}: ${
+          rowError instanceof Error ? rowError.message : String(rowError)
+        }`);
       }
     }
 
+    // Jika ada error, rollback transaksi dan kembalikan error
     if (errors.length > 0) {
       await transaction.rollback();
       return NextResponse.json({ errors }, { status: 400 });
     }
 
+    // Jika semua data berhasil diproses, commit transaksi
     await transaction.commit();
     return NextResponse.json({
       data: jsonData,
       message: "Data uploaded successfully",
     });
+
   } catch (error) {
+    // Menangani kesalahan di luar proses baris data (misalnya kesalahan koneksi database)
     console.error("Error uploading data:", error);
     return NextResponse.json(
-      { error: "Error uploading data" },
+      { error: `Error uploading data: ${error instanceof Error ? error.message : String(error)}` },
       { status: 500 }
     );
   }

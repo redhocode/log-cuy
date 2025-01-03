@@ -17,17 +17,17 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Kiw Kiw",
+  title: "kiw-kiw",
   description: "data",
   icons: {
     icon: [
       {
         media: "(prefers-color-scheme: light)",
-        url: "/faviconnn.jpg",
+        url: "/o.png",
       },
       {
         media: "(prefers-color-scheme: dark)",
-        url: "/faviconnn.jpg",
+        url: "/o.png",
       },
     ],
   },

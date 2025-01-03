@@ -85,6 +85,7 @@ export type LbmType = {
   Username: string;
   UserName: string;
   UserDateTime: string;
+  HPPPrice: number;
 }
 export type PenerimaanType = {
   MoveID: string;

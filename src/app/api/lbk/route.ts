@@ -152,9 +152,12 @@ export async function POST(request: Request) {
         await requestODT
           .input("MoveID", sql.Int, row.MoveID)
           .input("MoveType", sql.VarChar, row.MoveType)
+          .input("LocID", sql.VarChar, row.LocID)
+          .input("MoveDate", sql.DateTime, new Date(row.MoveDate))
           .input("ItemID", sql.VarChar, row.ItemID)
           .input("Bags", sql.Int, row.Bags)
           .input("Kgs", sql.Float, row.Kgs)
+          .input("HPPPrice", sql.Int, row.HPPPrice)
           .input("username", sql.VarChar, row.username)
           .input("userdatetime", sql.DateTime, new Date(row.userdatetime))
           .query(`
@@ -164,13 +167,16 @@ export async function POST(request: Request) {
             WHEN MATCHED THEN
                 UPDATE SET 
                     MoveType = @MoveType, 
+                    MoveDate = @MoveDate,
+                    LocID = @LocID, 
                     Bags = @Bags, 
                     Kgs = @Kgs, 
+                    HPPPrice = @HPPPrice,
                     username = @username, 
                     userdatetime = @userdatetime
             WHEN NOT MATCHED THEN
-                INSERT (MoveID, MoveType, ItemID, Bags, Kgs, username, userdatetime)
-                VALUES (@MoveID, @MoveType, @ItemID, @Bags, @Kgs, @username, @userdatetime);
+                INSERT (MoveID, MoveType, MoveDate, LocID, ItemID, Bags, Kgs, HPPPrice, username, userdatetime)
+                VALUES (@MoveID, @MoveType,@MoveDate, @LocID, @ItemID, @Bags, @Kgs, @HPPPrice, @username, @userdatetime);
           `);
         console.log(`Processed MoveID: ${row.MoveID} for taOpNameODT`);
 
