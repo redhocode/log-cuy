@@ -1,31 +1,33 @@
 import React, { useState } from "react";
-import { Input } from "./ui/input";
-import { Button } from "./ui/button";
-import { toast } from "sonner";
+import { Input } from "./ui/input"; // Pastikan pathnya benar
+import { Button } from "./ui/button"; // Pastikan pathnya benar
+import { toast } from "sonner"; // Pastikan ini sudah diinstal
 import * as XLSX from "xlsx";
 
 interface ExcelUploaderProps<T extends object> {
-  // Menambahkan batasan extends object
-  onDataLoaded: (newData: T[]) => void; // Menggunakan tipe generik T
-  apiEndpoint: string; // Endpoint API yang dapat disesuaikan
-  acceptFileTypes?: string; // Tipe file yang dapat diterima
+  onDataLoaded: (newData: T[]) => void;
+  apiEndpoint: string;
+  acceptFileTypes?: string;
 }
 
 const ExcelUploader = <T extends object>({
-  // Tipe generik T
   onDataLoaded,
   apiEndpoint,
   acceptFileTypes = ".xlsx, .xls",
 }: ExcelUploaderProps<T>) => {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [previewData, setPreviewData] = useState<T[]>([]); // State untuk menyimpan data preview
+  const [errors, setErrors] = useState<string[]>([]); // Menyimpan errors global
+  const [previewData, setPreviewData] = useState<T[]>([]); // Data untuk preview
+  const [errorRows, setErrorRows] = useState<Map<number, string>>(new Map()); // Menyimpan error per baris
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
       setFile(selectedFile);
       setError(null);
+      setErrors([]); // Reset errors saat file baru dipilih
+      setErrorRows(new Map()); // Reset error rows
       readFile(selectedFile); // Panggil fungsi untuk membaca file
     }
   };
@@ -59,73 +61,108 @@ const ExcelUploader = <T extends object>({
         body: formData,
       });
 
-      if (!response.ok) {
-        const errorResponse = await response.json();
-        console.error("Upload failed:", errorResponse);
-        throw new Error("Upload failed");
-      }
-
       const result = await response.json();
-      if (result.data) {
-        const newData: T[] = result.data; // Menggunakan tipe generik T
-        onDataLoaded(newData);
-        toast.success("File uploaded successfully!");
-      } else {
-        throw new Error(result.error || "Unknown error");
+
+      if (!response.ok) {
+        // Jika response tidak ok, tangani error dari server
+        if (result.errors) {
+          setErrors(result.errors); // Menyimpan errors untuk ditampilkan
+          toast.error("Failed to upload some data.");
+          // Mengatur error per baris jika ada error spesifik per item
+          const rowErrors = new Map<number, string>();
+          result.errors.forEach((err: string, index: number) => {
+            rowErrors.set(index, err);
+          });
+          setErrorRows(rowErrors);
+        } else {
+          setError(result.error || "Upload failed");
+          toast.error(result.error || "Upload failed");
+        }
+        return;
       }
 
+      // Jika upload berhasil, tampilkan pesan sukses
+      toast.success(result.message || "Upload successful!");
+      onDataLoaded(result.data || []); // Kirim data yang berhasil diupload ke parent component
+
+      // Reset setelah upload sukses
       setFile(null);
-      setPreviewData([]); // Reset preview data setelah upload
+      setPreviewData([]);
     } catch (error: unknown) {
-      if (error instanceof Error) {
-        console.error("Upload error:", error);
-        setError(`Failed to upload the file: ${error.message}`);
-        toast.error("Failed to upload the file.");
-      } else {
-        // Handle other types of errors
-        console.error("Unknown error:", error);
-        setError("An unknown error occurred during upload");
-        toast.error("An unknown error occurred during upload");
-      }
+      console.error("Upload error:", error);
+      setError(
+        `Failed to upload the file: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+      toast.error("Failed to upload the file.");
     }
-  }
+  };
+
   const handleReset = () => {
     setFile(null);
     setPreviewData([]);
+    setErrors([]); // Clear errors when reset
+    setErrorRows(new Map()); // Clear error rows
   };
 
   const renderPreview = () => {
     if (previewData.length === 0) return null;
 
     return (
-      <table className="mt-4 border">
-        <thead>
-          <tr>
-            {Object.keys(previewData[0]).map((key) => (
-              <th key={key} className="border">
-                {key}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {previewData.map((row, index) => (
-            <tr key={index}>
-              {Object.values(row).map((value, idx) => (
-                <td key={idx} className="border">
-                  {value}
-                </td>
+      <div className="mt-4">
+        <table className="border-collapse w-full">
+          <thead>
+            <tr>
+              {Object.keys(previewData[0]).map((key) => (
+                <th key={key} className="border px-2 py-1">
+                  {key}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {previewData.map((row, index) => (
+              <tr key={index}>
+                {Object.entries(row).map(([key, value], idx) => {
+                  const hasError = errorRows.has(index); // Cek apakah ada error pada baris ini
+                  return (
+                    <td
+                      key={idx}
+                      className={`border px-2 py-1 ${
+                        hasError ? "bg-red-100" : ""
+                      }`}
+                    >
+                      {key === "ItemID" && hasError ? (
+                        <div>
+                          <span className="text-red-500">{value}</span>
+                          <div className="text-red-500 text-xs">
+                            {errorRows.get(index)}{" "}
+                            {/* Menampilkan pesan error per baris */}
+                          </div>
+                        </div>
+                      ) : (
+                        value
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     );
   };
 
   return (
     <div>
-      <Input type="file" accept={acceptFileTypes} onChange={handleFileChange} />
+      <Input
+        type="file"
+        accept={acceptFileTypes}
+        onChange={handleFileChange}
+        className="mt-2"
+      />
       <div className="flex gap-2 mt-2">
         <Button onClick={handleUpload} disabled={!file}>
           Upload
@@ -135,6 +172,18 @@ const ExcelUploader = <T extends object>({
         </Button>
       </div>
       {error && <div style={{ color: "red" }}>{error}</div>}
+
+      {errors.length > 0 && (
+        <div className="mt-4 text-red-500">
+          <h3>Error(s) occurred:</h3>
+          <ul>
+            {errors.map((err, idx) => (
+              <li key={idx}>{err}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {renderPreview()}
     </div>
   );

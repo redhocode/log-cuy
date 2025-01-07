@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchMasterData } from "@/lib/features/masterSlice";
 import { RootState, AppDispatch } from "@/lib/store"; // Ensure this path is correct
@@ -11,20 +11,22 @@ import { Input } from "../ui/input";
 import { Card, CardContent, CardHeader } from "../ui/card";
 // import toast from "react-hot-toast";
 import { toast } from "sonner";
-
+import ExcelUploader from "@/components/ExcelUploader";
 import * as XLSX from "xlsx";
 import { Button } from "../ui/button";
+import { masterType } from "@/lib/types";
 import { FileUp, RefreshCcw, Search } from "lucide-react";
+//import { set } from "date-fns";
 // Create a typed version of useDispatch
 const useAppDispatch = () => useDispatch<AppDispatch>();
-
 const DataMasterBarangPage: React.FC = () => {
   const dispatch = useAppDispatch();
   const { data, loading, error } = useSelector(
     (state: RootState) => state.master
   );
-
-  const [searchTerm, setSearchTerm] = React.useState<string>("");
+  
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [selectedRows, setSelectedRows] = useState<masterType[]>([]);
   const EXCEL_TYPE =
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8";
   const EXCEL_EXTENSION = ".xlsx";
@@ -38,12 +40,17 @@ const DataMasterBarangPage: React.FC = () => {
     });
   }, [dispatch]);
   const handleExport = () => {
-    const ws = XLSX.utils.json_to_sheet(data);
+     const rowsToExport = selectedRows.length > 0 ? selectedRows : data;
+     if (rowsToExport.length === 0) {
+       toast.error("Please select rows to export");
+       return;
+     }
+     const ws = XLSX.utils.json_to_sheet(rowsToExport);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Data Produksi");
+    XLSX.utils.book_append_sheet(wb, ws, "Master Barang");
     const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
     const blob = new Blob([excelBuffer], { type: EXCEL_TYPE });
-    saveAs(blob, `DataPenerimaan${EXCEL_EXTENSION}`);
+    saveAs(blob, `Data Master Barang${EXCEL_EXTENSION}`);
   };
   const handleRefresh = () => {
     const myPromise = dispatch(fetchMasterData()); // Fetch data without filters on initial load
@@ -67,7 +74,10 @@ const DataMasterBarangPage: React.FC = () => {
 
   if (loading) return <Loading />;
   if (error) return <div>Error: {error}</div>;
-
+  const handleDataLoaded = (newData: masterType[]) => {
+    console.log("Data loaded:", newData);
+    // Proses data yang diterima sesuai kebutuhan
+  };
   return (
     <div className="flex flex-col p-14">
       <h1 className="text-5xl font-bold mb-4 flex justify-end">
@@ -108,9 +118,13 @@ const DataMasterBarangPage: React.FC = () => {
               Eksport to Excel
             </Button>
           </div>
+          <ExcelUploader<masterType>
+            onDataLoaded={handleDataLoaded}
+            apiEndpoint="/api/master"
+          />
         </CardContent>
       </Card>
-      <DataTable columns={columns} data={filteredData} />
+      <DataTable columns={columns(setSelectedRows)} data={filteredData} />
     </div>
   );
 };

@@ -272,7 +272,7 @@ export interface logType{
 }
 
 export interface masterType{
-  Itemid: string;
+  ItemID: string;
   ItemName: string;
   ItemName2: string;
   ItemNameBuy: string;

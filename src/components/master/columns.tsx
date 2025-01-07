@@ -6,24 +6,50 @@ import { Button } from "../ui/button";
 import { masterType } from "@/lib/types";
 import { Checkbox } from "../ui/checkbox";
 
-export const columns: ColumnDef<masterType>[] = [
+interface ColumnsProps {
+  setSelectedRows: React.Dispatch<React.SetStateAction<masterType[]>>;
+}
+export const columns = (
+  setSelectedRows: ColumnsProps["setSelectedRows"]
+): ColumnDef<masterType>[] => [
   {
     id: "select",
     header: ({ table }) => (
       <Checkbox
-        checked={
-          table.getIsAllPageRowsSelected() ||
-          (table.getIsSomePageRowsSelected() && "indeterminate")
-        }
-        onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+        checked={table.getIsAllRowsSelected()}
+        // indeterminate={table.getIsSomeRowsSelected()} // Menambahkan kondisi indeterminate
+        onCheckedChange={(value) => {
+          table.toggleAllRowsSelected(!!value); // Pilih atau batalkan semua baris di seluruh dataset
+          if (value) {
+            // Update selectedRows jika memilih semua baris
+            setSelectedRows(
+              table.getSelectedRowModel().rows.map((row) => row.original)
+            );
+          } else {
+            // Kosongkan selectedRows jika batal memilih
+            setSelectedRows([]);
+          }
+        }}
         aria-label="Select all"
       />
     ),
-
     cell: ({ row }) => (
       <Checkbox
         checked={row.getIsSelected()}
-        onCheckedChange={(value) => row.toggleSelected(!!value)}
+        onCheckedChange={(value) => {
+          row.toggleSelected(!!value);
+          if (value) {
+            // Tambahkan ke selectedRows jika memilih baris
+            setSelectedRows((prev) => [...prev, row.original]);
+          } else {
+            // Hapus dari selectedRows jika membatalkan pemilihan
+            setSelectedRows((prev) =>
+              prev.filter(
+                (selectedRow) => selectedRow.ItemID !== row.original.ItemID
+              )
+            );
+          }
+        }}
         aria-label="Select row"
       />
     ),
