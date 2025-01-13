@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 //import CardList from "@/components/cardlist";
 //import { Database, FileInput, FileOutput } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import Qoutes from "@/components/qoutes";
+
 const DashboardPage = () => {
    const router = useRouter();
    const [userName, setUserName] = useState<string | null>(null);
@@ -58,7 +58,7 @@ const DashboardPage = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Qoutes/>
+          
       {/* <div className="flex justify-center">
         <CardList
           cards={items} // Mengisi CardList dengan array objek
