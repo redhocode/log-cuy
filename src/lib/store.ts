@@ -12,6 +12,7 @@ import bankReducer from "./features/bankSlice";
 import jurnalReducer from "./features/jurnalSlice";
 import masterReducer from "./features/masterSlice";
 import loguserReducer from "./features/loguserSlice";
+import logacrReducer from "./features/logacrSlice"
 export const makeStore = () => {
   return configureStore({
     reducer: {
@@ -27,6 +28,7 @@ export const makeStore = () => {
       jurnal: jurnalReducer,
       master: masterReducer,
       loguser: loguserReducer,
+      logacr: logacrReducer,
     },
   });
 };

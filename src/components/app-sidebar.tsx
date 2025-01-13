@@ -58,6 +58,7 @@ const Items3 = [
 ];
 const Items4 = [
   { href: "/dashboard/loguser", label: "Log Users", icon: User },
+  { href: "/dashboard/logacr", label: "Log Acc", icon: User}
 ]
 export default function AppSidebar() {
   const router = useRouter();

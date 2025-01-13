@@ -297,3 +297,13 @@ export interface loguserType{
   UserTime: Date;
   TransDate: Date;
 }
+
+export interface logacrType {
+  Username: string;
+  IpAddr: string;
+  Remark: string;
+  UserDateTime: Date;
+  UserDate: Date;
+  UserTime: Date;
+  TransDate: Date;
+}
