@@ -40,11 +40,12 @@ const DataMasterBarangPage: React.FC = () => {
     });
   }, [dispatch]);
   const handleExport = () => {
-     const rowsToExport = selectedRows.length > 0 ? selectedRows : data;
-     if (rowsToExport.length === 0) {
-       toast.error("Please select rows to export");
-       return;
-     }
+      const rowsToExport =
+        selectedRows.length > 0 ? selectedRows : filteredData;
+      if (rowsToExport.length === 0) {
+        toast.error("Please select rows to export");
+        return;
+      }
      const ws = XLSX.utils.json_to_sheet(rowsToExport);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Master Barang");
@@ -124,7 +125,7 @@ const DataMasterBarangPage: React.FC = () => {
           />
         </CardContent>
       </Card>
-      <DataTable columns={columns(setSelectedRows)} data={filteredData} />
+      <DataTable columns={columns(setSelectedRows, filteredData)} data={filteredData} />
     </div>
   );
 };

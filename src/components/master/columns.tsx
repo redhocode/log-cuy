@@ -8,26 +8,28 @@ import { Checkbox } from "../ui/checkbox";
 
 interface ColumnsProps {
   setSelectedRows: React.Dispatch<React.SetStateAction<masterType[]>>;
+  filteredData: masterType[];
 }
+
 export const columns = (
-  setSelectedRows: ColumnsProps["setSelectedRows"]
+  setSelectedRows: ColumnsProps["setSelectedRows"],
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  filteredData: masterType[] // Ensure this is the filtered data
 ): ColumnDef<masterType>[] => [
   {
     id: "select",
     header: ({ table }) => (
       <Checkbox
         checked={table.getIsAllRowsSelected()}
-        // indeterminate={table.getIsSomeRowsSelected()} // Menambahkan kondisi indeterminate
         onCheckedChange={(value) => {
-          table.toggleAllRowsSelected(!!value); // Pilih atau batalkan semua baris di seluruh dataset
+          table.toggleAllRowsSelected(!!value); // Toggle all rows selection
           if (value) {
-            // Update selectedRows jika memilih semua baris
+            // Sync selected rows based on current filtered data
             setSelectedRows(
               table.getSelectedRowModel().rows.map((row) => row.original)
             );
           } else {
-            // Kosongkan selectedRows jika batal memilih
-            setSelectedRows([]);
+            setSelectedRows([]); // Clear selection when de-selecting all
           }
         }}
         aria-label="Select all"
@@ -39,10 +41,10 @@ export const columns = (
         onCheckedChange={(value) => {
           row.toggleSelected(!!value);
           if (value) {
-            // Tambahkan ke selectedRows jika memilih baris
+            // Add to selected rows if the checkbox is checked
             setSelectedRows((prev) => [...prev, row.original]);
           } else {
-            // Hapus dari selectedRows jika membatalkan pemilihan
+            // Remove from selected rows if the checkbox is unchecked
             setSelectedRows((prev) =>
               prev.filter(
                 (selectedRow) => selectedRow.ItemID !== row.original.ItemID
@@ -61,33 +63,28 @@ export const columns = (
   },
   {
     accessorKey: "ItemID",
-    header: ({ column }) => {
-      return (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        >
-          ItemID
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      );
-    },
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      >
+        ItemID
+        <ArrowUpDown className="ml-2 h-4 w-4" />
+      </Button>
+    ),
   },
   {
     accessorKey: "ItemName",
-    header: ({ column }) => {
-      return (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        >
-          Item Name
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      );
-    },
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      >
+        Item Name
+        <ArrowUpDown className="ml-2 h-4 w-4" />
+      </Button>
+    ),
   },
-
   { accessorKey: "ItemNameBuy", header: "Name Item Buy" },
   { accessorKey: "Spec", header: "Spesifikasi" },
   { accessorKey: "SatuanKecil", header: "Satuan" },
