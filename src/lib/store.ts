@@ -12,7 +12,9 @@ import bankReducer from "./features/bankSlice";
 import jurnalReducer from "./features/jurnalSlice";
 import masterReducer from "./features/masterSlice";
 import loguserReducer from "./features/loguserSlice";
-import logacrReducer from "./features/logacrSlice"
+import logacrReducer from "./features/logacrSlice";
+import trackpoReducer from "./features/trackpoSlice";
+
 export const makeStore = () => {
   return configureStore({
     reducer: {
@@ -29,6 +31,7 @@ export const makeStore = () => {
       master: masterReducer,
       loguser: loguserReducer,
       logacr: logacrReducer,
+      trackpo: trackpoReducer,
     },
   });
 };

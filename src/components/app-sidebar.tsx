@@ -50,6 +50,7 @@ const items = [
 const Items2 = [
   { href: "/dashboard/spk", label: "SPK", icon: Package2 },
   { href: "/dashboard/purchase", label: "Purchase", icon: Package2 },
+  { href: "/dashboard/trackpo", label: "Track PO", icon: Package2 },
 ]
 const Items3 = [
   { href: "/dashboard/kas", label: "Kas", icon: Package2 },

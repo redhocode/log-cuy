@@ -307,3 +307,20 @@ export interface logacrType {
   UserTime: Date;
   TransDate: Date;
 }
+
+export interface trackPoType{
+  OrderID: string;
+  Remark: string;
+  OrderDate: Date;
+  PlanDate: Date;
+  ItemID: string;
+  Kgs: number;
+  ItemType: string;
+  Item_PO: string;
+  Item_Prod: string;
+  Qty_Prod: number;
+  Qty_PO: number;
+  ProdDate: Date;
+  status: string;
+  Dept: string;
+}
