@@ -31,7 +31,7 @@ export async function GET(request: Request) {
         dt.[userdatetime] 
       FROM [cp].[dbo].[taOpNameIHD] AS hd
       INNER JOIN [cp].[dbo].[taOpNameIDT]
-      AS dt ON hd.[MoveID] = dt.[MoveID]
+      AS dt ON hd.[MoveID] = dt.[MoveID] AND hd.[MoveType] = dt.[MoveType]
     `;
 
     if (startDate && endDate) {

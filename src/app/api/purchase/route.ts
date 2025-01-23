@@ -35,9 +35,8 @@ export async function GET(request: Request) {
         dt.[Price],
         dt.[Total] as TotalDt,
         dt.[Satuan]
-
       FROM [cp].[dbo].[taPOHD] AS hd
-        JOIN [cp].[dbo].[taPODT] AS dt ON hd.[OrderID] = dt.[OrderID] and hd.[OrderType] = dt.[OrderType]
+      INNER  JOIN [cp].[dbo].[taPODT] AS dt ON hd.[OrderID] = dt.[OrderID] and hd.[OrderType] = dt.[OrderType]
     `;
 
     if (startDate && endDate) {

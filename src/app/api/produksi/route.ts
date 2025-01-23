@@ -37,7 +37,7 @@ export async function GET(request: Request) {
         dt.[UserName],
         dt.[UserDateTime] 
       FROM [cp].[dbo].[taPRProdHd] AS hd
-      JOIN [cp].[dbo].[taPRProdDt] AS dt ON hd.[ProdID] = dt.[ProdID] AND hd.[ProdType] = dt.[ProdType]
+      INNER JOIN [cp].[dbo].[taPRProdDt] AS dt ON hd.[ProdID] = dt.[ProdID] AND hd.[ProdType] = dt.[ProdType]
       WHERE hd.[ProdType] IN ('IN','SP','MO','PL','AS') AND dt.[ItemType] IN ('B','H')
     `;
 
