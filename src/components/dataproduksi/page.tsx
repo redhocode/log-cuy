@@ -67,6 +67,27 @@ const DataProduksiPage: React.FC = () => {
         error: "Error fetching data",
       });
     };
+  const handleExportByRemark = () => {
+    // Apply the Remark search filter (searchTermRemark) before exporting
+    const filteredRows = filteredData.filter((item) =>
+      item.Remark?.toLowerCase().includes(searchTermRemark.toLowerCase())
+    );
+
+    if (filteredRows.length === 0) {
+      toast.error("No data matches the 'Nomor Rator' filter.");
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(filteredRows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Data Produksi");
+    const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([excelBuffer], { type: EXCEL_TYPE });
+    saveAs(
+      blob,
+      `Data_Produksi_Nomor_Rator_${searchTermRemark}${EXCEL_EXTENSION}`
+    );
+  };
   const handleDateRangeChange = (
     startDate: string | null,
     endDate: string | null
@@ -103,7 +124,7 @@ const filteredData = data.filter((item) => {
   // Pencarian berdasarkan Remark
   const matchesRemarkSearch = item.Remark
     ? item.Remark.toLowerCase().includes(searchTermRemark.toLowerCase())
-    : true; // jika tidak ada Remark, anggap cocok
+    : false; // jika tidak ada Remark, anggap cocok
 
   // Return data yang memenuhi kedua kriteria pencarian
   return matchesGeneralSearch && matchesRemarkSearch;
@@ -189,6 +210,13 @@ const filteredData = data.filter((item) => {
             >
               <FileUp className="h-6 w-6 mr-3" />
               Eksport to Excel
+            </Button>
+            <Button
+              onClick={handleExportByRemark}
+              className="mb-4 px-6 py-6 bg-blue-500 text-white rounded-full w-full"
+            >
+              <FileUp className="h-6 w-6 mr-3" />
+              Export by Nomor Rator
             </Button>
           </div>
         </CardContent>
