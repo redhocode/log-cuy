@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 //import CardList from "@/components/cardlist";
 //import { Database, FileInput, FileOutput } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import StockList from "@/components/stock/stocklist";
+// import KartuStockPage from "@/components/stock/kartustock";
 
 const DashboardPage = () => {
    const router = useRouter();
@@ -66,7 +68,8 @@ const DashboardPage = () => {
           headerIcon={null}
         />
       </div> */}
-
+          <StockList/>
+          {/* <KartuStockPage/> */}
           </CardContent>
         </Card>{" "}
         {/* Tampilkan hanya nama pengguna */}
