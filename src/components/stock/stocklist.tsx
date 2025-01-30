@@ -93,7 +93,8 @@ const StockList = () => {
 
   // Filter only items with stockAkhir < 10 and exclude stockAkhir == 0
   const filteredItemsWithStockAkhir = dataWithStockAkhir.filter(
-    (item) => item.stockAkhir > 0 && item.stockAkhir < 10
+    (item) => item.stockAkhir < 10
+    //> 0 && item.stockAkhir
   );
 
   if (loading) {
