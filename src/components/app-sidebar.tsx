@@ -34,9 +34,9 @@ const navItems = [
   { href: "/dashboard/data", label: "Produksi", icon: Package2 },
   { href: "/dashboard/lbm", label: "LBM", icon: Package2 },
   { href: "/dashboard/lbk", label: "LBK", icon: Package2 },
-  { href: "/dashboard/penerimaan", label: "Penerimaan", icon: Package2 },
+  { href: "/dashboard/retur", label: "Retur Produksi", icon: Package2 },
   { href: "/dashboard/mutasi", label: "Mutasi", icon: Package2 },
-//   { href: "/dashboard/import", label: "Import", icon: Import },
+  //   { href: "/dashboard/import", label: "Import", icon: Import },
 ];
 
 const items = [
@@ -50,8 +50,9 @@ const items = [
 const Items2 = [
   { href: "/dashboard/spk", label: "SPK", icon: Package2 },
   { href: "/dashboard/purchase", label: "Purchase", icon: Package2 },
+  { href: "/dashboard/penerimaan", label: "Penerimaan", icon: Package2 },
   { href: "/dashboard/trackpo", label: "Track PO", icon: Package2 },
-]
+];
 const Items3 = [
   { href: "/dashboard/kas", label: "Kas", icon: Package2 },
   { href: "/dashboard/bank", label: "Bank", icon: Package2 },
