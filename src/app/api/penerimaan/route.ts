@@ -36,7 +36,7 @@ export async function GET(request: Request) {
         dt.[username],
         dt.[userdatetime],
         dt.[satuan],
-        c.[CompanyID] AS CompanyID2
+        c.[CompanyName1] AS Supplier
       
       FROM [cp].[dbo].[taTransIHD2] AS hd
       INNER JOIN [cp].[dbo].[taTransIDT2]
