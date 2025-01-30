@@ -14,6 +14,7 @@ import masterReducer from "./features/masterSlice";
 import loguserReducer from "./features/loguserSlice";
 import logacrReducer from "./features/logacrSlice";
 import trackpoReducer from "./features/trackpoSlice";
+import returReducer from "./features/returSlice";
 
 export const makeStore = () => {
   return configureStore({
@@ -32,6 +33,7 @@ export const makeStore = () => {
       loguser: loguserReducer,
       logacr: logacrReducer,
       trackpo: trackpoReducer,
+      retur: returReducer,
     },
   });
 };

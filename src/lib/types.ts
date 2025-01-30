@@ -117,6 +117,7 @@ export type PenerimaanType = {
   Timbang: number;
   TipeEdit:number;
   RJN: number
+  
 }
 
 export interface DataProduksi {
