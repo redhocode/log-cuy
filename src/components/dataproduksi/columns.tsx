@@ -84,21 +84,18 @@ export const columns = (
   },
 
   // { accessorKey: "HeaderProdType", header: "HeaderProdType" },
-  { accessorKey: "ProdType", header: "ProdType" },
-
-  { accessorKey: "DeptID", header: "DeptID" },
+  // { accessorKey: "ProdType", header: "ProdType" },
+   { accessorKey: "DeptID", header: "Dept" },
 
   { accessorKey: "OrderID", header: "SPK" },
-  { accessorKey: "OrderType", header: "OrderType" },
-  { accessorKey: "Shift", header: "Shift" },
+  // { accessorKey: "OrderType", header: "OrderType" },
+  { accessorKey: "Shift", header: "NO. Rator" },
   { accessorKey: "LocID", header: "WH" },
   { accessorKey: "Remark", header: "Description" },
   { accessorKey: "ItemID", header: "ItemID" },
   { accessorKey: "ItemType", header: "Type" },
   { accessorKey: "Bags", header: "Bags" },
-  { accessorKey: "Kgs", header: "Kgs" },
-  { accessorKey: "JamMulai", header: "Jam Mulai" },
-  { accessorKey: "JamSelesai", header: "Jam Selesai" },
+  { accessorKey: "Kgs", header: "Qty" },
   { accessorKey: "UserName", header: "User Name" },
   { accessorKey: "UserDateTime", header: "User DateTime" },
 ];

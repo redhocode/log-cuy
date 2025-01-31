@@ -52,6 +52,7 @@ export type ProduksiType = {
   bags2: number;
   TransIDMixing: string;
   Keterangan: string;
+  NO_Rator: number;
 };
 
 export type LbkType = {

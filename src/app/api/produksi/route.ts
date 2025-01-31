@@ -25,15 +25,13 @@ export async function GET(request: Request) {
         hd.[DeptID],
         hd.[OrderID],
         hd.[OrderType],
-        hd.[Shift],
+        hd.[Shift] AS NO_Rator,
         hd.[LocID],
         hd.[Remark],
         dt.[ItemID],
         dt.[ItemType],
         dt.[Bags],
         dt.[Kgs],
-        dt.[JamMulai],
-        dt.[JamSelesai],
         dt.[UserName],
         dt.[UserDateTime] 
       FROM [cp].[dbo].[taPRProdHd] AS hd

@@ -28,14 +28,15 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collap
 import Link from "next/link";
 import { Label } from "./ui/label";
 const masterItems = [
+  { href: "/dashboard/", label: "Dashboard Stock", icon: Package2 },
   { href: "/dashboard/barang", label: "Master Barang", icon: Package2 },
-]
+];
 const navItems = [
   { href: "/dashboard/data", label: "Produksi", icon: Package2 },
   { href: "/dashboard/lbm", label: "LBM", icon: Package2 },
   { href: "/dashboard/lbk", label: "LBK", icon: Package2 },
   { href: "/dashboard/retur", label: "Retur Produksi", icon: Package2 },
-  { href: "/dashboard/mutasi", label: "Mutasi", icon: Package2 },
+  { href: "/dashboard/mutasi", label: "Mutasi Gudang", icon: Package2 },
   //   { href: "/dashboard/import", label: "Import", icon: Import },
 ];
 

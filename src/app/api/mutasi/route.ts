@@ -23,15 +23,12 @@ export async function GET(request: Request) {
         hd.[LocIDSrc],
         hd.[LocIDDest],
         hd.[Remark],
-        hd.[OrderIDRef],
-        hd.[OrderTypeRef],
         dt.[ItemID],
         dt.[Bags],
         dt.[Kgs],
         dt.[HPPPrice],
         dt.[username],
-        dt.[userdatetime],
-        dt.[rjn]
+        dt.[userdatetime]
       FROM [cp].[dbo].[taMoveHD] AS hd
       INNER JOIN [cp].[dbo].[taMoveDT]
       AS dt ON hd.[MoveID] = dt.[MoveID]

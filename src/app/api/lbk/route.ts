@@ -31,7 +31,7 @@ export async function GET(request: Request) {
         dt.[HPPPrice] 
       FROM [cp].[dbo].[taOpNameOHD] AS hd
       INNER JOIN [cp].[dbo].[taOpNameODT]
-      AS dt ON hd.[MoveID] = dt.[MoveID] AND hd.[MoveType] = dt.[MoveType
+      AS dt ON hd.[MoveID] = dt.[MoveID] AND hd.[MoveType] = dt.[MoveType]
     `;
 
     if (startDate && endDate) {

@@ -32,6 +32,7 @@ export async function GET(request: Request) {
       FROM [cp].[dbo].[taOpNameIHD] AS hd
       INNER JOIN [cp].[dbo].[taOpNameIDT]
       AS dt ON hd.[MoveID] = dt.[MoveID] AND hd.[MoveType] = dt.[MoveType]
+      WHERE hd.[MoveType] = 'A'
     `;
 
     if (startDate && endDate) {
