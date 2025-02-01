@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 //import CardList from "@/components/cardlist";
 //import { Database, FileInput, FileOutput } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import StockList from "@/components/stock/stocklist";
 // import KartuStockPage from "@/components/stock/kartustock";
 
@@ -50,14 +50,11 @@ const DashboardPage = () => {
   return (
     <>
       <div className="flex flex-col ">
-        <Card>
+        <Card className="w-[1000px]">
           <CardHeader>
             <CardTitle className="text-3xl font-bold justify-center items-center">
               {userName && <p className="text-3xl">Welcome, {userName}!</p>}
             </CardTitle>
-            <CardDescription>
-              Qoutes for you
-            </CardDescription>
           </CardHeader>
           <CardContent>
           
