@@ -63,31 +63,33 @@ const StockList = () => {
     }, 300);
   };
 
-  const getStockAkhirPerItem = (data: any[]) => {
-    const stockAkhirMap: { [key: string]: number } = {};
-    const uniqueItemsMap: { [key: string]: any } = {};
+   const getStockAkhirPerItem = (data: any[]) => {
+     const stockAkhirMap: { [key: string]: number } = {};
+     const uniqueItemsMap: { [key: string]: any } = {};
 
-    data.forEach((item) => {
-      const { itemid, totalkgs } = item;
+     data.forEach((item) => {
+       const { itemid, totalkgs } = item;
 
-      if (!totalkgs) return;
+       // Konversi totalkgs ke number dan pastikan tidak NaN
+       const total = parseFloat(totalkgs) || 0;
 
-      if (stockAkhirMap[itemid]) {
-        stockAkhirMap[itemid] += totalkgs;
-      } else {
-        stockAkhirMap[itemid] = totalkgs;
-      }
+       if (stockAkhirMap[itemid]) {
+         stockAkhirMap[itemid] += total;
+       } else {
+         stockAkhirMap[itemid] = total;
+       }
 
-      if (!uniqueItemsMap[itemid]) {
-        uniqueItemsMap[itemid] = item;
-      }
-    });
+       if (!uniqueItemsMap[itemid]) {
+         uniqueItemsMap[itemid] = item;
+       }
+     });
 
-    return Object.values(uniqueItemsMap).map((item) => ({
-      ...item,
-      stockAkhir: stockAkhirMap[item.itemid] || 0,
-    }));
-  };
+     return Object.values(uniqueItemsMap).map((item) => ({
+       ...item,
+       // Bulatkan ke bilangan bulat terdekat
+       stockAkhir: Math.round(stockAkhirMap[item.itemid] || 0),
+     }));
+   };
 
   const dataWithStockAkhir = getStockAkhirPerItem(filteredData);
 
