@@ -36,7 +36,7 @@ export async function GET(request: Request) {
     `;
 
     if (startDate && endDate) {
-      query += ` WHERE hd.[MoveDate] BETWEEN @StartDate AND @EndDate 
+      query += ` WHERE hd.[MoveDate] >= @StartDate AND hd.[MoveDate] <= @EndDate
 `;
     }
     query += ` ORDER BY hd.[MoveID] DESC`;

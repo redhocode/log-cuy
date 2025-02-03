@@ -28,7 +28,7 @@ export async function GET(request: Request) {
       query += ` WHERE CONVERT(date, [UserDateTime]) = @StartDate`;
     } else if (startDate && endDate) {
       // Filter untuk rentang tanggal
-      query += ` WHERE [UserDateTime] BETWEEN @StartDate AND @EndDate`;
+      query += ` WHERE [UserDateTime] >= @StartDate AND [UserDateTime] <= @EndDate`;
     }
 
     query += ` ORDER BY [UserDateTime] DESC`;

@@ -42,7 +42,7 @@ export async function GET(request: Request) {
     `;
 
     if (startDate && endDate) {
-      query += ` WHERE hd.[OrderDate] BETWEEN @StartDate AND @EndDate 
+      query += ` WHERE hd.[OrderDate] >= @StartDate AND hd.[OrderDate] <= @EndDate
 `;
     }
     query += ` ORDER BY hd.[OrderDate] DESC`;

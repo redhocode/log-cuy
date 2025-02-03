@@ -43,7 +43,9 @@ export async function GET(request: Request) {
 
     // Menambahkan filter berdasarkan tanggal, jika ada
     if (startDate && endDate) {
-      conditions.push(`hd.[ProdDate] BETWEEN @StartDate AND @EndDate`);
+      conditions.push(
+        `hd.[ProdDate] >= @StartDate AND hd.[ProdDate] <= @EndDate`
+      );
     }
 
     // Menambahkan filter berdasarkan remark, jika ada (cari 5 karakter terakhir)
