@@ -1,3 +1,4 @@
+
 export type ProduksiType = {
   ProdID: string;
   ProdType: string;
@@ -325,4 +326,15 @@ export interface trackPoType{
   ProdDate: Date;
   status: string;
   Dept: string;
+}
+
+export interface glbarangType{
+  COA: number;
+  ItemID: string;
+  ItemName: string;
+  Nama: string;
+  Kategori: string;
+  Kategori_bahan: string;
+  TransDate: Date;
+  Date: Date;
 }

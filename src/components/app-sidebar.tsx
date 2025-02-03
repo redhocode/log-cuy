@@ -1,6 +1,6 @@
 "use client";
 import { useRouter, usePathname } from "next/navigation";
-import {  Package2, Import, User2, ChevronUp, Annoyed, User,BellDot,Banknote,HandCoinsIcon,Landmark } from "lucide-react";
+import {  Package2, Import, User2, ChevronUp, Annoyed, User,BellDot,Banknote,Blocks,Landmark,Wallet } from "lucide-react";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -55,9 +55,10 @@ const Items2 = [
   { href: "/dashboard/trackpo", label: "Track PO", icon: Package2 },
 ];
 const Items3 = [
-  { href: "/dashboard/kas", label: "Kas", icon: HandCoinsIcon },
+  { href: "/dashboard/kas", label: "Kas", icon: Wallet },
   { href: "/dashboard/bank", label: "Bank", icon: Landmark },
   { href: "/dashboard/jurnal", label: "Jurnal Umum", icon: Banknote },
+  { href: "/dashboard/glbarang", label: "Barang GL", icon: Blocks },
 ];
 const Items4 = [
   { href: "/dashboard/loguser", label: "Log Users", icon: User },
