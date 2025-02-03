@@ -1,6 +1,6 @@
 "use client";
 import { useRouter, usePathname } from "next/navigation";
-import {  Package2, Import, User2, ChevronUp, Annoyed, User } from "lucide-react";
+import {  Package2, Import, User2, ChevronUp, Annoyed, User,BellDot,Banknote,HandCoinsIcon,Landmark } from "lucide-react";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,7 +28,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collap
 import Link from "next/link";
 import { Label } from "./ui/label";
 const masterItems = [
-  { href: "/dashboard/", label: "Dashboard Stock", icon: Package2 },
+  { href: "/dashboard/", label: "Stock Gudang", icon: BellDot },
   { href: "/dashboard/barang", label: "Master Barang", icon: Package2 },
 ];
 const navItems = [
@@ -55,9 +55,9 @@ const Items2 = [
   { href: "/dashboard/trackpo", label: "Track PO", icon: Package2 },
 ];
 const Items3 = [
-  { href: "/dashboard/kas", label: "Kas", icon: Package2 },
-  { href: "/dashboard/bank", label: "Bank", icon: Package2 },
-  { href: "/dashboard/jurnal", label: "Jurnal Umum", icon: Package2 },
+  { href: "/dashboard/kas", label: "Kas", icon: HandCoinsIcon },
+  { href: "/dashboard/bank", label: "Bank", icon: Landmark },
+  { href: "/dashboard/jurnal", label: "Jurnal Umum", icon: Banknote },
 ];
 const Items4 = [
   { href: "/dashboard/loguser", label: "Log Users", icon: User },
