@@ -4,50 +4,105 @@ import { Label } from "./ui/label";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
+import { jsPDF } from "jspdf"; // Import jsPDF
+import "jspdf-autotable"; // Import jsPDF autotable
 
 const CekPPN = () => {
-  // State untuk menyimpan beberapa data harga dan PPN
+  // State untuk menyimpan beberapa data harga, PPN, qty dan total
   const [data, setData] = useState<
-    { harga: number; ppn: number; total: number }[]
-  >([{ harga: 0, ppn: 11, total: 0 }]);
+    { harga: number; ppn: number; qty: number; total: number }[]
+  >([{ harga: 0, ppn: 11, qty: 1, total: 0 }]);
 
   // Fungsi untuk menambah baris input baru
   const addRow = () => {
-    setData([...data, { harga: 0, ppn: 0, total: 0 }]);
+    setData([...data, { harga: 0, ppn: 0, qty: 1, total: 0 }]);
   };
 
-  // Fungsi untuk menangani perubahan harga atau PPN
+  // Fungsi untuk menangani perubahan harga, PPN, atau qty
   const handleChange = (
     index: number,
     field: keyof (typeof data)[0],
     value: string
   ) => {
     const newData = [...data];
-    const numericValue = parseFloat(value);
+    const numericValue = value.trim() === "" ? 0 : parseFloat(value);
 
-    // Update nilai untuk field yang dipilih (harga atau ppn)
+    if (isNaN(numericValue)) {
+      return;
+    }
+
     if (field === "harga") {
       newData[index].harga = numericValue;
     } else if (field === "ppn") {
       newData[index].ppn = numericValue;
+    } else if (field === "qty") {
+      newData[index].qty = numericValue;
     }
 
-    // Menghitung total setelah PPN
-    const { harga, ppn } = newData[index];
-    const ppnAmount = harga * (ppn / 100);
-    newData[index].total = harga + ppnAmount;
+    const { harga, ppn, qty } = newData[index];
+    const ppnAmount = harga * qty * (ppn / 100);
+    newData[index].total = harga * qty + ppnAmount;
 
     setData(newData);
+  };
+
+  // Fungsi untuk mengekspor ke PDF
+  const exportToPDF = () => {
+    const doc = new jsPDF();
+    doc.text("Hitung PPN", 10, 10);
+
+    // Data untuk tabel
+    const tableData = data.map((row, index) => {
+      const hargaSebelumPPN = row.total / (1 + row.ppn / 100); // Hitung harga sebelum PPN
+      return [
+        `Harga Sebelum PPN ${index + 1}`, // Deskripsi harga sebelum PPN
+        `Rp ${hargaSebelumPPN.toFixed(2)}`,
+        `${row.ppn}%`,
+        `${row.qty}`,
+        `Rp ${row.total.toFixed(2)}`,
+      ];
+    });
+
+    // Menambahkan header tabel
+    const headers = [
+      "Deskripsi",
+      "Harga Sebelum PPN",
+      "PPN",
+      "Qty",
+      "Total setelah PPN",
+    ];
+
+    // Menambahkan tabel ke PDF
+ // eslint-disable-next-line @typescript-eslint/no-explicit-any
+ (doc as any).autoTable({
+   // Cast doc to any to access autoTable method
+   head: [headers],
+   body: tableData,
+   startY: 20, // Posisi awal tabel
+   theme: "grid", // Gaya tabel
+ });
+
+    const totalAll = data.reduce((acc, row) => acc + row.total, 0); 
+
+    // Menambahkan total keseluruhan setelah tabel
+   doc.text(
+     `Total Keseluruhan: Rp ${totalAll.toFixed(2)}`,
+     10,
+     80 // Specify the y-position directly
+   );
+
+    // Simpan PDF
+    doc.save("Hitung_ppn.pdf");
   };
 
   return (
     <>
       <div className="flex flex-col">
-        <h2>Cek PPN - Banyak Baris</h2>
+        <h2>Hitung PPN</h2>
         <div className="flex flex-wrap gap-4">
-          {/* Render input untuk harga dan PPN secara dinamis */}
+          {/* Render input untuk harga, PPN, dan quantity secara dinamis */}
           {data.map((row, index) => (
-            <Card key={index} className="p-4 h-[300px]">
+            <Card key={index} className="p-4 h-[350px]">
               <div className="mb-4">
                 <Label>
                   Harga {index + 1}:
@@ -74,6 +129,18 @@ const CekPPN = () => {
                   />
                 </Label>
               </div>
+              <div className="mb-4">
+                <Label>
+                  Quantity {index + 1}:
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    value={row.qty}
+                    onChange={(e) => handleChange(index, "qty", e.target.value)}
+                    placeholder="Masukkan jumlah barang"
+                  />
+                </Label>
+              </div>
               <div className="flex-col flex justify-center">
                 <p>Total setelah PPN:</p>
                 <b>{row.total}</b>
@@ -87,6 +154,11 @@ const CekPPN = () => {
             Tambah Baris
           </Button>
         </div>
+
+        {/* Tombol untuk mengekspor ke PDF */}
+        <Button onClick={exportToPDF} className="mt-4">
+          Export ke PDF
+        </Button>
       </div>
     </>
   );
