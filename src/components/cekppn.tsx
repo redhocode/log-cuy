@@ -45,6 +45,16 @@ const CekPPN = () => {
 
     setData(newData);
   };
+ const formatRupiah = (value: number) => {
+   return new Intl.NumberFormat("id-ID", {
+     style: "currency",
+     currency: "IDR",
+     minimumFractionDigits: 2,
+     maximumFractionDigits: 2,
+   })
+     .format(value)
+     .replace("IDR", "Rp");
+ };
 
   // Fungsi untuk mengekspor ke PDF
   const exportToPDF = () => {
@@ -56,10 +66,10 @@ const CekPPN = () => {
       const hargaSebelumPPN = row.total / (1 + row.ppn / 100); // Hitung harga sebelum PPN
       return [
         `Harga Sebelum PPN ${index + 1}`, // Deskripsi harga sebelum PPN
-        `Rp ${hargaSebelumPPN.toFixed(2)}`,
+        formatRupiah(hargaSebelumPPN),
         `${row.ppn}%`,
         `${row.qty}`,
-        `Rp ${row.total.toFixed(2)}`,
+        formatRupiah(row.total),
       ];
     });
 
@@ -86,7 +96,7 @@ const CekPPN = () => {
 
     // Menambahkan total keseluruhan setelah tabel
    doc.text(
-     `Total Keseluruhan: Rp ${totalAll.toFixed(2)}`,
+     `Total Keseluruhan: ${formatRupiah(totalAll)}`,
      10,
      80 // Specify the y-position directly
    );
@@ -143,7 +153,7 @@ const CekPPN = () => {
               </div>
               <div className="flex-col flex justify-center">
                 <p>Total setelah PPN:</p>
-                <b>{row.total}</b>
+                <b>{formatRupiah(row.total)}</b>
               </div>
               <hr />
             </Card>
