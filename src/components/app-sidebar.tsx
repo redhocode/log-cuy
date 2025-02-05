@@ -30,6 +30,8 @@ import { Label } from "./ui/label";
 const masterItems = [
   { href: "/dashboard/", label: "Stock Gudang", icon: BellDot },
   { href: "/dashboard/barang", label: "Master Barang", icon: Package2 },
+  { href: "/dashboard/cekppn", label: "Hitung PPN", icon: Package2 },
+  // { href: "/dashboard/notajual", label: "Nota Jual 2.5", icon: Package2 },
 ];
 const navItems = [
   { href: "/dashboard/data", label: "Produksi", icon: Package2 },
