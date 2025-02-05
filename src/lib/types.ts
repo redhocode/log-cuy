@@ -338,3 +338,22 @@ export interface glbarangType{
   TransDate: Date;
   Date: Date;
 }
+
+export interface notajualType{
+  TransID: number;
+  TransType: string;
+  InvoiceNO: string;
+  NoInv: string;
+  OrderID: string;
+  TransDate: Date;
+  CompanyID: string;
+  Total: number;
+  Tax: number;
+  Curr: string;
+  ItemID: string;
+  ItemName: string;
+  Bags: number;
+  Kgs: number;
+  Satuan: string;
+  Price: number;
+}
