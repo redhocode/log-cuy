@@ -3,12 +3,13 @@ import React, { useState, useEffect, useRef } from "react";
 
 const itemsToCheck = ["ABS CHIMEY PA-757", "pewarna 1834 (hitam)"];
 
-const StockList = () => {
+const StockList: React.FC = () => {
   const [data, setData] = useState<any[]>([]);
   const [filteredData, setFilteredData] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
+
   const debounceTimeout = useRef<any>(null);
 
   const periodeR = "201905";
@@ -44,6 +45,28 @@ const StockList = () => {
     fetchData();
   }, []);
 
+  // Fungsi untuk mengirim pesan ke Telegram
+  const sendTelegramMessage = async (message: string) => {
+    try {
+      const response = await fetch("/api/notif", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        console.log("Message sent to Telegram:", message);
+      } else {
+        console.error("Failed to send message to Telegram");
+      }
+    } catch (error) {
+      console.error("Error sending message to Telegram:", error);
+    }
+  };
+
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const query = event.target.value;
     setSearchQuery(query);
@@ -63,33 +86,33 @@ const StockList = () => {
     }, 300);
   };
 
-   const getStockAkhirPerItem = (data: any[]) => {
-     const stockAkhirMap: { [key: string]: number } = {};
-     const uniqueItemsMap: { [key: string]: any } = {};
+  const getStockAkhirPerItem = (data: any[]) => {
+    const stockAkhirMap: { [key: string]: number } = {};
+    const uniqueItemsMap: { [key: string]: any } = {};
 
-     data.forEach((item) => {
-       const { itemid, totalkgs } = item;
+    data.forEach((item) => {
+      const { itemid, totalkgs } = item;
 
-       // Konversi totalkgs ke number dan pastikan tidak NaN
-       const total = parseFloat(totalkgs) || 0;
+      // Konversi totalkgs ke number dan pastikan tidak NaN
+      const total = parseFloat(totalkgs) || 0;
 
-       if (stockAkhirMap[itemid]) {
-         stockAkhirMap[itemid] += total;
-       } else {
-         stockAkhirMap[itemid] = total;
-       }
+      if (stockAkhirMap[itemid]) {
+        stockAkhirMap[itemid] += total;
+      } else {
+        stockAkhirMap[itemid] = total;
+      }
 
-       if (!uniqueItemsMap[itemid]) {
-         uniqueItemsMap[itemid] = item;
-       }
-     });
+      if (!uniqueItemsMap[itemid]) {
+        uniqueItemsMap[itemid] = item;
+      }
+    });
 
-     return Object.values(uniqueItemsMap).map((item) => ({
-       ...item,
-       // Bulatkan ke bilangan bulat terdekat
-       stockAkhir: Math.round(stockAkhirMap[item.itemid] || 0),
-     }));
-   };
+    return Object.values(uniqueItemsMap).map((item) => ({
+      ...item,
+      // Bulatkan ke bilangan bulat terdekat
+      stockAkhir: Math.round(stockAkhirMap[item.itemid] || 0),
+    }));
+  };
 
   const dataWithStockAkhir = getStockAkhirPerItem(filteredData);
 
@@ -103,6 +126,17 @@ const StockList = () => {
 
   if (error) {
     return <div>Error: {error}</div>;
+  }
+
+  // Kirim pesan ke Telegram jika ada item dengan stok menipis
+  if (filteredItemsWithStockAkhir.length > 0) {
+    const message =
+      `Stok barang berikut menipis, harap segera buat form permintaan:\n\n` +
+      filteredItemsWithStockAkhir
+        .map((item) => `- ${item.itemname} (Stock: ${item.stockAkhir})`)
+        .join("\n");
+
+    sendTelegramMessage(message);
   }
 
   return (
@@ -125,7 +159,11 @@ const StockList = () => {
             <h1>Stock Menipis Harap Segera Membuat Form Permintaan</h1>
           </div>
 
-          <table border={2} style={{ width: "100%", textAlign: "left" }} className="table-fixed">
+          <table
+            border={2}
+            style={{ width: "100%", textAlign: "left" }}
+            className="table-fixed"
+          >
             <thead>
               <tr>
                 <th>ItemID</th>
@@ -139,7 +177,7 @@ const StockList = () => {
                 <tr key={index}>
                   <td>{item.itemid}</td>
                   <td>{item.itemname}</td>
-                  <td >{item.stockAkhir}</td>
+                  <td>{item.stockAkhir}</td>
                   <td>{item.kategori}</td>
                 </tr>
               ))}
