@@ -33,7 +33,7 @@ export async function GET(request: Request) {
 
     // Add date filter if provided
     if (startDate && endDate) {
-      query += ` AND hd.[RefDate] >= @StartDate AND hd.[RefDate] <= @EndDate`;
+      query += ` AND hd.[RefDate] >= @startDate AND hd.[RefDate] <= @endDate`;
     }
 
     // Add RefType filter if provided

@@ -357,3 +357,39 @@ export interface notajualType{
   Satuan: string;
   Price: number;
 }
+
+export interface grafikType{
+  ItemID: string;
+  ItemName: string;
+  Kgs: number;
+  Qty: number;
+  Date: Date;
+  Tahun: number;
+  Bulan: number;
+  Total: number;
+  Custommer: string;
+  Item: string;
+  transdate: Date;
+}
+
+export interface printnotaType{
+  InvoiceNO: string;
+  NoInv: string;
+  TransDate: Date;
+  CompanyID: string;
+  Total: number;
+  Tax: number;
+  Curr: string;
+  ItemID: string;
+  ItemName: string;
+  Bags: number;
+  Kgs: number;
+  Satuan: string;
+  Price: number;
+  TransID: number;
+  Totalwithtax: number;
+  Totalnotax: number;
+  QTY: number;
+  tgl1: Date;
+  tgl2: Date;
+}

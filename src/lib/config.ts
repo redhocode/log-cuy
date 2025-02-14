@@ -26,6 +26,7 @@ const login = {
     encrypt: false,
     trustServerCertificate: true,
   },
+  
 }
 let poolPromise: Promise<sql.ConnectionPool> | undefined;
 export const getPoolLogin = async () => {
