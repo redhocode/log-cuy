@@ -49,7 +49,7 @@ const items = [
     title: "Import",
     url: "/dashboard/import",
     icon: Import,
-    disabled: false,
+    disabled: true,
   },
 ]
 const Items2 = [
@@ -59,10 +59,20 @@ const Items2 = [
   { href: "/dashboard/trackpo", label: "Track PO", icon: Package2 },
 ];
 const Items3 = [
-  { href: "/dashboard/kas", label: "Kas", icon: Wallet },
-  { href: "/dashboard/bank", label: "Bank", icon: Landmark },
-  { href: "/dashboard/jurnal", label: "Jurnal Umum", icon: Banknote },
-  { href: "/dashboard/glbarang", label: "Barang GL", icon: Blocks },
+  { href: "/dashboard/kas", label: "Kas", icon: Wallet, disabled: true },
+  { href: "/dashboard/bank", label: "Bank", icon: Landmark, disabled: true },
+  {
+    href: "/dashboard/jurnal",
+    label: "Jurnal Umum",
+    icon: Banknote,
+    disabled: true,
+  },
+  {
+    href: "/dashboard/glbarang",
+    label: "Barang GL",
+    icon: Blocks,
+    disabled: true,
+  },
 ];
 const Items4 = [
   { href: "/dashboard/loguser", label: "Log Users", icon: User },
@@ -144,17 +154,26 @@ export default function AppSidebar() {
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     <SidebarMenuSub>
-                      {Items3.map(({ href, label, icon: Icon }) => (
+                      {Items3.map(({ href, label, icon: Icon, disabled }) => (
                         <SidebarMenuItem key={href}>
                           <SidebarMenuButton asChild>
-                            <Button
-                              variant={pathname === href ? "outline" : "ghost"}
-                              onClick={() => router.push(href)}
-                              className="flex items-center gap-2 justify-start"
-                            >
-                              <Icon className="h-5 w-5" />
-                              <span>{label}</span>
-                            </Button>
+                            {disabled ? (
+                              <span className="flex items-center gap-2 text-gray-400">
+                                <Icon className="h-5 w-5" />
+                                <span>{label}</span>
+                              </span>
+                            ) : (
+                              <Button
+                                variant={
+                                  pathname === href ? "outline" : "ghost"
+                                }
+                                onClick={() => router.push(href)}
+                                className="flex items-center gap-2 justify-start"
+                              >
+                                <Icon className="h-5 w-5" />
+                                <span>{label}</span>
+                              </Button>
+                            )}
                           </SidebarMenuButton>
                         </SidebarMenuItem>
                       ))}
