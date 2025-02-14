@@ -17,10 +17,8 @@ export async function GET(request: Request) {
     // Menyusun query untuk mengambil data
     const query = `
       SELECT TOP (100000)
-       CompanyID,
        CompanyName1 AS Nama,
        Address1 AS Alamat,
-       Status AS Status,
       FORMAT(UserDateTime, 'yyyy-MM-dd') AS Tanggal_Masuk
       FROM [cp].[dbo].[taSupplier]
       ORDER BY Tanggal_Masuk DESC
