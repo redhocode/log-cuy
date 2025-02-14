@@ -393,3 +393,15 @@ export interface printnotaType{
   tgl1: Date;
   tgl2: Date;
 }
+
+export interface SupplierType{
+  CompanyID: string;
+  CompanyName: string;
+  Address: string;
+  Nama: string;
+  Alamat: string;
+  Status: string;
+  Username: string;
+  UserDateTime: Date;
+  Taggal_Masuk: Date;
+}

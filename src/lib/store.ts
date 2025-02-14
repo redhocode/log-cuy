@@ -16,6 +16,7 @@ import logacrReducer from "./features/logacrSlice";
 import trackpoReducer from "./features/trackpoSlice";
 import returReducer from "./features/returSlice";
 import glbarangReducer from "./features/glbarangSlice";
+import supplierReducer from "./features/supplierSlice";
 
 export const makeStore = () => {
   return configureStore({
@@ -36,6 +37,7 @@ export const makeStore = () => {
       trackpo: trackpoReducer,
       retur: returReducer,
       glbarang: glbarangReducer,
+      supplier: supplierReducer,
     },
   });
 };
