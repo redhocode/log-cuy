@@ -117,7 +117,7 @@ const StockList: React.FC = () => {
   const dataWithStockAkhir = getStockAkhirPerItem(filteredData);
 
   const filteredItemsWithStockAkhir = dataWithStockAkhir.filter(
-    (item) => itemsToCheck.includes(item.itemname) && item.stockAkhir >= 50
+    (item) => itemsToCheck.includes(item.itemname) && item.stockAkhir  <=50
   );
 
   if (loading) {
