@@ -15,7 +15,7 @@ const itemsToCheck = [
   "PS RESIN GPPS CHIMEY PG- 80N",
   "PP TAIRIPRO",
   "PP PUTIH RECYCLE",
-  "PP Hitam RECYCLE",
+  "PP HITAM RECYCLE",
   "PP HITAM PELET",
   "PPO resin",
   "PE-7042 RESIN",
@@ -187,7 +187,9 @@ const StockList: React.FC = () => {
 
       // Konversi totalkgs ke number dan pastikan tidak NaN
       const total = parseFloat(totalkgs) || 0;
-
+      if (isNaN(total)) {
+        console.log(`Invalid totalKgs for item ${item.itemid}: ${totalkgs}`);
+      }
       if (stockAkhirMap[itemid]) {
         stockAkhirMap[itemid] += total;
       } else {
@@ -209,7 +211,7 @@ const StockList: React.FC = () => {
   const dataWithStockAkhir = getStockAkhirPerItem(filteredData);
 
   const filteredItemsWithStockAkhir = dataWithStockAkhir.filter(
-    (item) => itemsToCheck.includes(item.itemname) && item.stockAkhir  <=50
+    (item) => itemsToCheck.includes(item.itemname.trim()) && item.stockAkhir  <=50
   );
 
   if (loading) {

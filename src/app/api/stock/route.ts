@@ -58,19 +58,24 @@ export async function GET(req: Request) {
 
     // Call function to get data from stored procedure
     const data = await getRpStockL(params);
+const stockAkhir = data.reduce(
+  (acc, item) => {
+    const totalKgs = parseFloat(item.totalkgs); // Konversi menjadi angka
+    if (isNaN(totalKgs)) {
+      console.error(
+        `Invalid totalkgs for item ${item.itemid}: ${item.totalkgs}`
+      );
+      return acc; // Tidak menambahkan nilai yang tidak valid
+    }
 
-    // Calculate final stock by summing only total Kgs (totalkgs)
-    const stockAkhir = data.reduce(
-      (acc, item) => {
-        const totalKgs = item.totalkgs || 0; // Sum only totalKgs
+    acc.totalKgs += totalKgs; // Menambahkan ke totalKgs
+    return acc;
+  },
+  { totalKgs: 0 }
+); // Inisialisasi akumulator
 
-        // Sum total Kgs to calculate stock akhir
-        acc.totalKgs += totalKgs;
+console.log("Total stock:", stockAkhir.totalKgs);
 
-        return acc;
-      },
-      { totalKgs: 0 } // Only track totalKgs
-    );
 
     // Return the data and stock calculation
     return NextResponse.json({ data, stockAkhir });
