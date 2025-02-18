@@ -11,7 +11,7 @@ interface TelegramResponse {
 export async function POST(req: NextRequest) {
   const { message } = await req.json(); // Mendapatkan data JSON dari request
 
-  const chatIds = ["904514717", "6551726602", "5338845190"]; // Daftar chat IDs yang ingin dikirimi pesan
+  const chatIds = ["904514717", "6551726602", "5338845190", "6024064758"]; // Daftar chat IDs yang ingin dikirimi pesan
   const token = "7880924007:AAHvKkqrvKA45d6fLM0huUD1-H4O_hRrtW8"; // Ganti dengan token bot Telegram Anda
 
   const url = `https://api.telegram.org/bot${token}/sendMessage`; // URL API Telegram
