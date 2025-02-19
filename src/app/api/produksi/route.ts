@@ -94,8 +94,8 @@ export async function GET(request: Request) {
     // Format the HeaderProdDate to show only the date part
     const formattedRecords = result.recordset.map((record) => ({
       ...record,
-      ProdDate: record.ProdDate.toISOString().split("T")[0],
-    }));
+     ProdDate: record.ProdDate ? record.ProdDate.toISOString().split("T")[0] : null, // If ProdDate is null or undefined, return null
+}));
 
     return NextResponse.json(formattedRecords);
   } catch (error) {

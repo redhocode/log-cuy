@@ -54,6 +54,7 @@ export type ProduksiType = {
   TransIDMixing: string;
   Keterangan: string;
   NO_Rator: number;
+  DateValue: string;
 };
 
 export type LbkType = {
@@ -404,4 +405,22 @@ export interface SupplierType{
   Username: string;
   UserDateTime: Date;
   Taggal_Masuk: Date;
+}
+export interface DataProduksi2 {
+  DateValue: Date;
+  ProdType: string;
+  ItemID: string;
+  ItemType: string;
+  Bags: number;
+  Kgs: number;
+  DeptID: string;
+  OrderID: string;
+  LocID: string;
+  Remark: string;
+  UserName: string;
+  UserDateTime: Date;
+  ProdID: string;
+  ProdDate: Date;
+  OrderType: string;
+  Shift: string;
 }

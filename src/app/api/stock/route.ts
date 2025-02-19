@@ -60,21 +60,20 @@ export async function GET(req: Request) {
     const data = await getRpStockL(params);
 const stockAkhir = data.reduce(
   (acc, item) => {
-    const totalKgs = parseFloat(item.totalkgs); // Konversi menjadi angka
-    if (isNaN(totalKgs)) {
-      console.error(
-        `Invalid totalkgs for item ${item.itemid}: ${item.totalkgs}`
-      );
-      return acc; // Tidak menambahkan nilai yang tidak valid
+    // Pastikan `totalkgs` di-convert menjadi number
+    const totalKgs = parseFloat(item.totalkgs);
+
+    // Jika totalkgs bernilai valid (termasuk negatif)
+    if (!isNaN(totalKgs)) {
+      acc.totalKgs += totalKgs; // Tambahkan totalkgs (termasuk negatif)
     }
 
-    acc.totalKgs += totalKgs; // Menambahkan ke totalKgs
     return acc;
   },
   { totalKgs: 0 }
-); // Inisialisasi akumulator
+); // Mulai dengan total 0
 
-console.log("Total stock:", stockAkhir.totalKgs);
+console.log("Total stock (including negative values):", stockAkhir.totalKgs);
 
 
     // Return the data and stock calculation
