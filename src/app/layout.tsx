@@ -23,11 +23,11 @@ export const metadata: Metadata = {
     icon: [
       {
         media: "(prefers-color-scheme: light)",
-        url: "/o.png",
+        url: "/icon2.png",
       },
       {
         media: "(prefers-color-scheme: dark)",
-        url: "/o.png",
+        url: "/icon2.png",
       },
     ],
   },
@@ -38,6 +38,10 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // const isMaintenance = process.env.MAINTENANCE_MODE === "true";
+  // if (isMaintenance) {
+  //   return <Maintenance />;
+  // }
   return (
     <html lang="en">
       <body

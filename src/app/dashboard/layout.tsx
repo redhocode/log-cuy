@@ -6,7 +6,7 @@ import { Toaster } from "@/components/ui/sonner";
 import StoreProvider from "../StroreProvider";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import  AppSidebar  from "@/components/app-sidebar";
-
+import Maintenance from "../maintenance/page";
 export const metadata: Metadata = {
   title: "kiw-kiw ✖",
   description: "data",
@@ -14,17 +14,22 @@ export const metadata: Metadata = {
     icon: [
       {
         media: "(prefers-color-scheme: light)",
-        url: "/o.png",
+        url: "/Untitled.png",
       },
       {
         media: "(prefers-color-scheme: dark)",
-        url: "/o.png",
+        url: "/Untitled.png",
       },
     ],
   },
 };
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const isMaintenance = process.env.MAINTENANCE_MODE === 'true';
+
+  if (isMaintenance) {
+    return <Maintenance />;
+  }
   return (
       <section>
       <SidebarProvider>

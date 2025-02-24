@@ -6,11 +6,11 @@ export function middleware(req: NextRequest) {
   const isLogin = false; // Cek status login
   const isMaintenanceMode = process.env.MAINTENANCE_MODE === "true"; // Periksa apakah mode pemeliharaan aktif
 
-  console.log("Is Maintenance Mode:", isMaintenanceMode); // Tambahkan log ini untuk debugging
+  console.log("Is Maintenance Mode:", isMaintenanceMode); // Debugging
 
   // Jika aplikasi dalam mode pemeliharaan, alihkan ke halaman /maintenance
   if (isMaintenanceMode) {
-    console.log("Redirecting to maintenance page"); // Tambahkan log ini juga
+    console.log("Redirecting to maintenance page"); // Debugging
     if (req.nextUrl.pathname === "/maintenance") {
       return NextResponse.next(); // Tetap di halaman maintenance
     }
@@ -24,3 +24,8 @@ export function middleware(req: NextRequest) {
 
   return NextResponse.next(); // Lanjutkan ke halaman yang diminta jika tidak ada masalah
 }
+
+// Tentukan matcher untuk rute yang akan diproses oleh middleware
+export const config = {
+  matcher: ["/((?!maintenance).*)"], // Semua rute selain /maintenance
+};
