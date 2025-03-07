@@ -25,7 +25,7 @@ export async function GET(request: Request) {
         SELECT 
           dt.ItemID, 
           dt.ItemType, 
-          CAST(hd.ProdDate AS DATE) AS ProdDate,  -- Ambil hanya tanggal dari ProdDate
+          CAST(hd.ProdDate AS DATE) AS ProdDate,
           dt.Bags, 
           dt.Kgs, 
           hd.DeptID,          
@@ -48,25 +48,24 @@ export async function GET(request: Request) {
           AND hd.ProdDate >= CAST(@StartDate AS DATETIME)
           AND hd.ProdDate < CAST(@EndDate AS DATETIME)
       )
-      SELECT 
-        dr.DateValue, 
-        id.ProdType,             
-        id.ItemID,
-        id.ItemType,
-        ISNULL(id.Bags, 0) AS Bags,
-        ISNULL(id.Kgs, 0) AS Kgs,
-        id.DeptID, 
-        id.OrderID, 
-        id.LocID, 
-        id.Remark, 
-        id.UserName, 
-        id.UserDateTime
-      FROM 
-        DateRange dr
-      LEFT JOIN 
-        ItemData id ON dr.DateValue = id.ProdDate
-      ORDER BY 
-        dr.DateValue, id.ProdType, id.ItemID;
+        SELECT 
+          dr.DateValue, 
+          id.ProdType,             
+          id.ItemID,
+          id.ItemType,
+          id.Bags, 
+          id.Kgs,
+          id.DeptID, 
+          id.OrderID, 
+          id.LocID, 
+          id.Remark
+        FROM 
+          DateRange dr
+        LEFT JOIN 
+          ItemData id ON dr.DateValue = id.ProdDate
+        ORDER BY 
+          dr.DateValue, id.ProdType, id.ItemID
+
     `;
 
     const requestQuery = pool.request();
@@ -82,6 +81,20 @@ export async function GET(request: Request) {
     // Format tanggal menjadi string tanpa waktu
     const formattedRecords = result.recordset.map((record) => ({
       ...record,
+      // Handle ProdType to display the corresponding label
+      ItemType: record.ItemType === "B" ? "Bahan" :record.ItemType === "H" ? "Hasil" : record.ItemType,
+      DeptID:
+        record.DeptID === "AS"
+          ? "Assembly"
+          : record.DeptID === "PL"
+          ? "Plating"
+          : record.DeptID === "IN"
+          ? "Injeksi"
+          : record.DeptID === "MO"
+          ? "Molding"
+          : record.DeptID === "SP"
+          ? "Spray"
+          : record.DeptID, 
       ProdDate: record.ProdDate
         ? record.ProdDate.toISOString().split("T")[0]
         : null, // If ProdDate is null or undefined, return null
