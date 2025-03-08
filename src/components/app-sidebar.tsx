@@ -58,7 +58,7 @@ const Items2 = [
   { href: "/dashboard/purchase", label: "Purchase", icon: Package2 },
   { href: "/dashboard/penerimaan", label: "Penerimaan", icon: Package2 },
   { href: "/dashboard/trackpo", label: "Track PO", icon: Package2 },
-  { href: "/dashboard/lapprod", label: "LapProd", icon: Package2 },
+  { href: "/dashboard/laprod", label: "LapProd", icon: Package2 },
 ];
 const Items3 = [
   { href: "/dashboard/kas", label: "Kas", icon: Wallet, disabled: true },
