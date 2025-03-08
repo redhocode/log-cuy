@@ -28,6 +28,18 @@ const login = {
   },
   
 }
+const absensi = {
+  user: process.env.DB_USER ?? "",
+  password: process.env.DB_PASSWORD ?? "",
+  server: process.env.DB_SERVER ?? "",
+  port: 1433,
+  database: process.env.DB_DATABASE3 ?? "",
+  options: {
+    encrypt: false,
+    trustServerCertificate: true,
+  },
+  
+}
 let poolPromise: Promise<sql.ConnectionPool> | undefined;
 export const getPoolLogin = async () => {
   if (!poolPromise) {

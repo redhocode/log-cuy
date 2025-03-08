@@ -32,10 +32,11 @@ export async function GET(request: Request) {
       FROM [cp].[dbo].[taOpNameOHD] AS hd
       INNER JOIN [cp].[dbo].[taOpNameODT]
       AS dt ON hd.[MoveID] = dt.[MoveID] AND hd.[MoveType] = dt.[MoveType]
+      WHERE hd.[MoveType]='A'
     `;
 
     if (startDate && endDate) {
-      query += ` WHERE hd.[MoveDate] >= @StartDate AND hd.[MoveDate] <= @EndDate
+      query += ` AND hd.[MoveDate] >= @StartDate AND hd.[MoveDate] <= @EndDate
 `;
     }
     query += ` ORDER BY hd.[MoveID] DESC`;

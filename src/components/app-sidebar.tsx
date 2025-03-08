@@ -1,6 +1,6 @@
 "use client";
 import { useRouter, usePathname } from "next/navigation";
-import {  Package2, Import, User2, ChevronUp, Annoyed, User,BellDot,Banknote,Blocks,Landmark,Wallet } from "lucide-react";
+import {  Package2, Import, User2, ChevronUp, Annoyed, User,BellDot,Banknote,Blocks,Landmark,Wallet,TimerReset } from "lucide-react";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +32,7 @@ const masterItems = [
   { href: "/dashboard/barang", label: "Master Barang", icon: Package2 },
   { href: "/dashboard/cekppn", label: "Hitung PPN", icon: Package2 },
   { href: "/dashboard/supplier", label: "Supplier", icon: User2 },
+  { href: "/dashboard/absensi", label: "Disk log Ansensi", icon: TimerReset},
   // { href: "/dashboard/print", label: "Nota Jual", icon: Printer },
   // { href: "/dashboard/notajual", label: "Nota Jual 2.5", icon: Package2 },
 ];
@@ -49,7 +50,7 @@ const items = [
     title: "Import",
     url: "/dashboard/import",
     icon: Import,
-    disabled: true,
+    disabled: false,
   },
 ]
 const Items2 = [
