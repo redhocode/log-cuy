@@ -40,6 +40,7 @@ const absensi = {
   },
   
 }
+
 let poolPromise: Promise<sql.ConnectionPool> | undefined;
 export const getPoolLogin = async () => {
   if (!poolPromise) {
@@ -56,7 +57,21 @@ export const getPoolLogin = async () => {
   }
   return poolPromise;
 };
-
+export const getPool2 = async () => {
+  if (!poolPromise) {
+    poolPromise = new sql.ConnectionPool(absensi)
+      .connect()
+      .then((pool) => {
+        logger.info("Connected to MSSQL");
+        return pool;
+      })
+      .catch((err) => {
+        logger.error("Database connection failed: ", err);
+        throw err;
+      });
+  }
+  return poolPromise;
+};
 export const getPool = async () => {
   if (!poolPromise) {
     poolPromise = new sql.ConnectionPool(config)
