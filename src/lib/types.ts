@@ -55,6 +55,7 @@ export type ProduksiType = {
   Keterangan: string;
   NO_Rator: number;
   DateValue: string;
+  NoRator: number;
 };
 
 export type LbkType = {
@@ -72,6 +73,7 @@ export type LbkType = {
   UserName: string;
   UserDateTime: string;
   HPPPrice: number;
+  NoRator: number;
 };
 
 export type LbmType = {
@@ -89,6 +91,7 @@ export type LbmType = {
   UserName: string;
   UserDateTime: string;
   HPPPrice: number;
+  NoRator: number;
 }
 export type PenerimaanType = {
   MoveID: string;
@@ -176,6 +179,7 @@ export interface DataProduksi {
   bags2: number;
   TransIDMixing: string;
   Keterangan: string;
+  NoRator: number;
 }
 
 export interface MutasiType {
@@ -194,6 +198,7 @@ export interface MutasiType {
   username: string;
   userdatetime: string;
   rjn:number;
+  NoRator: number;
 }
 
 export interface Spktype {

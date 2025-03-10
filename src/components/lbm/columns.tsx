@@ -64,6 +64,7 @@ export const columns: ColumnDef<LbmType>[] = [
   { accessorKey: "LocID", header: "LocID" },
   { accessorKey: "MoveType", header: "MoveType" },
   { accessorKey: "Remark", header: "Keterangan" },
+   { accessorKey: "NoRator", header: "No Rator" },
   { accessorKey: "ItemID", header: "ItemID" },
   { accessorKey: "Bags", header: "Bags" },
   { accessorKey: "Kgs", header: "Kgs" },

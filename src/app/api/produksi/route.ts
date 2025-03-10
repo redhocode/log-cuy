@@ -25,7 +25,7 @@ export async function GET(request: Request) {
         hd.[DeptID],
         hd.[OrderID],
         hd.[OrderType],
-        hd.[Shift] AS NO_Rator,
+        hd.[NoRator],
         hd.[LocID],
         hd.[Remark],
         dt.[ItemID],

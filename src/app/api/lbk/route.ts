@@ -23,6 +23,7 @@ export async function GET(request: Request) {
         hd.[LocID],
         hd.[MoveDate],
         hd.[Remark],
+        hd.[NoRator],
         dt.[ItemID],
         dt.[Bags],
         dt.[Kgs],

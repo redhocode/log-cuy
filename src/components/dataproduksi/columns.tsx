@@ -89,7 +89,7 @@ export const columns = (
 
   { accessorKey: "OrderID", header: "SPK" },
   // { accessorKey: "OrderType", header: "OrderType" },
-  { accessorKey: "Shift", header: "NO. Rator" },
+  { accessorKey: "NoRator", header: "NO. Rator" },
   { accessorKey: "LocID", header: "WH" },
   { accessorKey: "Remark", header: "Description" },
   { accessorKey: "ItemID", header: "ItemID" },
