@@ -1,12 +1,19 @@
-'use client';  // Direktif ini memungkinkan penggunaan hook di dalam komponen React
+"use client"; // Direktif ini memungkinkan penggunaan hook di dalam komponen React
 
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "./ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
 
 const DiskLogAbsensi = () => {
-  const [isProcessing, setIsProcessing] = useState(false);  // Menyimpan status eksekusi query
+  const [isProcessing, setIsProcessing] = useState(false); // Menyimpan status eksekusi query
   const [statusMessage, setStatusMessage] = useState<string | null>(null); // Menyimpan status hasil eksekusi query
   const [password, setPassword] = useState(""); // Menyimpan input password dari pengguna
   const [isPasswordCorrect, setIsPasswordCorrect] = useState(false); // Menyimpan status apakah password benar atau tidak
@@ -32,15 +39,15 @@ const DiskLogAbsensi = () => {
       return; // Jangan lanjutkan jika password tidak benar
     }
 
-    setIsProcessing(true);  // Set status processing menjadi true
-    setStatusMessage(null);  // Reset statusMessage saat query mulai dieksekusi
+    setIsProcessing(true); // Set status processing menjadi true
+    setStatusMessage(null); // Reset statusMessage saat query mulai dieksekusi
 
     // Menampilkan notifikasi loading
     const loadingToast = toast.loading("Executing query...");
 
     try {
       // Memanggil API untuk mengeksekusi query SQL
-      const response = await fetch('/api/utility', { method: 'GET' });
+      const response = await fetch("/api/utility", { method: "GET" });
       const data = await response.json();
 
       // Jika query berhasil
@@ -51,13 +58,13 @@ const DiskLogAbsensi = () => {
         toast.error(data.error || "Something went wrong");
         setStatusMessage("Failed"); // Set status menjadi 'Failed' jika ada error
       }
-    } catch (err) {
+    } catch {
       // Jika terjadi error saat menjalankan query
       toast.error("Error occurred while executing the query");
       setStatusMessage("Failed"); // Set status menjadi 'Failed' jika terjadi error
     } finally {
-      setIsProcessing(false);  // Set status processing menjadi false
-      toast.dismiss(loadingToast);  // Menghapus notifikasi loading
+      setIsProcessing(false); // Set status processing menjadi false
+      toast.dismiss(loadingToast); // Menghapus notifikasi loading
     }
   };
 
@@ -66,7 +73,7 @@ const DiskLogAbsensi = () => {
       <CardHeader>
         <CardTitle>Disk Log Absensi</CardTitle>
         <CardDescription>
-          Eksekusi query untuk merubah dan mengecilkan log database absensi. 
+          Eksekusi query untuk merubah dan mengecilkan log database absensi.
           Harap masukkan password terlebih dahulu untuk melanjutkan.
         </CardDescription>
       </CardHeader>
@@ -89,21 +96,29 @@ const DiskLogAbsensi = () => {
               <div>
                 <Button
                   onClick={handleExecuteSQL}
-                  disabled={isProcessing}  // Menonaktifkan tombol saat query sedang diproses
+                  disabled={isProcessing} // Menonaktifkan tombol saat query sedang diproses
                   className="w-full"
                 >
-                  {isProcessing ? 'Executing...' : 'Execute SQL Query'}
+                  {isProcessing ? "Executing..." : "Execute SQL Query"}
                 </Button>
 
                 {/* Menampilkan status success atau error setelah eksekusi query */}
                 {statusMessage && (
-                  <div className={`mt-4 text-center text-lg font-semibold ${statusMessage === "Success" ? 'text-green-500' : 'text-red-500'}`}>
+                  <div
+                    className={`mt-4 text-center text-lg font-semibold ${
+                      statusMessage === "Success"
+                        ? "text-green-500"
+                        : "text-red-500"
+                    }`}
+                  >
                     {statusMessage}
                   </div>
                 )}
               </div>
             ) : (
-              <div className="text-red-500 text-center">Incorrect password. Please try again.</div>
+              <div className="text-red-500 text-center">
+                Incorrect password. Please try again.
+              </div>
             )}
           </>
         )}
@@ -111,7 +126,8 @@ const DiskLogAbsensi = () => {
 
       <CardFooter>
         <p className="text-sm text-gray-500">
-          Menjalankan query ini akan merubah recovery model dan mengecilkan file log.
+          Menjalankan query ini akan merubah recovery model dan mengecilkan file
+          log.
         </p>
       </CardFooter>
     </Card>

@@ -1,10 +1,13 @@
-import { NextResponse } from "next/server";
-import { getPool } from "@/lib/config";
+/* eslint-disable @typescript-eslint/no-unused-vars */
 
-export async function GET(request: Request) {
+
+import { NextResponse } from "next/server";
+import { getPool2 } from "@/lib/config";
+
+export async function GET() {
   try {
     // Dapatkan pool koneksi ke database
-    const pool = await getPool();
+    const pool = await getPool2();
 
     // Jalankan query SQL yang diberikan
     await pool.query(`
@@ -22,13 +25,19 @@ export async function GET(request: Request) {
   } catch (error) {
     // Pengecekan tipe dengan `instanceof`
     if (error instanceof Error) {
-      console.error('Error executing SQL query:', error.message);
-      return NextResponse.json({ message: 'Error executing query', error: error.message }, { status: 500 });
+      console.error("Error executing SQL query:", error.message);
+      return NextResponse.json(
+        { message: "Error executing query", error: error.message },
+        { status: 500 }
+      );
     }
 
     // Jika bukan instance dari Error, tangani error yang lebih umum
-    console.error('Unknown error occurred:', error);
-    return NextResponse.json({ message: 'Unknown error occurred' }, { status: 500 });
+    console.error("Unknown error occurred:", error);
+    return NextResponse.json(
+      { message: "Unknown error occurred" },
+      { status: 500 }
+    );
   }
 }
-   
+
