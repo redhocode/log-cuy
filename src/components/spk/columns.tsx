@@ -67,7 +67,7 @@ export const columns = (
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         >
-          Order ID
+          SPK
           <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       );
@@ -81,23 +81,23 @@ export const columns = (
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         >
-          Order date
+          Tanggal
           <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       );
     },
   },
 
-  { accessorKey: "OrderType", header: "OrderType" },
-  { accessorKey: "PlanDate", header: "Plan Date" },
+  // { accessorKey: "OrderType", header: "OrderType" },
+  // { accessorKey: "PlanDate", header: "Plan Date" },
   { accessorKey: "Remark", header: "Keterangan" },
-  { accessorKey: "ItemID", header: "ItemID" },
-  { accessorKey: "ItemIDDT", header: "ItemID" },
-  { accessorKey: "Bags", header: "Bags" },
-  { accessorKey: "Kgs", header: "Kgs" },
-  { accessorKey: "PRDeptID", header: "PRDeptID" },
-  { accessorKey: "TypeSO", header: "TypeSO" },
-  { accessorKey: "UserName", header: "User Name" },
-  { accessorKey: "UserDateTime", header: "User DateTime" },
+  // { accessorKey: "ItemID", header: "ItemID" },
+  // { accessorKey: "ItemIDDT", header: "ItemID" },
+  // { accessorKey: "Bags", header: "Bags" },
+  // { accessorKey: "Kgs", header: "Kgs" },
+  { accessorKey: "PRDeptID", header: "Departemen" },
+  // { accessorKey: "TypeSO", header: "TypeSO" },
+  // { accessorKey: "UserName", header: "User Name" },
+  // { accessorKey: "UserDateTime", header: "User DateTime" },
   // { accessorKey: "RJN", header: "RJN" },
 ];

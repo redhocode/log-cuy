@@ -18,20 +18,11 @@ export async function GET(request: Request) {
     let query = `
       SELECT TOP (100000)
         hd.[OrderID],
-        hd.[OrderType],
         hd.[OrderDate],
-        hd.[PlanDate],
-        hd.[ItemID],
-        dt.[ItemID] AS ItemIDDT,
-        hd.[Bags],
-        hd.[Kgs],
         hd.[Remark],
-        hd.[PRDeptID],
-        hd.[TypeSO],
-        hd.[UserName],
-        hd.[UserDateTime]
+        hd.[PRDeptID]
         FROM [cp].[dbo].[taPROrder] AS hd
-        INNER JOIN [cp].[dbo].[taPROrderDt] AS dt ON hd.[OrderID] = dt.[OrderID] AND hd.[OrderType] = dt.[OrderType]
+        LEFT JOIN [cp].[dbo].[taPROrderDt] AS dt ON hd.[OrderID] = dt.[OrderID] AND hd.[OrderType] = dt.[OrderType]
     `;
 
     if (startDate && endDate) {
@@ -53,6 +44,18 @@ export async function GET(request: Request) {
     const formattedRecords = result.recordset.map((record) => ({
       ...record,
       OrderDate: record.OrderDate.toISOString().split("T")[0],
+      // PRDeptID:
+      //   record.PRDeptID === "PL"
+      //     ? "Platting"
+      //     : record.PRDeptID === "IN"
+      //     ? "Injeksi"
+      //     : record.PRDeptID
+      //     ? "Molding" 
+      //     : record.PRDeptID === "MO"
+      //     ? "Assembly"
+      //     : record.PRDeptID === "AS"
+      //     ? "Spary" 
+      //     : record.PRDeptID === "SP"
     }));
 
     return NextResponse.json(formattedRecords);
