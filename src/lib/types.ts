@@ -122,7 +122,8 @@ export type PenerimaanType = {
   userdatetime: string;
   Timbang: number;
   TipeEdit:number;
-  RJN: number
+  RJN: number;
+  
   
 }
 
@@ -218,6 +219,10 @@ export interface Spktype {
   rjn: string;
   ItemIDDetail: string;
   nama_PO: string;
+  Tanggal_Order: Date;
+  Keterangan: string;
+  Departemen: string;
+  No_SPK: string;
 }
 export interface stockType {
   MoveID: string;

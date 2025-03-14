@@ -17,10 +17,10 @@ export async function GET(request: Request) {
 
     let query = `
       SELECT DISTINCT
-        hd.[OrderID],
-        hd.[OrderDate],
-        hd.[Remark],
-        hd.[PRDeptID]
+        hd.[OrderID] AS No_SPK,
+        hd.[OrderDate] AS Tanggal_Order,
+        hd.[Remark] AS Nama_PO,
+        hd.[PRDeptID] AS Departemen
         FROM [cp].[dbo].[taPROrder] AS hd
         LEFT JOIN [cp].[dbo].[taPROrderDt] AS dt ON hd.[OrderID] = dt.[OrderID] AND hd.[OrderType] = dt.[OrderType]
     `;
@@ -43,7 +43,7 @@ export async function GET(request: Request) {
     // Format the HeaderProdDate to show only the date part
     const formattedRecords = result.recordset.map((record) => ({
       ...record,
-      OrderDate: record.OrderDate.toISOString().split("T")[0],
+      Tanggal_Order: record.Tanggal_Order.toISOString().split("T")[0],
       // PRDeptID:
       //   record.PRDeptID === "PL"
       //     ? "Platting"

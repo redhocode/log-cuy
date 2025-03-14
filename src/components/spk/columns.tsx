@@ -60,7 +60,7 @@ export const columns = (
     cell: ({ row }) => row.index + 1,
   },
   {
-    accessorKey: "OrderID",
+    accessorKey: "No_SPK",
     header: ({ column }) => {
       return (
         <Button
@@ -74,7 +74,7 @@ export const columns = (
     },
   },
   {
-    accessorKey: "OrderDate",
+    accessorKey: "Tanggal_Order",
     header: ({ column }) => {
       return (
         <Button
@@ -90,12 +90,12 @@ export const columns = (
 
   // { accessorKey: "OrderType", header: "OrderType" },
   // { accessorKey: "PlanDate", header: "Plan Date" },
-  { accessorKey: "Remark", header: "Keterangan" },
+  { accessorKey: "Nama_PO", header: "Nama PO" },
   // { accessorKey: "ItemID", header: "ItemID" },
   // { accessorKey: "ItemIDDT", header: "ItemID" },
   // { accessorKey: "Bags", header: "Bags" },
   // { accessorKey: "Kgs", header: "Kgs" },
-  { accessorKey: "PRDeptID", header: "Departemen" },
+  { accessorKey: "Departemen", header: "Departemen" },
   // { accessorKey: "TypeSO", header: "TypeSO" },
   // { accessorKey: "UserName", header: "User Name" },
   // { accessorKey: "UserDateTime", header: "User DateTime" },
