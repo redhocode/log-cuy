@@ -115,7 +115,7 @@ const handleProdTypeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
 const handleItemTypeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
   setitemType(event.target.value);
 }
-const filteredData = data.filter((item) => {
+const filteredData = data.filter((item: ProduksiType) => {
   // Pencarian umum untuk semua kolom
   const matchesGeneralSearch = Object.values(item).some((value) =>
     String(value).toLowerCase().includes(searchTerm.toLowerCase())
