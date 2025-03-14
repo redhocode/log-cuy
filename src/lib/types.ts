@@ -80,6 +80,9 @@ export type LbkType = {
   UserDateTime: string;
   HPPPrice: number;
   NoRator: number;
+  Gudang: string;
+  Tanggal: Date;
+  Keterangan: string;
 };
 
 export type LbmType = {
@@ -98,7 +101,10 @@ export type LbmType = {
   UserDateTime: string;
   HPPPrice: number;
   NoRator: number;
-}
+  Gudang: string;
+  Tanggal: Date;
+  Keterangan: string;
+};
 export type PenerimaanType = {
   MoveID: string;
   MoveType: string;
