@@ -26,6 +26,7 @@ export async function GET(request: Request) {
         hd.[OrderID],
         hd.[OrderType],
         hd.[NoRator],
+        sp.[Remark] AS Nama_PO,
         hd.[LocID],
         hd.[Remark],
         dt.[ItemID],
@@ -36,6 +37,7 @@ export async function GET(request: Request) {
         dt.[UserDateTime] 
       FROM [cp].[dbo].[taPRProdHd] AS hd
       INNER JOIN [cp].[dbo].[taPRProdDt] AS dt ON hd.[ProdID] = dt.[ProdID] AND hd.[ProdType] = dt.[ProdType]
+      INNER JOIN [cp].[dbo].[taPROrder] AS sp ON hd.[OrderID] = sp.[OrderID]
       WHERE hd.[ProdType] IN ('IN','SP','MO','PL','AS') AND dt.[ItemType] IN ('B','H')
     `;
 

@@ -67,27 +67,27 @@ const DataProduksiPage: React.FC = () => {
         error: "Error fetching data",
       });
     };
-  const handleExportByRemark = () => {
-    // Apply the Remark search filter (searchTermRemark) before exporting
-    const filteredRows = filteredData.filter((item) =>
-      item.Remark?.toLowerCase().includes(searchTermRemark.toLowerCase())
-    );
+  // const handleExportByRemark = () => {
+  //   // Apply the Remark search filter (searchTermRemark) before exporting
+  //   const filteredRows = filteredData.filter((item) =>
+  //     item.Remark?.toLowerCase().includes(searchTermRemark.toLowerCase())
+  //   );
 
-    if (filteredRows.length === 0) {
-      toast.error("No data matches the 'Nomor Rator' filter.");
-      return;
-    }
+  //   if (filteredRows.length === 0) {
+  //     toast.error("No data matches the 'Nomor Rator' filter.");
+  //     return;
+  //   }
 
-    const ws = XLSX.utils.json_to_sheet(filteredRows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Data Produksi");
-    const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-    const blob = new Blob([excelBuffer], { type: EXCEL_TYPE });
-    saveAs(
-      blob,
-      `Data_Produksi_Nomor_Rator_${searchTermRemark}${EXCEL_EXTENSION}`
-    );
-  };
+  //   const ws = XLSX.utils.json_to_sheet(filteredRows);
+  //   const wb = XLSX.utils.book_new();
+  //   XLSX.utils.book_append_sheet(wb, ws, "Data Produksi");
+  //   const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  //   const blob = new Blob([excelBuffer], { type: EXCEL_TYPE });
+  //   saveAs(
+  //     blob,
+  //     `Data_Produksi_Nomor_Rator_${searchTermRemark}${EXCEL_EXTENSION}`
+  //   );
+  // };
   const handleDateRangeChange = (
     startDate: string | null,
     endDate: string | null
@@ -159,7 +159,7 @@ const filteredData = data.filter((item) => {
                   className="pl-8 sm:w-[300px] md:w-[200px] lg:w-[300px]"
                 />
               </div>
-              <div className="mt-3 relative">
+              {/* <div className="mt-3 relative">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   type="search"
@@ -168,7 +168,7 @@ const filteredData = data.filter((item) => {
                   placeholder="Search by No Rator"
                   className="pl-8 sm:w-[300px] md:w-[200px] lg:w-[300px]"
                 />
-              </div>
+              </div> */}
             </form>
           </div>
           <select
@@ -176,7 +176,7 @@ const filteredData = data.filter((item) => {
             onChange={handleProdTypeChange}
             className="border p-2 rounded-md"
           >
-            <option value="">-- Pilih Type --</option>
+            <option value="">-- Pilih Departemen --</option>
             <option value="AS">Assembly</option>
             <option value="IN">Injeksi</option>
             <option value="MO">Molding</option>
@@ -189,9 +189,9 @@ const filteredData = data.filter((item) => {
             onChange={handleItemTypeChange}
             className="border p-2 rounded-md"
           >
-            <option value="">-- Type Produksi --</option>
-            <option value="B">Bahan</option>
-            <option value="H">Hasil</option>
+            <option value="">-- Type Inputan --</option>
+            <option value="B">Pengambilan Bahan</option>
+            <option value="H">Hasil Produksi</option>
             {/* Add other RefType options as needed */}
           </select>
         </CardHeader>
@@ -211,13 +211,13 @@ const filteredData = data.filter((item) => {
               <FileUp className="h-6 w-6 mr-3" />
               Eksport to Excel
             </Button>
-            <Button
+            {/* <Button
               onClick={handleExportByRemark}
               className="mb-4 px-6 py-6 bg-blue-500 text-white rounded-full w-full"
             >
               <FileUp className="h-6 w-6 mr-3" />
               Export by Nomor Rator
-            </Button>
+            </Button> */}
           </div>
         </CardContent>
       </Card>

@@ -30,13 +30,14 @@ import { Label } from "./ui/label";
 const masterItems = [
   { href: "/dashboard/", label: "Stock Gudang", icon: BellDot },
   { href: "/dashboard/barang", label: "Master Barang", icon: Package2 },
-  { href: "/dashboard/cekppn", label: "Hitung PPN", icon: Package2 },
+  // { href: "/dashboard/cekppn", label: "Hitung PPN", icon: Package2 },
   { href: "/dashboard/supplier", label: "Supplier", icon: User2 },
   { href: "/dashboard/absensi", label: "Disk log Ansensi", icon: TimerReset},
   // { href: "/dashboard/print", label: "Nota Jual", icon: Printer },
   // { href: "/dashboard/notajual", label: "Nota Jual 2.5", icon: Package2 },
 ];
 const navItems = [
+  { href: "/dashboard/spk", label: "SPK", icon: Package2 },
   { href: "/dashboard/data", label: "Produksi", icon: Package2 },
   { href: "/dashboard/lbm", label: "LBM", icon: Package2 },
   { href: "/dashboard/lbk", label: "LBK", icon: Package2 },
@@ -50,15 +51,15 @@ const items = [
     title: "Import",
     url: "/dashboard/import",
     icon: Import,
-    disabled: false,
+    disabled: true,
   },
 ]
 const Items2 = [
-  { href: "/dashboard/spk", label: "SPK", icon: Package2 },
+  
   { href: "/dashboard/purchase", label: "Purchase", icon: Package2 },
   { href: "/dashboard/penerimaan", label: "Penerimaan", icon: Package2 },
   { href: "/dashboard/trackpo", label: "Track PO", icon: Package2 },
-  { href: "/dashboard/laprod", label: "LapProd", icon: Package2 },
+  // { href: "/dashboard/laprod", label: "LapProd", icon: Package2 },
 ];
 const Items3 = [
   { href: "/dashboard/kas", label: "Kas", icon: Wallet, disabled: true },
@@ -78,7 +79,7 @@ const Items3 = [
 ];
 const Items4 = [
   { href: "/dashboard/loguser", label: "Log Users", icon: User },
-  { href: "/dashboard/logacr", label: "Log Acc", icon: User}
+  // { href: "/dashboard/logacr", label: "Log Acc", icon: User}
 ]
 export default function AppSidebar() {
   const router = useRouter();

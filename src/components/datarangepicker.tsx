@@ -65,7 +65,7 @@ const handleApply = () => {
         />
       </div>
 
-      <div className="flex flex-row gap-2">
+      {/* <div className="flex flex-row gap-2">
         <Button
           variant="outline"
           onClick={() => {
@@ -83,7 +83,7 @@ const handleApply = () => {
           onChange={(e) => setSingleDate(e.target.value)}
           className={isSingleDate ? "block" : "hidden"}
         />
-      </div>
+      </div> */}
 
       <Button
         onClick={handleApply}

@@ -180,6 +180,7 @@ export interface DataProduksi {
   TransIDMixing: string;
   Keterangan: string;
   NoRator: number;
+  Nama_PO: string;
 }
 
 export interface MutasiType {
@@ -216,6 +217,7 @@ export interface Spktype {
   UserDateTime: string;
   rjn: string;
   ItemIDDetail: string;
+  nama_PO: string;
 }
 export interface stockType {
   MoveID: string;

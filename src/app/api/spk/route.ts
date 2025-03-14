@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     const pool = await getPool();
 
     let query = `
-      SELECT TOP (100000)
+      SELECT DISTINCT
         hd.[OrderID],
         hd.[OrderDate],
         hd.[Remark],

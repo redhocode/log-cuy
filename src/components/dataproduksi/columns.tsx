@@ -88,7 +88,7 @@ export const columns = (
    { accessorKey: "DeptID", header: "Dept" },
 
   { accessorKey: "OrderID", header: "SPK" },
-  // { accessorKey: "OrderType", header: "OrderType" },
+  { accessorKey: "Nama_PO", header: "Nama PO" },
   { accessorKey: "NoRator", header: "NO. Rator" },
   { accessorKey: "LocID", header: "WH" },
   { accessorKey: "Remark", header: "Description" },
