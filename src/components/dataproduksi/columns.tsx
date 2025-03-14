@@ -69,7 +69,7 @@ export const columns = (
     },
   },
   {
-    accessorKey: "ProdDate",
+    accessorKey: "Tanggal",
     header: ({ column }) => {
       return (
         <Button
@@ -85,17 +85,16 @@ export const columns = (
 
   // { accessorKey: "HeaderProdType", header: "HeaderProdType" },
   // { accessorKey: "ProdType", header: "ProdType" },
-   { accessorKey: "DeptID", header: "Dept" },
-
-  { accessorKey: "OrderID", header: "SPK" },
+   { accessorKey: "Departemen", header: "Departemen" },
+   { accessorKey: "Tipe_Produksi", header: "Type Produksi" },
+  { accessorKey: "SPK", header: "SPK" },
   { accessorKey: "Nama_PO", header: "Nama PO" },
   { accessorKey: "NoRator", header: "NO. Rator" },
-  { accessorKey: "LocID", header: "WH" },
-  { accessorKey: "Remark", header: "Description" },
+  { accessorKey: "Gudang", header: "Gudang" },
+  { accessorKey: "Remark", header: "keterangan" },
   { accessorKey: "ItemID", header: "ItemID" },
-  { accessorKey: "ItemType", header: "Type" },
   { accessorKey: "Bags", header: "Bags" },
   { accessorKey: "Kgs", header: "Qty" },
   { accessorKey: "UserName", header: "User Name" },
-  { accessorKey: "UserDateTime", header: "User DateTime" },
+  // { accessorKey: "UserDateTime", header: "User DateTime" },
 ];

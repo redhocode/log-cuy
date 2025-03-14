@@ -56,6 +56,12 @@ export type ProduksiType = {
   NO_Rator: number;
   DateValue: string;
   NoRator: number;
+  Tanggal: Date;
+  Departemen: string;
+  Spk: string;
+  Nama_PO: string;
+  Tipe_Produksi: string;
+  Gudang: string;
 };
 
 export type LbkType = {
