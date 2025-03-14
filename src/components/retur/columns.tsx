@@ -47,28 +47,28 @@ export const columns: ColumnDef<LbmType>[] = [
     },
   },
   {
-    accessorKey: "MoveDate",
+    accessorKey: "Tanggal",
     header: ({ column }) => {
       return (
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         >
-          Move date
+          Tanggal
           <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       );
     },
   },
 
-  { accessorKey: "LocID", header: "LocID" },
-  { accessorKey: "MoveType", header: "MoveType" },
-  { accessorKey: "Remark", header: "Keterangan" },
-    { accessorKey: "NoRator", header: "No. Rator" },
+  { accessorKey: "Gudang", header: "Gudang" },
+ // { accessorKey: "Keterangan", header: "MoveType" },
+ { accessorKey: "NoRator", header: "No. Rator" },
+  { accessorKey: "Keterangan", header: "Keterangan" },
   { accessorKey: "ItemID", header: "ItemID" },
   { accessorKey: "Bags", header: "Bags" },
   { accessorKey: "Kgs", header: "Kgs" },
   { accessorKey: "HPPPrice", header: "HPP" },
   { accessorKey: "username", header: "User Name" },
-  { accessorKey: "userdatetime", header: "User DateTime" },
+  // { accessorKey: "userdatetime", header: "User DateTime" },
 ];

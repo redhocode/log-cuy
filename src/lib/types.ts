@@ -215,6 +215,10 @@ export interface MutasiType {
   userdatetime: string;
   rjn:number;
   NoRator: number;
+  Gudang_Asal: string;
+  Gudang_Tujuan: string;
+  Keterangan: string;
+  Tanggal: Date;
 }
 
 export interface Spktype {
