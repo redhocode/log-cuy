@@ -48,36 +48,36 @@ export const columns: ColumnDef<PenerimaanType>[] = [
     },
   },
   {
-    accessorKey: "MoveType",
+    accessorKey: "Tanggal",
     header: ({ column }) => {
       return (
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         >
-          MoveType
+          Tanggal
           <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       );
     },
   },
 
-  { accessorKey: "OrderID", header: "OrderID" },
-  { accessorKey: "TransID", header: "TransID" },
-  { accessorKey: "Supplier", header: "Supplier" },
-  // { accessorKey: "RJN", header: "RJN" },
-  { accessorKey: "MoveDate", header: "Date" },
-  { accessorKey: "LocID", header: "Gudang" },
   { accessorKey: "Nopol", header: "Nopol" },
   { accessorKey: "Nopen", header: "Nopen" },
-  { accessorKey: "TglNopen", header: "TglNopen" },
+  { accessorKey: "Supplier", header: "Supplier" },
+  // { accessorKey: "RJN", header: "RJN" },
+  // { accessorKey: "MoveDate", header: "Date" },
+  // { accessorKey: "LocID", header: "Gudang" },
+  // { accessorKey: "Nopol", header: "Nopol" },
+  // { accessorKey: "Nopen", header: "Nopen" },
+  // { accessorKey: "TglNopen", header: "TglNopen" },
   // { accessorKey: "Timbang", header: "Timbang" },
   // { accessorKey: "TipeEdit", header: "TipeEdit" },
   { accessorKey: "ItemID", header: "Item" },
   { accessorKey: "Bags", header: "Bags" },
-  { accessorKey: "Kgs", header: "QTY" },
+  { accessorKey: "Kgs", header: "Kgs" },
+  { accessorKey: "satuan", header: "Satuan" },
   { accessorKey: "username", header: "User Name" },
   // { accessorKey: "userdatetime", header: "User DateTime" },
-  { accessorKey: "satuan", header: "Satuan" },
   // { accessorKey: "TglSJSupplier", header: "TglSJSupplier" },
 ];

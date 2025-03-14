@@ -123,6 +123,8 @@ export type PenerimaanType = {
   Timbang: number;
   TipeEdit:number;
   RJN: number;
+  Tanggal: Date;
+  Gudang: string;
   
   
 }
