@@ -35,10 +35,9 @@ export async function GET(request: Request) {
       WHERE hd.[MoveType] = 'K'
     `;
 
-    if (startDate && endDate) {
-      query += ` AND hd.[MoveDate] >= @startDate AND hd.[MoveDate] <= @endDate
-`;
-    }
+ if (startDate && endDate) {
+   query += ` AND CONVERT(DATE, hd.[MoveDate]) >= @StartDate AND CONVERT(DATE, hd.[MoveDate]) <= @EndDate`;
+ }
     query += ` ORDER BY hd.[MoveID] DESC`;
 
     const requestQuery = pool.request();

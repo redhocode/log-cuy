@@ -32,10 +32,9 @@ export async function GET(request: Request) {
       INNER JOIN [cp].[dbo].[taSupplier] AS s ON hd.[CompanyID] = s.[CompanyID]
       `;
 
-    if (startDate && endDate) {
-      query += ` WHERE hd.[OrderDate] >= @StartDate AND hd.[OrderDate] <= @EndDate
-`;
-    }
+  if (startDate && endDate) {
+    query += ` WHERE CONVERT(DATE, hd.[OrderDate]) >= @StartDate AND CONVERT(DATE, hd.[OrderDate]) <= @EndDate`;
+  }
     query += ` ORDER BY hd.[OrderID] DESC`;
 
     const requestQuery = pool.request();

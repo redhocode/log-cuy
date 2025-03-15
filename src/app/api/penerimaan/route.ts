@@ -37,9 +37,10 @@ export async function GET(request: Request) {
       INNER JOIN [cp].[dbo].[taLocation] AS g ON hd.[LocID] = g.[LocID]
     `;
 
-    if (startDate && endDate) {
-      query += ` WHERE hd.[MoveDate] >= @StartDate AND hd.[MoveDate] <= @EndDate`
-    }
+   if (startDate && endDate) {
+     query += ` WHERE CONVERT(DATE, hd.[MoveDate]) >= @StartDate AND CONVERT(DATE, hd.[MoveDate]) <= @EndDate`;
+   }
+
     query += ` ORDER BY hd.[MoveID] DESC`;
 
     const requestQuery = pool.request();
