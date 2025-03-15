@@ -19,8 +19,8 @@ export async function GET(request: Request) {
       SELECT TOP (10000)
         hd.[MoveID] AS No_Transaksi,
         hd.[MoveDate] AS Tanggal,
-        g.[LocName] AS Gudang_Asal,
-        g.[LocName] AS Gudang_Tujuan,
+        hd.[LocIDSrc] AS Gudang_Asal,
+        hd.[LocIDDest] AS Gudang_Tujuan,
         hd.[NoRator],
         hd.[Remark] AS Keterangan,
         dt.[ItemID],
@@ -31,8 +31,6 @@ export async function GET(request: Request) {
       INNER JOIN [cp].[dbo].[taMoveDT]
       AS dt ON hd.[MoveID] = dt.[MoveID]
       AND hd.[MoveType] = dt.[MoveType]
-      INNER JOIN [cp].[dbo].[taLocation] AS g ON hd.[LocIDSrc] = g.[LocID]
-      AND hd.[LocIDDest] = g.[LocID]
       WHERE hd.[MoveType] = 'R'
     `;
 
@@ -55,6 +53,34 @@ export async function GET(request: Request) {
     const formattedRecords = result.recordset.map((record) => ({
       ...record,
       Tanggal: record.Tanggal.toISOString().split("T")[0],
+      Gudang_Asal:
+        record.Gudang_Asal === "GUDLOC"
+          ? "GUDANG LOKAL"
+          : record.Gudang_Asal === "GUDIN"
+          ? "GUDANG INJEKSI"
+          : record.Gudang_Asal === "GUDUT"
+          ? "GUDANG UTAMA"
+          : record.Gudang_Asal === "GUDSP"
+          ? "GUDANG SPRAY"
+          : record.Gudang_Asal === "GUDMO"
+          ? "GUDANG MOLDING"
+          : record.Gudang_Asal === "GUDPL"
+          ? "GUDANG PLATING"
+          : record.Gudang_Asal,
+      Gudang_Tujuan:
+        record.Gudang_Tujuan === "GUDLOC"
+          ? "GUDANG LOKAL"
+          : record.Gudang_Tujuan === "GUDIN"
+          ? "GUDANG INJEKSI"
+          : record.Gudang_Tujuan === "GUDUT"
+          ? "GUDANG UTAMA"
+          : record.Gudang_Tujuan === "GUDSP"
+          ? "GUDANG SPRAY"
+          : record.Gudang_Tujuan === "GUDMO"
+          ? "GUDANG MOLDING"
+          : record.Gudang_Tujuan === "GUDPL"
+          ? "GUDANG PLATING"
+          : record.Gudang_Tujuan,
     }));
 
     return NextResponse.json(formattedRecords);
