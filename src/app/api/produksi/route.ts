@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const startDate = url.searchParams.get("startDate");
   const endDate = url.searchParams.get("endDate");
-  const remark = url.searchParams.get("remark");
+  // const remark = url.searchParams.get("remark");
   const prodType = url.searchParams.get("prodType");
   const itemType = url.searchParams.get("itemType");
 
@@ -20,21 +20,18 @@ export async function GET(request: Request) {
     let query = `
       SELECT TOP (10000)
         hd.[ProdID],
-        hd.[ProdDate],
-        hd.[ProdType],
-        hd.[DeptID],
-        hd.[OrderID],
-        hd.[OrderType],
+        hd.[ProdDate] AS Tanggal,
+        hd.[DeptID] AS Departemen,
+        dt.[ItemType] AS Tipe_Produksi,
+        hd.[OrderID] AS SPK,
         hd.[NoRator],
         sp.[Remark] AS Nama_PO,
-        hd.[LocID],
+        hd.[LocID] AS Gudang,
         hd.[Remark],
         dt.[ItemID],
-        dt.[ItemType],
         dt.[Bags],
         dt.[Kgs],
-        dt.[UserName],
-        dt.[UserDateTime] 
+        dt.[UserName] 
       FROM [cp].[dbo].[taPRProdHd] AS hd
       INNER JOIN [cp].[dbo].[taPRProdDt] AS dt ON hd.[ProdID] = dt.[ProdID] AND hd.[ProdType] = dt.[ProdType]
       INNER JOIN [cp].[dbo].[taPROrder] AS sp ON hd.[OrderID] = sp.[OrderID]
@@ -51,10 +48,10 @@ export async function GET(request: Request) {
     }
 
     // Menambahkan filter berdasarkan remark, jika ada (cari 5 karakter terakhir)
-    if (remark) {
-      console.log("Using remark in SQL:", remark); // Debug: Cek nilai remark yang diterima
-      conditions.push(`RIGHT(hd.[Remark], 5) = @Remark`);
-    }
+    // if (remark) {
+    //   console.log("Using remark in SQL:", remark); // Debug: Cek nilai remark yang diterima
+    //   conditions.push(`RIGHT(hd.[Remark], 5) = @Remark`);
+    // }
 
     // Filter berdasarkan prodType, jika ada
     if (prodType) {
@@ -81,9 +78,9 @@ export async function GET(request: Request) {
       requestQuery.input("EndDate", sql.Date, new Date(endDate));
     }
 
-    if (remark) {
-      requestQuery.input("Remark", sql.NVarChar, remark);
-    }
+    // if (remark) {
+    //   requestQuery.input("Remark", sql.NVarChar, remark);
+    // }
     if (prodType) {
       requestQuery.input("ProdType", sql.NVarChar, prodType);
     }
@@ -96,7 +93,7 @@ export async function GET(request: Request) {
     // Format the HeaderProdDate to show only the date part
     const formattedRecords = result.recordset.map((record) => ({
       ...record,
-     ProdDate: record.ProdDate ? record.ProdDate.toISOString().split("T")[0] : null, // If ProdDate is null or undefined, return null
+     Tanggal: record.Tanggal ? record.Tanggal.toISOString().split("T")[0] : null, // If ProdDate is null or undefined, return null
 }));
 
     return NextResponse.json(formattedRecords);

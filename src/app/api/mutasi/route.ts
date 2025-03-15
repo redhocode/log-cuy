@@ -18,18 +18,15 @@ export async function GET(request: Request) {
     let query = `
       SELECT TOP (10000)
         hd.[MoveID],
-        hd.[MoveType],
-        hd.[MoveDate],
-        hd.[LocIDSrc],
-        hd.[LocIDDest],
-        hd.[Remark],
+        hd.[MoveDate] AS Tanggal,
+        hd.[LocIDSrc] AS Gudang_Asal,
+        hd.[LocIDDest] AS Gudang_Tujuan,
         hd.[NoRator],
+        hd.[Remark] AS Keterangan,
         dt.[ItemID],
         dt.[Bags],
         dt.[Kgs],
-        dt.[HPPPrice],
-        dt.[username],
-        dt.[userdatetime]
+        dt.[username]
       FROM [cp].[dbo].[taMoveHD] AS hd
       INNER JOIN [cp].[dbo].[taMoveDT]
       AS dt ON hd.[MoveID] = dt.[MoveID]
@@ -55,7 +52,7 @@ export async function GET(request: Request) {
     // Format the HeaderProdDate to show only the date part
     const formattedRecords = result.recordset.map((record) => ({
       ...record,
-      MoveDate: record.MoveDate.toISOString().split("T")[0],
+      Tanggal: record.Tanggal.toISOString().split("T")[0],
     }));
 
     return NextResponse.json(formattedRecords);
