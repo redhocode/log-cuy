@@ -17,27 +17,20 @@ export async function GET(request: Request) {
 
     let query = `
       SELECT TOP (10000)
-       hd.[OrderID],
-        hd.[OrderType],
-        hd.[OrderDate],
-        hd.[CompanyID],
-        hd.[Total],
-        hd.[Curr],
-        hd.[Rate],
-        hd.[TotalRp],
-        hd.[DueDate],
-        hd.[Remark],
+       hd.[OrderID] as No_Transaksi,
+        hd.[OrderDate] AS Tanggal,
+        s.[Companyname1] AS Supplier,
+        hd.[Remark] AS Keterangan,
         hd.[TipeDok],
-        hd.[DPP],
         dt.[ItemID],
         dt.[Bags],
         dt.[Kgs],
-        dt.[Price],
-        dt.[Total] as TotalDt,
-        dt.[Satuan]
+        dt.[Satuan],
+        dt.[username]
       FROM [cp].[dbo].[taPOHD] AS hd
       INNER  JOIN [cp].[dbo].[taPODT] AS dt ON hd.[OrderID] = dt.[OrderID] and hd.[OrderType] = dt.[OrderType]
-    `;
+      INNER JOIN [cp].[dbo].[taSupplier] AS s ON hd.[CompanyID] = s.[CompanyID]
+      `;
 
     if (startDate && endDate) {
       query += ` WHERE hd.[OrderDate] >= @StartDate AND hd.[OrderDate] <= @EndDate
@@ -57,7 +50,7 @@ export async function GET(request: Request) {
     // Format the HeaderProdDate to show only the date part
     const formattedRecords = result.recordset.map((record) => ({
       ...record,
-      OrderDate: record.OrderDate.toISOString().split("T")[0],
+      Tanggal: record.Tanggal.toISOString().split("T")[0],
     }));
 
     return NextResponse.json(formattedRecords);

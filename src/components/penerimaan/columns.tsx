@@ -34,14 +34,14 @@ export const columns: ColumnDef<PenerimaanType>[] = [
     cell: ({ row }) => row.index + 1,
   },
   {
-    accessorKey: "MoveID",
+    accessorKey: "No_Transaksi",
     header: ({ column }) => {
       return (
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         >
-          MoveID
+          No Transaksi
           <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       );
@@ -61,7 +61,7 @@ export const columns: ColumnDef<PenerimaanType>[] = [
       );
     },
   },
-
+  { accessorKey: "Gudang", header: "Gudang" },
   { accessorKey: "Nopol", header: "Nopol" },
   { accessorKey: "Nopen", header: "Nopen" },
   { accessorKey: "Supplier", header: "Supplier" },

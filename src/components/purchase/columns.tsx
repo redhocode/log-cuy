@@ -33,47 +33,48 @@ export const columns: ColumnDef<PurchaseType>[] = [
     cell: ({ row }) => row.index + 1,
   },
   {
-    accessorKey: "OrderID",
+    accessorKey: "No_Transaksi",
     header: ({ column }) => {
       return (
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         >
-          OrderID
+          No Transaksi
           <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       );
     },
   },
   {
-    accessorKey: "OrderDate",
+    accessorKey: "Tanggal",
     header: ({ column }) => {
       return (
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         >
-          Order Date
+          Tanggal
           <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       );
     },
   },
-  { accessorKey: "OrderType", header: "Order Type" },
-  { accessorKey: "CompanyID", header: "Company ID" },
-  { accessorKey: "Total", header: "Total" },
-  { accessorKey: "Curr", header: "Curr" },
-  { accessorKey: "Rate", header: "Rate" },
-  { accessorKey: "TotalRp", header: "TotalRp" },
-  { accessorKey: "DueDate", header: "Due Date" },
-  { accessorKey: "Remark", header: "Remark" },
+  // { accessorKey: "OrderType", header: "Order Type" },
+  { accessorKey: "Supplier", header: "Supplier" },
+  // { accessorKey: "Total", header: "Total" },
+  // { accessorKey: "Curr", header: "Curr" },
+  // { accessorKey: "Rate", header: "Rate" },
+  // { accessorKey: "TotalRp", header: "TotalRp" },
+  // { accessorKey: "DueDate", header: "Due Date" },
+  { accessorKey: "Keterangan", header: "Keterangan" },
   { accessorKey: "TipeDok", header: "Tipe Dok" },
-  { accessorKey: "DPP", header: "DPP" },
+  // { accessorKey: "DPP", header: "DPP" },
   { accessorKey: "ItemID", header: "ItemID" },
   { accessorKey: "Bags", header: "Bags" },
   { accessorKey: "Kgs", header: "Kgs" },
   { accessorKey: "Price", header: "Price" },
-  { accessorKey: "TotalDt", header: "Total Item" },
+  // { accessorKey: "TotalDt", header: "Total Item" },
   { accessorKey: "Satuan", header: "Satuan" },
+  { accessorKey: "username", header: "User Name" },
 ];

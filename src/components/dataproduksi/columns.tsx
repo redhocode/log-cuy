@@ -55,14 +55,14 @@ export const columns = (
     cell: ({ row }) => row.index + 1,
   },
   {
-    accessorKey: "ProdID",
+    accessorKey: "No_Produksi",
     header: ({ column }) => {
       return (
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         >
-          ProdID
+          No Produksi
           <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       );
@@ -76,7 +76,7 @@ export const columns = (
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         >
-          Date Transaksi
+          Tanggal
           <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       );
