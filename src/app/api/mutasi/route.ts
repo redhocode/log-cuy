@@ -17,10 +17,10 @@ export async function GET(request: Request) {
 
     let query = `
       SELECT TOP (10000)
-        hd.[MoveID],
+        hd.[MoveID] AS No_Transaksi,
         hd.[MoveDate] AS Tanggal,
-        hd.[LocIDSrc] AS Gudang_Asal,
-        hd.[LocIDDest] AS Gudang_Tujuan,
+        g.[LocName] AS Gudang_Asal,
+        g.[LocName] AS Gudang_Tujuan,
         hd.[NoRator],
         hd.[Remark] AS Keterangan,
         dt.[ItemID],
@@ -31,6 +31,8 @@ export async function GET(request: Request) {
       INNER JOIN [cp].[dbo].[taMoveDT]
       AS dt ON hd.[MoveID] = dt.[MoveID]
       AND hd.[MoveType] = dt.[MoveType]
+      INNER JOIN [cp].[dbo].[taLocation] AS g ON hd.[LocIDSrc] = g.[LocID]
+      AND hd.[LocIDDest] = g.[LocID]
       WHERE hd.[MoveType] = 'R'
     `;
 

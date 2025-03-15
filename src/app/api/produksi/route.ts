@@ -19,14 +19,14 @@ export async function GET(request: Request) {
     const pool = await getPool();
     let query = `
       SELECT TOP (10000)
-        hd.[ProdID],
+        hd.[ProdID] AS No_Produksi,
         hd.[ProdDate] AS Tanggal,
-        hd.[DeptID] AS Departemen,
+        d.[PRDeptName] AS Departemen,
         dt.[ItemType] AS Tipe_Produksi,
         hd.[OrderID] AS SPK,
         hd.[NoRator],
         sp.[Remark] AS Nama_PO,
-        hd.[LocID] AS Gudang,
+        g.[LocName] AS Gudang,
         hd.[Remark],
         dt.[ItemID],
         dt.[Bags],
@@ -35,6 +35,8 @@ export async function GET(request: Request) {
       FROM [cp].[dbo].[taPRProdHd] AS hd
       INNER JOIN [cp].[dbo].[taPRProdDt] AS dt ON hd.[ProdID] = dt.[ProdID] AND hd.[ProdType] = dt.[ProdType]
       INNER JOIN [cp].[dbo].[taPROrder] AS sp ON hd.[OrderID] = sp.[OrderID]
+      INNER JOIN [cp].[dbo].[taLocation] AS g ON hd.[LocID] = g.[LocID]
+      INNER JOIN [cp].[dbo].[taDeptPROrder] AS d ON hd.[DeptID] = d.[PRDeptID]
       WHERE hd.[ProdType] IN ('IN','SP','MO','PL','AS') AND dt.[ItemType] IN ('B','H')
     `;
 

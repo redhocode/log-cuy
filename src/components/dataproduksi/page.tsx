@@ -190,8 +190,8 @@ const filteredData = data.filter((item: ProduksiType) => {
             className="border p-2 rounded-md"
           >
             <option value="">-- Type Inputan --</option>
-            <option value="B">Pengambilan Bahan</option>
-            <option value="H">Hasil Produksi</option>
+            <option value="B">Bahan Produksi (BP)</option>
+            <option value="H">Hasil Produksi (HP)</option>
             {/* Add other RefType options as needed */}
           </select>
         </CardHeader>

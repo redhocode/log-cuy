@@ -17,9 +17,9 @@ export async function GET(request: Request) {
 
     let query = `
       SELECT TOP (100000)
-        hd.[MoveID],
+        hd.[MoveID] AS No_Transaksi,
         hd.[MoveDate] AS Tanggal,
-        hd.[LocID] as Gudang,
+        g.[LocName] as Gudang,
         c.[CompanyName1] AS Supplier,
         hd.[Nopol],
         hd.[Nopen],
@@ -34,6 +34,7 @@ export async function GET(request: Request) {
       and hd.[TransID] = dt.[TransID]
       INNER JOIN [cp].[dbo].[taSupplier] AS c
       ON hd.[CompanyID] = c.[CompanyID]
+      INNER JOIN [cp].[dbo].[taLocation] AS g ON hd.[LocID] = g.[LocID]
     `;
 
     if (startDate && endDate) {

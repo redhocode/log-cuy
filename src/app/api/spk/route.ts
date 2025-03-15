@@ -20,10 +20,11 @@ export async function GET(request: Request) {
         hd.[OrderID] AS No_SPK,
         hd.[OrderDate] AS Tanggal_Order,
         hd.[Remark] AS Nama_PO,
-        hd.[PRDeptID] AS Departemen
+        d.[PRDeptName] AS Departemen
         FROM [cp].[dbo].[taPROrder] AS hd
         LEFT JOIN [cp].[dbo].[taPROrderDt] AS dt ON hd.[OrderID] = dt.[OrderID] AND hd.[OrderType] = dt.[OrderType]
-    `;
+        LEFT JOIN [cp].[dbo].[taDeptPROrder] AS d ON hd.[PRDeptID] = d.[PRDeptID]
+        `;
 
     if (startDate && endDate) {
       query += ` WHERE hd.[OrderDate] >= @StartDate AND hd.[OrderDate] <= @EndDate

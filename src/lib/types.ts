@@ -83,6 +83,7 @@ export type LbkType = {
   Gudang: string;
   Tanggal: Date;
   Keterangan: string;
+  No_Transaksi: string;
 };
 
 export type LbmType = {
@@ -104,6 +105,7 @@ export type LbmType = {
   Gudang: string;
   Tanggal: Date;
   Keterangan: string;
+  No_Transaksi: string;
 };
 export type PenerimaanType = {
   MoveID: string;
@@ -137,7 +139,7 @@ export type PenerimaanType = {
   RJN: number;
   Tanggal: Date;
   Gudang: string;
-  
+  No_Transaksi: string;
   
 }
 
@@ -196,6 +198,7 @@ export interface DataProduksi {
   Keterangan: string;
   NoRator: number;
   Nama_PO: string;
+  No_Produksi: string;
 }
 
 export interface MutasiType {
@@ -219,6 +222,7 @@ export interface MutasiType {
   Gudang_Tujuan: string;
   Keterangan: string;
   Tanggal: Date;
+  No_Transaksi: string;
 }
 
 export interface Spktype {
@@ -279,6 +283,11 @@ export interface PurchaseType {
   Price: number;
   TotalDetail: number;
   Satuan: string;
+  No_Transaksi: string;
+  Supplier: string;
+  Tanggal: Date;
+  Keterangan: string;
+
 }
 
 export interface kasType {
