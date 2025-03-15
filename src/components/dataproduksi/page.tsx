@@ -26,7 +26,7 @@ const DataProduksiPage: React.FC = () => {
     (state: RootState) => state.produksi
   );
    const [selectedRows, setSelectedRows] = React.useState<ProduksiType[]>([]);
-   const [searchTermRemark, setSearchTermRemark] = React.useState<string>("");
+   //const [searchTermRemark, setSearchTermRemark] = React.useState<string>("");
    const [prodType, setProdType] = React.useState<string>("");
    const [itemType, setitemType] = React.useState<string>("");
   const [searchTerm, setSearchTerm] = React.useState<string>("");
@@ -104,11 +104,11 @@ const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
   setSearchTerm(event.target.value);
 };
 
-const handleRemarkSearchChange = (
-  event: React.ChangeEvent<HTMLInputElement>
-) => {
-  setSearchTermRemark(event.target.value);
-};
+// const handleRemarkSearchChange = (
+//   event: React.ChangeEvent<HTMLInputElement>
+// ) => {
+//   setSearchTermRemark(event.target.value);
+// };
 const handleProdTypeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
   setProdType(event.target.value);
 };
@@ -122,12 +122,12 @@ const filteredData = data.filter((item: ProduksiType) => {
   );
 
   // Pencarian berdasarkan Remark
-  const matchesRemarkSearch = item.Remark
-    ? item.Remark.toLowerCase().includes(searchTermRemark.toLowerCase())
-    : false; // jika tidak ada Remark, anggap cocok
+  // const matchesRemarkSearch = item.Remark
+  //   ? item.Remark.toLowerCase().includes(searchTermRemark.toLowerCase())
+  //   : false; // jika tidak ada Remark, anggap cocok
 
   // Return data yang memenuhi kedua kriteria pencarian
-  return matchesGeneralSearch && matchesRemarkSearch;
+  return matchesGeneralSearch
 });
 
 
