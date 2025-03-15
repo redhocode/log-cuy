@@ -17,7 +17,7 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "kiw-kiw",
+  title: "Kiw ✖",
   description: "data",
   icons: {
     icon: [

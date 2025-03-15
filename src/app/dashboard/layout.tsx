@@ -8,7 +8,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import  AppSidebar  from "@/components/app-sidebar";
 import Maintenance from "../maintenance/page";
 export const metadata: Metadata = {
-  title: "kiw-kiw ✖",
+  title: "Kiw ✖",
   description: "data",
   icons: {
     icon: [

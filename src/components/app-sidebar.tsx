@@ -111,7 +111,7 @@ export default function AppSidebar() {
             <Annoyed className="h-5 w-5" />
             <Label className="text-lg font-semibold">
               <Link href="/dashboard" replace={false}>
-                Kiw-kiw
+                Keeping Wall
               </Link>
             </Label>
           </SidebarGroupLabel>
