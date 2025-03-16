@@ -51,12 +51,24 @@ const DashboardPage = () => {
   return (
     <>
       <div className="flex flex-col ">
+        <h1 className="text-9xl font-bold justify-center items-center mb-4 flex">
+          Keeping Wall
+        </h1>
         <Card className="w-[1000px]">
           <CardHeader>
             <CardTitle className="text-3xl font-bold justify-center items-center">
-              {userName && <p className="text-3xl">Welcome, {userName}!</p>}
+              {userName && <pre className="text-4xl">Selamat Datang di Sistem Moitoring Produksi 
+                <br/> 
+                <p className="antialiased">
+
+                {userName} 
+                </p>
+                
+                
+                </pre>}
             </CardTitle>
           </CardHeader>
+          <hr/>
           <CardContent>
           
       {/* <div className="flex justify-center">

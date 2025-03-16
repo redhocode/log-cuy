@@ -1,6 +1,13 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, useEffect, useRef } from "react";
+"use client";
 
+import React, { useState, useEffect, useRef } from "react";
+import { DataTable } from "../data-table"; // Import the DataTable component
+import { columns } from "./columns"; // Import columns from the separate file
+import Loading from "@/app/loading";
+import { Button } from "../ui/button";
+import { toast } from "sonner";
+import { Input } from "../ui/input";
+import { Send } from "lucide-react";
 const itemsToCheck = [
   "ABS CHIMEY PA-757",
   "pewarna 1834 (hitam)",
@@ -95,17 +102,26 @@ const itemsToCheck = [
   "Pigment Powder HBM201",
 ];
 
+interface StockItem {
+  itemid: string;
+  itemname: string;
+  stockAkhir: number;
+  kategori: string;
+  totalkgs: string; // Add this to match the data you're working with
+}
+
 const StockList: React.FC = () => {
-  const [data, setData] = useState<any[]>([]);
-  const [filteredData, setFilteredData] = useState<any[]>([]);
+  const [data, setData] = useState<StockItem[]>([]);
+  const [selectedRows, setSelectedRow] = useState<StockItem[]>([]); // Corrected type
+  const [filteredData, setFilteredData] = useState<StockItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
-
+ const [loadingNotification, setLoadingNotification] = useState<boolean>(false);
   const debounceTimeout = useRef<any>(null);
-
   const periodeR = "201905";
 
+  // Fetch stock data
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -137,28 +153,46 @@ const StockList: React.FC = () => {
     fetchData();
   }, []);
 
-  // Fungsi untuk mengirim pesan ke Telegram
-  const sendTelegramMessage = async (message: string) => {
-    try {
-      const response = await fetch("/api/notif", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ message }),
-      });
+  // Calculate stockAkhir for each item
+  const getStockAkhirPerItem = (data: any[]) => {
+    const stockAkhirMap: { [key: string]: number } = {};
+    const uniqueItemsMap: { [key: string]: any } = {};
 
-      const data = await response.json();
-      if (data.success) {
-        console.log("Message sent to Telegram:", message);
-      } else {
-        console.error("Failed to send message to Telegram");
+    data.forEach((item) => {
+      const { itemid, totalkgs } = item;
+
+      // Convert totalkgs to number and ensure it's not NaN
+      const total = parseFloat(totalkgs) || 0;
+      if (isNaN(total)) {
+        console.log(`Invalid totalKgs for item ${item.itemid}: ${totalkgs}`);
       }
-    } catch (error) {
-      console.error("Error sending message to Telegram:", error);
-    }
+      if (stockAkhirMap[itemid]) {
+        stockAkhirMap[itemid] += total;
+      } else {
+        stockAkhirMap[itemid] = total;
+      }
+
+      if (!uniqueItemsMap[itemid]) {
+        uniqueItemsMap[itemid] = item;
+      }
+    });
+
+    return Object.values(uniqueItemsMap).map((item) => ({
+      ...item,
+      stockAkhir: Math.round(stockAkhirMap[item.itemid] || 0), // Round stockAkhir to the nearest integer
+    }));
   };
 
+  // Apply the stockAkhir calculation
+  const dataWithStockAkhir = getStockAkhirPerItem(filteredData);
+
+  // Filter items with stock below 50 and items in the itemsToCheck list
+  const filteredItemsWithStockAkhir = dataWithStockAkhir.filter(
+    (item) =>
+      itemsToCheck.includes(item.itemname.trim()) && item.stockAkhir <= 50
+  );
+
+  // Handle search input
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const query = event.target.value;
     setSearchQuery(query);
@@ -178,113 +212,126 @@ const StockList: React.FC = () => {
     }, 300);
   };
 
-  const getStockAkhirPerItem = (data: any[]) => {
-    const stockAkhirMap: { [key: string]: number } = {};
-    const uniqueItemsMap: { [key: string]: any } = {};
+  // Send message to Telegram if stock is low
+  const sendTelegramMessage = async (message: string) => {
+    try {
+      const response = await fetch("/api/notif", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message }),
+      });
 
-    data.forEach((item) => {
-      const { itemid, totalkgs } = item;
-
-      // Konversi totalkgs ke number dan pastikan tidak NaN
-      const total = parseFloat(totalkgs) || 0;
-      if (isNaN(total)) {
-        console.log(`Invalid totalKgs for item ${item.itemid}: ${totalkgs}`);
-      }
-      if (stockAkhirMap[itemid]) {
-        stockAkhirMap[itemid] += total;
+      const data = await response.json();
+      if (data.success) {
+        console.log("Message sent to Telegram:", message);
       } else {
-        stockAkhirMap[itemid] = total;
+        console.error("Failed to send message to Telegram");
       }
-
-      if (!uniqueItemsMap[itemid]) {
-        uniqueItemsMap[itemid] = item;
-      }
-    });
-
-    return Object.values(uniqueItemsMap).map((item) => ({
-      ...item,
-      // Bulatkan ke bilangan bulat terdekat
-      stockAkhir: Math.round(stockAkhirMap[item.itemid] || 0),
-    }));
+    } catch (error) {
+      console.error("Error sending message to Telegram:", error);
+    } finally {
+      setLoadingNotification(false); // Set loading state to false when request completes
+    }
   };
 
-  const dataWithStockAkhir = getStockAkhirPerItem(filteredData);
-
-  const filteredItemsWithStockAkhir = dataWithStockAkhir.filter(
-    (item) => itemsToCheck.includes(item.itemname.trim()) && item.stockAkhir  <=50
-  );
-
   if (loading) {
-    return <div>Loading...</div>;
+    return <Loading />;
   }
 
   if (error) {
     return <div>Error: {error}</div>;
   }
 
-  // Kirim pesan ke Telegram jika ada item dengan stok menipis
-  if (filteredItemsWithStockAkhir.length > 0) {
-    const message =
-      `Stok barang berikut menipis, harap segera buat form permintaan:\n\n` +
-      filteredItemsWithStockAkhir
-        .map((item) => `- ${item.itemid} - ${item.itemname} (Stock: ${item.stockAkhir})`)
-        .join("\n");
+  //Send Telegram message if there are items with low stock
+if (filteredItemsWithStockAkhir.length > 0) {
+  const message =
+    `🚨 *Peringatan Stok Menipis* 🚨\n\n` +
+    filteredItemsWithStockAkhir
+      .map(
+        (item) =>
+          `   📦 Item ID: ${item.itemid}\n   🏷️ Item Name: ${item.itemname}\n   📊 Stock: ${item.stockAkhir}\n`
+      )
+      .join("\n") +
+    `👉 Harap segera buat form permintaan untuk barang yang stoknya menipis! 🔄`;
 
+  // Delay message sending by 5 seconds (5000 ms)
+  setTimeout(() => {
     sendTelegramMessage(message);
-  }
+  }, 5000);
+}
+
+  // Create the message for Telegram notification
+const createTelegramMessage = () => {
+  const header = `🚨 *Peringatan Stok Menipis* 🚨\n\n`;
+  const messageBody = filteredItemsWithStockAkhir
+    .map(
+      (item) =>
+        `   📦Item ID: ${item.itemid}\n   🏷️Item Name: ${item.itemname}\n   📊Stock: ${item.stockAkhir}\n`
+    )
+    .join("\n");
+
+  const footer = `👉 Segera buat form permintaan untuk barang yang stoknya menipis! 🔄`;
+
+  return header + messageBody + footer;
+};
+
+
+
+
+
+
+  // Handle send button click
+  const handleSendNotification = () => {
+    const message = createTelegramMessage();
+    sendTelegramMessage(message); // Send the message to Telegram
+    toast.success("Notification sent successfully!");
+  };
 
   return (
     <div>
-      <h1>Stock Bahan Baku</h1>
+      <h1> Laporan Stock Bahan Baku</h1>
 
       <div>
-        <input
+        <Input
           type="text"
-          placeholder="Search by ItemID, ItemName, or Category"
+          placeholder="Searc..........."
           value={searchQuery}
           onChange={handleSearchChange}
           style={{ marginBottom: "10px", padding: "5px", width: "300px" }}
         />
       </div>
-
+      <div className="mt-4">
+        <Button
+          onClick={handleSendNotification}
+          className="bg-blue-500 text-white p-2 rounded"
+          disabled={loadingNotification} // Disable button while sending
+        >
+          <Send className="mr-2 h-4 w-4" />
+          {loadingNotification ? "Sending..." : "Kirim Notifikasi"}
+        </Button>
+      </div>
       {filteredItemsWithStockAkhir.length > 0 ? (
         <>
           <div className="mb-2 text-red-500">
             <h1>Stock Menipis Harap Segera Membuat Form Permintaan</h1>
           </div>
 
-          <table
-            border={2}
-            style={{ width: "100%", textAlign: "left" }}
-            className="table-fixed"
-          >
-            <thead>
-              <tr>
-                <th>ItemID</th>
-                <th>Name</th>
-                <th>Stock</th>
-                <th>Kategori</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredItemsWithStockAkhir.map((item, index) => (
-                <tr key={index}>
-                  <td>{item.itemid}</td>
-                  <td>{item.itemname}</td>
-                  <td>{item.stockAkhir}</td>
-                  <td>{item.kategori}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {/* Pass the filtered data (with stockAkhir <= 50) */}
+          <DataTable
+            columns={columns(setSelectedRow)} // Pass the columns properly
+            data={filteredItemsWithStockAkhir} // Only pass items with stockAkhir <= 50
+          />
+
+          {/* Button to send notification */}
         </>
       ) : (
         <div className="mb-2 text-gray-500">
-          <h1>Tidak ada data</h1>
+          <h1>Tidak ada data dengan stok kurang dari 50</h1>
         </div>
       )}
     </div>
   );
 };
-
 export default StockList;
