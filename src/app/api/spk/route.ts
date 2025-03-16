@@ -26,10 +26,11 @@ export async function GET(request: Request) {
         LEFT JOIN [cp].[dbo].[taDeptPROrder] AS d ON hd.[PRDeptID] = d.[PRDeptID]
         `;
 
-    if (startDate && endDate) {
-      query += ` WHERE hd.[OrderDate] >= @StartDate AND hd.[OrderDate] <= @EndDate
-`;
-    }
+   if (startDate && endDate) {
+  query += ` WHERE CONVERT(DATE, hd.[OrderDate]) >= @StartDate 
+            AND CONVERT(DATE, hd.[OrderDate]) <= @EndDate`;
+}
+
     query += ` ORDER BY hd.[OrderDate] DESC`;
 
     const requestQuery = pool.request();

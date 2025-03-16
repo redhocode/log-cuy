@@ -33,7 +33,7 @@ export const columns: ColumnDef<LbmType>[] = [
     cell: ({ row }) => row.index + 1,
   },
   {
-    accessorKey: "No_Trnasksi",
+    accessorKey: "No_Transaksi",
     header: ({ column }) => {
       return (
         <Button

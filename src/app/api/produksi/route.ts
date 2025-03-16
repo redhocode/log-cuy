@@ -43,11 +43,12 @@ export async function GET(request: Request) {
     const conditions: string[] = [];
 
     // Menambahkan filter berdasarkan tanggal, jika ada
-    if (startDate && endDate) {
-      conditions.push(
-        `hd.[ProdDate] >= @StartDate AND hd.[ProdDate] <= @EndDate`
-      );
-    }
+  if (startDate && endDate) {
+    conditions.push(
+      `CONVERT(DATE, hd.[ProdDate]) >= @StartDate AND CONVERT(DATE, hd.[ProdDate]) <= @EndDate`
+    );
+  }
+
 
     // Menambahkan filter berdasarkan remark, jika ada (cari 5 karakter terakhir)
     // if (remark) {
