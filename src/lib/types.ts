@@ -463,3 +463,13 @@ export interface DataProduksi2 {
   OrderType: string;
   Shift: string;
 }
+
+export  interface notif {
+  itemid: string;
+  nama: string;
+  stockAkhir: number;
+  qty: number;
+  kategori: string;
+  itemName:string;
+
+}
