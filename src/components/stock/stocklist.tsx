@@ -1,4 +1,7 @@
 "use client";
+/*@typescript-eslint/no-explicit-any*/
+/*@typescript-eslint/no-unused-vars*/
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import React, { useState, useEffect, useRef } from "react";
 import { DataTable } from "../data-table"; // Import the DataTable component
@@ -112,7 +115,7 @@ interface StockItem {
 
 const StockList: React.FC = () => {
   const [data, setData] = useState<StockItem[]>([]);
-  const [selectedRows, setSelectedRow] = useState<StockItem[]>([]); // Corrected type
+  const [selectedRows, setSelectedRow] = useState<StockItem[]>([]);  // eslint-disable-line @typescript-eslint/no-unused-vars
   const [filteredData, setFilteredData] = useState<StockItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
