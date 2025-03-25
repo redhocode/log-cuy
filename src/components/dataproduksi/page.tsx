@@ -25,20 +25,17 @@ const DataProduksiPage: React.FC = () => {
   const { data, loading, error } = useSelector(
     (state: RootState) => state.produksi
   );
-   const [selectedRows, setSelectedRows] = React.useState<ProduksiType[]>([]);
-   //const [searchTermRemark, setSearchTermRemark] = React.useState<string>("");
-   const [prodType, setProdType] = React.useState<string>("");
-   const [itemType, setitemType] = React.useState<string>("");
+  const [selectedRows, setSelectedRows] = React.useState<ProduksiType[]>([]);
+  //const [searchTermRemark, setSearchTermRemark] = React.useState<string>("");
+  const [prodType, setProdType] = React.useState<string>("");
+  const [itemType, setitemType] = React.useState<string>("");
   const [searchTerm, setSearchTerm] = React.useState<string>("");
-   const EXCEL_TYPE =
-     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8";
-   const EXCEL_EXTENSION = ".xlsx";
+  const EXCEL_TYPE =
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8";
+  const EXCEL_EXTENSION = ".xlsx";
 
   useEffect(() => {
-    const myPromise = dispatch(
-      fetchProduksiData({prodType, itemType
-      })
-    );
+    const myPromise = dispatch(fetchProduksiData({ prodType, itemType }));
     toast.promise(myPromise, {
       loading: "Loading...",
       success: "Data fetched successfully!",
@@ -46,27 +43,59 @@ const DataProduksiPage: React.FC = () => {
     });
   }, [dispatch, prodType, itemType]);
   const handleExport = () => {
- const rowsToExport = selectedRows.length > 0 ? selectedRows : data;
- if (rowsToExport.length === 0) {
-   toast.error("Please select rows to export");
-   return;
- }
+    let rowsToExport = [];
 
- const ws = XLSX.utils.json_to_sheet(rowsToExport); 
+    // Check if there are selected rows
+    if (selectedRows.length > 0) {
+      rowsToExport = selectedRows;
+    } else {
+      // If no rows are selected, apply the search filter if a search term exists
+      if (searchTerm) {
+        rowsToExport = data.filter(
+          (item) =>
+            item.ItemID?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            item.OrderID?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            item.Remark?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (item.NoRator !== null &&
+              item.NoRator !== undefined &&
+              String(item.NoRator).includes(searchTerm.toLowerCase())) ||
+            // Adjust 'someField' based on your data structure
+            item.ProdID?.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+      } else {
+        // If no search term, export all data
+        rowsToExport = data;
+      }
+    }
+
+    // Check if there are rows to export
+    if (rowsToExport.length === 0) {
+      toast.error(
+        "Please select rows or ensure there is data matching your search filter."
+      );
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(rowsToExport);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Data Produksi");
+
     const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
     const blob = new Blob([excelBuffer], { type: EXCEL_TYPE });
-    saveAs(blob, `Data_Produksi${EXCEL_EXTENSION}`);
+
+    saveAs(
+      blob,
+      `Data_Produksi_${searchTerm ? searchTerm : ""}${EXCEL_EXTENSION}`
+    );
   };
-    const handleRefresh = () => {
-      const myPromise = dispatch(fetchProduksiData({})); // Fetch data without filters on initial load
-      toast.promise(myPromise, {
-        loading: "Loading...",
-        success: "Data fetched successfully!",
-        error: "Error fetching data",
-      });
-    };
+  const handleRefresh = () => {
+    const myPromise = dispatch(fetchProduksiData({})); // Fetch data without filters on initial load
+    toast.promise(myPromise, {
+      loading: "Loading...",
+      success: "Data fetched successfully!",
+      error: "Error fetching data",
+    });
+  };
   // const handleExportByRemark = () => {
   //   // Apply the Remark search filter (searchTermRemark) before exporting
   //   const filteredRows = filteredData.filter((item) =>
@@ -96,40 +125,48 @@ const DataProduksiPage: React.FC = () => {
       console.log("Both start date and end date must be selected");
       return; // Mungkin beri tahu pengguna
     }
-    console.log("Dispatching fetchProduksiData with:", { startDate, endDate, prodType, itemType });
+    console.log("Dispatching fetchProduksiData with:", {
+      startDate,
+      endDate,
+      prodType,
+      itemType,
+    });
     dispatch(fetchProduksiData({ startDate, endDate, prodType, itemType }));
   };
 
-const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-  setSearchTerm(event.target.value);
-};
+  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(event.target.value);
+  };
 
-// const handleRemarkSearchChange = (
-//   event: React.ChangeEvent<HTMLInputElement>
-// ) => {
-//   setSearchTermRemark(event.target.value);
-// };
-const handleProdTypeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-  setProdType(event.target.value);
-};
-const handleItemTypeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-  setitemType(event.target.value);
-}
-const filteredData = data.filter((item: ProduksiType) => {
-  // Pencarian umum untuk semua kolom
-  const matchesGeneralSearch = Object.values(item).some((value) =>
-    String(value).toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // const handleRemarkSearchChange = (
+  //   event: React.ChangeEvent<HTMLInputElement>
+  // ) => {
+  //   setSearchTermRemark(event.target.value);
+  // };
+  const handleProdTypeChange = (
+    event: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    setProdType(event.target.value);
+  };
+  const handleItemTypeChange = (
+    event: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    setitemType(event.target.value);
+  };
+  const filteredData = data.filter((item: ProduksiType) => {
+    // Pencarian umum untuk semua kolom
+    const matchesGeneralSearch = Object.values(item).some((value) =>
+      String(value).toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
-  // Pencarian berdasarkan Remark
-  // const matchesRemarkSearch = item.Remark
-  //   ? item.Remark.toLowerCase().includes(searchTermRemark.toLowerCase())
-  //   : false; // jika tidak ada Remark, anggap cocok
+    // Pencarian berdasarkan Remark
+    // const matchesRemarkSearch = item.Remark
+    //   ? item.Remark.toLowerCase().includes(searchTermRemark.toLowerCase())
+    //   : false; // jika tidak ada Remark, anggap cocok
 
-  // Return data yang memenuhi kedua kriteria pencarian
-  return matchesGeneralSearch
-});
-
+    // Return data yang memenuhi kedua kriteria pencarian
+    return matchesGeneralSearch;
+  });
 
   if (loading) return <Loading />;
   if (error) return <div>Error: {error}</div>;
