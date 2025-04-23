@@ -15,49 +15,59 @@ export async function GET(request: Request) {
 
     // Menyusun query SQL untuk mengambil data
     let query = `
-SELECT 
-    pohd.[OrderID] AS SPK,
-    pohd.[Remark] AS Name,
-    CONVERT(DATE, pohd.[OrderDate]) AS OrderDate,
-    CONVERT(DATE, pohd.[PlanDate]) AS PlanDate,
-    pohd.[ItemID] AS Item_PO,
-    pohd.[Kgs] AS Qty_PO,
-    prod.[ItemType],
-    prod.[ProdType] AS Dept,
-    prod.[ItemID] AS Item_Prod,
-    SUM(prod.[Kgs]) AS Qty_Prod, -- Menjumlahkan Qty_Prod
-    MAX(CONVERT(DATE, prod.[ProdDate])) AS Produksi, -- Mengambil tanggal produksi terbaru
-    CASE
-        WHEN SUM(prod.[Kgs]) IS NULL THEN 'Belum Produksi' 
-        WHEN pohd.[Kgs] = SUM(prod.[Kgs]) THEN 'Selesai'
-        WHEN pohd.[Kgs] > SUM(prod.[Kgs]) THEN 'Belum Selesai'
-        ELSE 'Produksi Lebih'
-    END AS Status
-FROM [CP].[dbo].[taPROrder] AS pohd
-LEFT JOIN [CP].[dbo].[taPRProdDt] AS prod 
-    ON prod.[ItemID] = pohd.[ItemID]
-    AND prod.[OrderID] = pohd.[OrderID]  -- Menjaga kecocokan OrderID pada JOIN
-WHERE 
-    YEAR(pohd.[OrderDate]) = 2025 -- Filter berdasarkan tahun OrderDate
-    AND (prod.[ItemType] = 'H' OR prod.[ProdDate] IS NULL) -- Menampilkan yang belum diproduksi
-  `;
-    if (startDate && endDate) {
-      query += ` AND CONVERT(DATE, pohd.[OrderDate]) >= @startDate AND CONVERT(DATE, pohd.[OrderDate]) <= @endDate`;
-    }
+    SELECT 
+        pohd.[OrderID] AS SPK,
+        pohd.[Remark] AS Name,
+        CONVERT(DATE, pohd.[OrderDate]) AS OrderDate,
+        CONVERT(DATE, pohd.[PlanDate]) AS PlanDate,
+        pohd.[ItemID] AS Item_PO,
+        pohd.[Kgs] AS Qty_PO,
+        prod.[ItemType],
+        prod.[ProdType] AS Dept,
+        prod.[ItemID] AS Item_Prod,
+        SUM(prod.[Kgs]) AS Qty_Prod, 
+        MAX(CONVERT(DATE, prod.[ProdDate])) AS Produksi, -- Mengambil tanggal produksi terbaru
+        CASE
+            WHEN SUM(prod.[Kgs]) IS NULL THEN 'Belum Produksi' 
+            WHEN pohd.[Kgs] = SUM(prod.[Kgs]) THEN 'Selesai'
+            WHEN pohd.[Kgs] > SUM(prod.[Kgs]) THEN 'Belum Selesai'
+            ELSE 'Produksi Lebih'
+        END AS Status
+    FROM [CP].[dbo].[taPROrder] AS pohd
+    LEFT JOIN [CP].[dbo].[taPRProdDt] AS prod 
+        ON prod.[ItemID] = pohd.[ItemID]
+        AND prod.[ProdType] = pohd.[PRDeptID]  -- Menjaga kecocokan antara ProdType dan PRDeptID
+        -- Mengelompokkan berdasarkan bulan dan tahun yang sama
+        AND YEAR(prod.[ProdDate]) = YEAR(pohd.[OrderDate])
+        AND MONTH(prod.[ProdDate]) = MONTH(pohd.[OrderDate])
+    WHERE 
+        YEAR(pohd.[OrderDate]) = 2025 -- Filter berdasarkan tahun OrderDate
+        AND (prod.[ItemType] = 'H' OR prod.[ProdDate] IS NULL) -- Menampilkan yang belum diproduksi
+        AND prod.[ProdDate] IS NOT NULL -- Hanya data yang memiliki ProdDate yang tidak null
+    `;
 
-    query += `
-GROUP BY
-    pohd.[OrderID],
-    pohd.[Remark],
-    pohd.[OrderDate],
-    pohd.[PlanDate],
-    pohd.[ItemID],
-    pohd.[Kgs],
-    prod.[ItemType],
-    prod.[ProdType],
-    prod.[ItemID]
-ORDER BY pohd.[OrderDate] DESC;
+if (startDate && endDate) {
+    query += ` AND CONVERT(DATE, pohd.[OrderDate]) >= @startDate AND CONVERT(DATE, pohd.[OrderDate]) <= @endDate`;
+}
+
+query += `
+    GROUP BY
+        pohd.[OrderID],
+        pohd.[Remark],
+        pohd.[OrderDate],
+        pohd.[PlanDate],
+        pohd.[ItemID],
+        pohd.[Kgs],
+        prod.[ItemType],
+        prod.[ProdType],
+        prod.[ItemID]
+    ORDER BY pohd.[OrderDate] DESC;
 `;
+
+
+    
+    
+    
     // Menyiapkan parameter untuk query jika ada
     const requestQuery = pool.request();
 

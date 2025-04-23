@@ -25,6 +25,7 @@ export async function GET(request: Request) {
         a.[ItemID],
         a.[ItemName],
         a.[ItemNameBuy],
+        a.[warna],
         a.[Mark],
         a.[KodeJenis],
         a.[SatuanKecil],

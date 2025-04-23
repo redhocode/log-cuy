@@ -30,8 +30,12 @@ import { Label } from "./ui/label";
 const masterItems = [
   { href: "/dashboard/", label: "Stock Gudang", icon: BellDot },
   { href: "/dashboard/barang", label: "Master Barang", icon: Package2 },
+<<<<<<< HEAD
   // { href: "/dashboard/cekppn", label: "Hitung PPN", icon: Package2 },
   { href: "/dashboard/pengeluaran", label: "Notif Exim", icon: BellDot},
+=======
+  { href: "/dashboard/cekppn", label: "Hitung PPN", icon: Package2 },
+>>>>>>> f056b3e0518232ca0144ea08abef123b3187160e
   { href: "/dashboard/supplier", label: "Supplier", icon: User2 },
   { href: "/dashboard/absensi", label: "Disk log Ansensi", icon: TimerReset},
   // { href: "/dashboard/print", label: "Nota Jual", icon: Printer },
