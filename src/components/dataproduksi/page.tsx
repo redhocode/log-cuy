@@ -68,7 +68,6 @@ const DataProduksiPage: React.FC = () => {
       }
     }
 
-    // Check if there are rows to export
     if (rowsToExport.length === 0) {
       toast.error(
         "Please select rows or ensure there is data matching your search filter."

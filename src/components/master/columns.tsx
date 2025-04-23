@@ -86,6 +86,7 @@ export const columns = (
     ),
   },
   { accessorKey: "ItemNameBuy", header: "Name Item Buy" },
+  { accessorKey: "warna", header: "Warna" },
   { accessorKey: "Spec", header: "Spesifikasi" },
   { accessorKey: "SatuanKecil", header: "Satuan" },
   { accessorKey: "KodeJenis", header: "Kode" },
