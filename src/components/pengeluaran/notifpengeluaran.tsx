@@ -3,6 +3,10 @@ import React, { useEffect, useState } from "react";
 import { DataTable } from "../data-table";
 import { columns as getColumns } from "./columns";
 import Loading from "@/app/loading";
+import { Input } from "../ui/input";
+import { Button } from "../ui/button";
+//import { toast } from "sonner";
+import { Send } from "lucide-react";
 
 export interface pengeluaran {
   PembeliPeneima: string;
@@ -18,6 +22,7 @@ export default function PengeluaranPage() {
   const [data, setData] = useState<pengeluaran[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRows, setSelectedRows] = useState<pengeluaran[]>([]);
+//   const [loadingNotification, setLoadingNotification] = useState<boolean>(false);
   const [tgl1, setTgl1] = useState<string>(
     new Date().toISOString().split("T")[0]
   );
@@ -105,7 +110,7 @@ const handleSendTelegram = async () => {
 
   await sendTelegramMessage(header + body);
 }
-
+ 
   useEffect(() => {
     fetchData();
   }, [tgl1, tgl2]);
@@ -122,7 +127,7 @@ const handleSendTelegram = async () => {
           <label htmlFor="tgl1" className="block text-sm font-semibold">
             Tanggal Mulai
           </label>
-          <input
+          <Input
             type="date"
             id="tgl1"
             value={tgl1}
@@ -134,7 +139,7 @@ const handleSendTelegram = async () => {
           <label htmlFor="tgl2" className="block text-sm font-semibold">
             Tanggal Selesai
           </label>
-          <input
+          <Input
             type="date"
             id="tgl2"
             value={tgl2}
@@ -142,20 +147,21 @@ const handleSendTelegram = async () => {
             className="p-2 border rounded"
           />
         </div>
-        <button
+        <Button
           onClick={fetchData}
           className="px-4 py-2 bg-blue-600 text-white rounded-md"
         >
           Filter
-        </button>
+        </Button>
+        <Button
+          onClick={handleSendTelegram}
+          className="px-4 py-2 bg-blue-600 text-white rounded-md"
+          disabled={data.length === 0}
+        >
+          <Send className="mr-2 h-4 w-4" />
+          Kirim Notif
+        </Button>
       </div>
-  <button
-    onClick={handleSendTelegram}
-    className="px-4 py-2 bg-green-600 text-white rounded-md"
-    disabled={data.length === 0}
-  >
-    Kirim Notif Telegram
-  </button>
 
       {/* Tampilkan jumlah data dipilih */}
       {selectedRows.length > 0 && (
