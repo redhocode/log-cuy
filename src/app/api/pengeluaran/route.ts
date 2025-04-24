@@ -25,12 +25,12 @@ export async function GET(req: NextRequest) {
       .execute("rpPengeluaran");
 
     // Memformat TanggalSuratJalan agar hanya menampilkan tanggal tanpa waktu
-    const formattedResults = result.recordset.map((item: pengeluaran) => ({
-      ...item,
-      TanggalSuratJalan: item.TanggalSuratJalan
-        ? item.TanggalSuratJalan.toString().split("T")[0] // Format menjadi hanya tanggal
-        : null,
-    }));
+  const formattedResults = result.recordset.map((item: pengeluaran) => ({
+    ...item,
+    TanggalSuratJalan: item.TanggalSuratJalan
+      ? new Date(item.TanggalSuratJalan).toISOString().split("T")[0]
+      : null,
+  }));
 
     return NextResponse.json(formattedResults);
   } catch (error) {
