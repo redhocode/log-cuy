@@ -16,6 +16,7 @@ import { FileUp, RefreshCcw, Search } from "lucide-react";
 import { ProduksiType } from "@/lib/types";
 import * as XLSX from "xlsx";
 import { Button } from "../ui/button";
+import Link from "next/link";
 // import ChartComponent from "../chartexp";
 // Create a typed version of useDispatch
 const useAppDispatch = () => useDispatch<AppDispatch>();
@@ -195,16 +196,11 @@ const DataProduksiPage: React.FC = () => {
                   className="pl-8 sm:w-[300px] md:w-[200px] lg:w-[300px]"
                 />
               </div>
-              {/* <div className="mt-3 relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="search"
-                  onChange={handleRemarkSearchChange}
-                  value={searchTermRemark}
-                  placeholder="Search by No Rator"
-                  className="pl-8 sm:w-[300px] md:w-[200px] lg:w-[300px]"
-                />
-              </div> */}
+              <div className="mt-3 relative">
+               <Button className="bg-yellow-500 text-white">
+                <Link href={'https://kiiw.citiplumb.id'}>Export Data to ERP</Link>
+               </Button>
+              </div>
             </form>
           </div>
           <select
