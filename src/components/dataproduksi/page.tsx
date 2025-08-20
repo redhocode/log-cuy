@@ -47,8 +47,8 @@ const DataProduksiPage: React.FC = () => {
     let rowsToExport = [];
 
     // Check if there are selected rows
-    if (selectedRows.length > 0) {
-      rowsToExport = selectedRows;
+    if (selectedRows.length && setSearchTerm.length > 0) {
+      rowsToExport = selectedRows ;
     } else {
       // If no rows are selected, apply the search filter if a search term exists
       if (searchTerm) {
