@@ -57,7 +57,14 @@ export async function GET(req: Request) {
     };
 
     // Call function to get data from stored procedure
-    const data = await getRpStockL(params);
+    // Measure execution time
+const startTime = Date.now();
+const data = await getRpStockL(params);
+const endTime = Date.now();
+const duration = endTime - startTime;
+
+console.log(`🕒 Stored Procedure executed in ${duration} ms`);
+
 const stockAkhir = data.reduce(
   (acc, item) => {
     // Pastikan `totalkgs` di-convert menjadi number
