@@ -108,11 +108,11 @@ export default function AppSidebar() {
     <Sidebar>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="text-lg">
+          <SidebarGroupLabel className="text-lg pb-1">
             <Annoyed className="h-5 w-5" />
             <Label className="text-lg font-semibold">
               <Link href="/dashboard" replace={false}>
-                Keeping Wall
+                Kiw
               </Link>
             </Label>
           </SidebarGroupLabel>

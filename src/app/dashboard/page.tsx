@@ -52,7 +52,7 @@ const DashboardPage = () => {
     <>
       <div className="flex flex-col ">
         <h1 className="text-9xl font-bold justify-center items-center mb-4 flex">
-          Keeping Wall
+          KIW-KIW
         </h1>
         <Card className="w-[1000px]">
           <CardHeader>

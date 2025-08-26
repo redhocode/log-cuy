@@ -136,15 +136,17 @@ const StockList: React.FC = () => {
         );
 
         if (!response.ok) {
-          throw new Error("Failed to fetch data");
+          setError("System Busy, Please reload");
+          return;
         }
+        
 
         const result = await response.json();
         if (result.data) {
           setData(result.data);
           setFilteredData(result.data);
         } else {
-          setError("No data found");
+          setError("System Busy, Please relaod");
         }
       } catch (err: any) {
         setError(err.message);
