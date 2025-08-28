@@ -1,6 +1,6 @@
 "use client";
 import { useRouter, usePathname } from "next/navigation";
-import {  Package2, Import, User2, ChevronUp, Annoyed, User,BellDot,Banknote,Blocks,Landmark,Wallet,TimerReset } from "lucide-react";
+import {  Package2, Import, User2, ChevronUp, Annoyed, User,BellDot,TimerReset } from "lucide-react";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,6 +44,7 @@ const navItems = [
   { href: "/dashboard/lbk", label: "LBK", icon: Package2 },
   { href: "/dashboard/retur", label: "Retur Produksi", icon: Package2 },
   { href: "/dashboard/mutasi", label: "Mutasi Gudang", icon: Package2 },
+  { href: "/dashboard/kartustock", label: "Kartu Stock", icon: Package2 },
   //   { href: "/dashboard/import", label: "Import", icon: Import },
 ];
 
@@ -62,22 +63,22 @@ const Items2 = [
   { href: "/dashboard/trackpo", label: "Track PO", icon: Package2 },
   // { href: "/dashboard/laprod", label: "LapProd", icon: Package2 },
 ];
-const Items3 = [
-  { href: "/dashboard/kas", label: "Kas", icon: Wallet, disabled: true },
-  { href: "/dashboard/bank", label: "Bank", icon: Landmark, disabled: true },
-  {
-    href: "/dashboard/jurnal",
-    label: "Jurnal Umum",
-    icon: Banknote,
-    disabled: true,
-  },
-  {
-    href: "/dashboard/glbarang",
-    label: "Barang GL",
-    icon: Blocks,
-    disabled: true,
-  },
-];
+// const Items3 = [
+//   { href: "/dashboard/kas", label: "Kas", icon: Wallet, disabled: true },
+//   { href: "/dashboard/bank", label: "Bank", icon: Landmark, disabled: true },
+//   {
+//     href: "/dashboard/jurnal",
+//     label: "Jurnal Umum",
+//     icon: Banknote,
+//     disabled: true,
+//   },
+//   {
+//     href: "/dashboard/glbarang",
+//     label: "Barang GL",
+//     icon: Blocks,
+//     disabled: true,
+//   },
+// ];
 const Items4 = [
   { href: "/dashboard/loguser", label: "Log Users", icon: User },
   // { href: "/dashboard/logacr", label: "Log Acc", icon: User}
@@ -148,7 +149,7 @@ export default function AppSidebar() {
                 </SidebarMenuItem>
               </Collapsible>
               {/* Collapsible Section with Nav Links */}
-              <Collapsible defaultOpen className="group/collapsible">
+              {/* <Collapsible defaultOpen className="group/collapsible">
                 <SidebarMenuItem>
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton className="flex items-center gap-2">
@@ -184,7 +185,7 @@ export default function AppSidebar() {
                     </SidebarMenuSub>
                   </CollapsibleContent>
                 </SidebarMenuItem>
-              </Collapsible>
+              </Collapsible> */}
               {/* Collapsible Section with Nav Links */}
               <Collapsible defaultOpen className="group/collapsible">
                 <SidebarMenuItem>
