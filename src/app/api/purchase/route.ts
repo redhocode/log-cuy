@@ -26,6 +26,7 @@ export async function GET(request: Request) {
         dt.[Bags],
         dt.[Kgs],
         dt.[Satuan],
+        dt.[Price],
         dt.[username]
       FROM [cp].[dbo].[taPOHD] AS hd
       INNER  JOIN [cp].[dbo].[taPODT] AS dt ON hd.[OrderID] = dt.[OrderID] and hd.[OrderType] = dt.[OrderType]
