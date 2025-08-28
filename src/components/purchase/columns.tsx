@@ -72,7 +72,7 @@ export const columns: ColumnDef<PurchaseType>[] = [
   // { accessorKey: "DPP", header: "DPP" },
   { accessorKey: "ItemID", header: "ItemID" },
   { accessorKey: "Bags", header: "Bags" },
-  { accessorKey: "Kgs", header: "Kgs" },
+  { accessorKey: "Kgs", header: "Qty" },
   { accessorKey: "Price", header: "Price" },
   // { accessorKey: "TotalDt", header: "Total Item" },
   { accessorKey: "Satuan", header: "Satuan" },
