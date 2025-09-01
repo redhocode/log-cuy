@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
@@ -5,6 +6,9 @@ import { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
+import * as XLSX from "xlsx";
+import { saveAs } from "file-saver";
+
 import {
   Select,
   SelectContent,
@@ -12,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
 interface KartuStockData {
   Item: string;
   Loc: string;
@@ -34,7 +39,6 @@ interface FormState {
   item: string;
   itemid: string;
   kategori: string;
-  saldoAwalManual?: number | "";
 }
 
 export default function KartuStockPage() {
@@ -43,18 +47,23 @@ export default function KartuStockPage() {
   const [error, setError] = useState("");
   const [items, setItems] = useState<{ id: string; name: string }[]>([]);
   const [gudangFilter, setGudangFilter] = useState("Gudang Utama");
+  const [saldoAwalKegiatanS, setSaldoAwalKegiatanS] = useState<number | null>(
+    null
+  );
+  const [saldoAwalSistem, setSaldoAwalSistem] = useState(0);
 
+  const [saldoSemuaGudang, setSaldoSemuaGudang] = useState<
+    { gudang: string; saldo: number }[]
+  >([]);
   const [form, setForm] = useState<FormState>({
     tgl1: "2025-07-01",
     tgl2: "2025-07-31",
     item: "",
     itemid: "",
     kategori: "",
-    saldoAwalManual: "",
   });
 
-  // untuk fitur search input item
-  const [searchTerm, setSearchTerm] = useState("");
+  // fitur search input item
   const [searchResults, setSearchResults] = useState<
     { id: string; name: string }[]
   >([]);
@@ -64,18 +73,8 @@ export default function KartuStockPage() {
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
-    if (name === "saldoAwalManual") {
-      setForm((prev) => ({
-        ...prev,
-        [name]: value === "" ? "" : Number(value),
-      }));
-      return;
-    }
 
-    if (name === "itemid") {
-      // Jangan pakai ini lagi karena sekarang pake search input
-      return;
-    }
+    if (name === "itemid") return;
 
     setForm((prev) => ({
       ...prev,
@@ -83,7 +82,6 @@ export default function KartuStockPage() {
     }));
 
     if (name === "item") {
-      setSearchTerm(value);
       if (value.trim() === "") {
         setSearchResults([]);
       } else {
@@ -94,22 +92,19 @@ export default function KartuStockPage() {
         );
         setSearchResults(filtered);
       }
-      setForm((prev) => ({ ...prev, itemid: "" })); // reset itemid saat ketik
+      setForm((prev) => ({ ...prev, itemid: "" }));
     }
   };
 
-  // Ketika user pilih item dari dropdown search
   const handleSelectItem = (item: { id: string; name: string }) => {
     setForm((prev) => ({
       ...prev,
       itemid: item.id,
       item: item.name,
     }));
-    setSearchTerm(item.name);
     setSearchResults([]);
   };
 
-  // Klik di luar dropdown tutup dropdown search
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -120,17 +115,13 @@ export default function KartuStockPage() {
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Load items
   useEffect(() => {
     const fetchItems = async () => {
       try {
         const res = await axios.get("/api/master");
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const mapped = res.data.map((item: any) => ({
           id: item.ItemID,
           name: item.ItemName,
@@ -143,7 +134,6 @@ export default function KartuStockPage() {
     fetchItems();
   }, []);
 
-  // Fetch data seperti semula
   const fetchData = async () => {
     setLoading(true);
     setError("");
@@ -155,9 +145,9 @@ export default function KartuStockPage() {
     }
 
     try {
-      // Adjust tgl2 -> tambah 1 hari
       const tgl2Next = new Date(form.tgl2);
       tgl2Next.setDate(tgl2Next.getDate() + 1);
+
       const adjustedForm = {
         ...form,
         tgl2: tgl2Next.toISOString().slice(0, 10),
@@ -166,103 +156,106 @@ export default function KartuStockPage() {
       const params = new URLSearchParams(
         adjustedForm as unknown as Record<string, string>
       ).toString();
+
       const res = await axios.get<KartuStockData[]>(
         `/api/kartustock?${params}`
       );
 
-      const parseDate = (dateStr: string): Date => {
-        const [year, month, day] = dateStr.split("-").map(Number);
-        return new Date(year, month - 1, day, 12, 0, 0, 0);
-      };
-
-      const startDate = parseDate(form.tgl1);
-      const endDateInclusive = parseDate(form.tgl2);
-      const endDateExclusive = new Date(endDateInclusive);
-      endDateExclusive.setDate(endDateExclusive.getDate() + 1);
-
-      const transaksi = res.data.filter((row) => {
-        const md = new Date(row.MoveDate);
-        return (
-          row.Kegiatan !== "S" &&
-          row.LocName?.trim().toLowerCase() === gudangFilter.toLowerCase() &&
-          row.ItemID.toUpperCase() === form.itemid.toUpperCase() &&
-          md >= startDate &&
-          md < endDateExclusive
-        );
-      });
-
-      const tgl1Current = new Date(form.tgl1);
-      const prevStart = new Date(
-        tgl1Current.getFullYear(),
-        tgl1Current.getMonth() - 1,
-        1
-      );
-      const prevEnd = new Date(
-        tgl1Current.getFullYear(),
-        tgl1Current.getMonth(),
-        0
-      );
-
-      const prevEndNext = new Date(prevEnd);
-      prevEndNext.setDate(prevEnd.getDate() + 1);
-
-      const prevForm = {
-        ...form,
-        tgl1: prevStart.toISOString().slice(0, 10),
-        tgl2: prevEndNext.toISOString().slice(0, 10),
-      };
-      const prevParams = new URLSearchParams(
-        prevForm as Record<string, string>
-      ).toString();
-      const prevRes = await axios.get<KartuStockData[]>(
-        `/api/kartustock?${prevParams}`
-      );
-
-      const prevFiltered = prevRes.data.filter(
+      // filter transaksi sesuai gudang + item
+      const transaksi = res.data.filter(
         (row) =>
           row.LocName?.trim().toLowerCase() === gudangFilter.toLowerCase() &&
           row.ItemID.toUpperCase() === form.itemid.toUpperCase()
       );
 
-      const lastRowPrev = [...prevFiltered]
-        .sort(
-          (a, b) =>
-            new Date(a.MoveDate).getTime() - new Date(b.MoveDate).getTime()
-        )
-        .pop();
+      // cari kegiatan S dari data kartustock
+      // cari kegiatan "S" pertama untuk item yang dipilih
+      const kegiatanSItem = res.data.find(
+        (row) =>
+          row.Kegiatan?.trim().toUpperCase() === "S" &&
+          row.ItemID?.toUpperCase() === form.itemid?.toUpperCase()
+      );
 
-      let saldoAkhirBulanSebelumnya = 0;
+      setSaldoAwalKegiatanS(kegiatanSItem ? kegiatanSItem.KgI : null);
 
-      if (typeof form.saldoAwalManual === "number") {
-        saldoAkhirBulanSebelumnya = form.saldoAwalManual;
-      } else {
-        saldoAkhirBulanSebelumnya = lastRowPrev?.Saldo ?? 0;
+      // cari kegiatan S di kartustock
+
+      // console.log(
+      //   "DEBUG KARTUSTOCK:",
+      //   res.data.filter((r) => r.Kegiatan?.toUpperCase() === "S")
+      // );
+
+      // fetch saldo awal dari API /api/master/saldo
+     let saldoAwalDariAPI = 0;
+     try {
+       const saldoRes = await axios.get("/api/master/saldo");
+       const allSaldo = saldoRes.data as {
+         ItemID: string;
+         Gudang: string;
+         Bulan: number;
+         Tahun: number;
+         Saldo: number;
+       }[];
+
+       const tgl1Date = new Date(form.tgl1);
+       const bulan = tgl1Date.getMonth() + 1;
+       const tahun = tgl1Date.getFullYear();
+
+       // ✅ Filter dulu hanya untuk itemid yang sedang dipilih
+       const saldoItem = allSaldo.filter(
+         (s) =>
+           s.ItemID.toUpperCase() === form.itemid.toUpperCase() &&
+           s.Bulan === bulan &&
+           s.Tahun === tahun
+       );
+
+       // ✅ cari gudang terpilih dari hasil filter
+       const found = saldoItem.find(
+         (s) => s.Gudang.toLowerCase() === gudangFilter.toLowerCase()
+       );
+
+       if (found) {
+         saldoAwalDariAPI = found.Saldo;
+         setSaldoAwalSistem(found.Saldo);
+       } else {
+         setSaldoAwalSistem(0); // default kalau tidak ada
+       }
+
+       // ✅ simpan semua gudang dari itemid ini
+       setSaldoSemuaGudang(
+         saldoItem.map((s) => ({ gudang: s.Gudang, saldo: s.Saldo }))
+       );
+     } catch (err) {
+       console.warn("Gagal fetch saldo awal dari /api/master/saldo:", err);
+       setSaldoAwalSistem(0);
+       setSaldoSemuaGudang([]);
+     }
+
+      // jika tidak ada kegiatan S → tambahkan manual
+      const hasSaldoAwal = transaksi.some((row) => row.Kegiatan === "S");
+      let finalData = transaksi;
+      if (!hasSaldoAwal) {
+        if (transaksi.length > 0) {
+          const ref = transaksi[0];
+          const saldoAwalRow: KartuStockData = {
+            Item: ref.Item || "",
+            Loc: ref.Loc || "",
+            Jumlah: 0,
+            Tanggal: form.tgl1,
+            MoveDate: new Date(form.tgl1),
+            LocName: ref.LocName || "",
+            ItemID: ref.ItemID || "",
+            KgI: saldoAwalDariAPI,
+            KgO: 0,
+            Saldo: saldoAwalDariAPI,
+            Kegiatan: "S",
+            Keterangan: "Saldo Awal",
+            NoMemo: "Auto",
+          };
+          finalData = [saldoAwalRow, ...transaksi];
+        }
       }
 
-      let saldoAwalRow: KartuStockData | undefined = undefined;
-      if (transaksi.length > 0) {
-        const ref = transaksi[0];
-        saldoAwalRow = {
-          Item: ref.Item || "",
-          Loc: ref.Loc || "",
-          Jumlah: ref.Jumlah ?? 0,
-          Tanggal: form.tgl1.slice(0, 10),
-          MoveDate: new Date(form.tgl1),
-          LocName: ref.LocName || "",
-          ItemID: ref.ItemID || "",
-          KgI: saldoAkhirBulanSebelumnya,
-          KgO: 0,
-          Saldo: saldoAkhirBulanSebelumnya,
-          Kegiatan: "S",
-          Keterangan:
-            typeof form.saldoAwalManual === "number"
-              ? "Saldo Awal Manual oleh user"
-              : "Saldo Awal Otomatis dari saldo akhir bulan sebelumnya",
-          NoMemo: "Auto",
-        };
-      }
-
-      const finalData = saldoAwalRow ? [saldoAwalRow, ...transaksi] : transaksi;
       setData(finalData);
     } catch (err) {
       console.error(err);
@@ -271,6 +264,101 @@ export default function KartuStockPage() {
       setLoading(false);
     }
   };
+  const exportToExcel = () => {
+    if (data.length === 0) return;
+
+    let saldo = 0;
+    const formattedData = data.map((row) => {
+      saldo += row.KgI - row.KgO;
+
+      return {
+        Tanggal: new Date(row.MoveDate).toLocaleDateString("id-ID"),
+        ItemID: row.ItemID,
+        Gudang: row.LocName,
+        Kegiatan: row.NoMemo,
+        Keterangan: row.Keterangan,
+        "IN ": Math.round(row.KgI),
+        "OUT ": Math.round(row.KgO),
+        "Saldo ": Math.round(saldo),
+      };
+    });
+
+    const totalIn = data.reduce((sum, row) => sum + row.KgI, 0);
+    const totalOut = data.reduce((sum, row) => sum + row.KgO, 0);
+    const totalSaldo = totalIn - totalOut;
+
+    const totalRow = {
+      Tanggal: "",
+      ItemID: "",
+      Gudang: "",
+      Kegiatan: "",
+      Keterangan: "TOTAL",
+      "IN ": Math.round(totalIn),
+      "OUT ": Math.round(totalOut),
+      "Saldo ": Math.round(totalSaldo),
+    };
+
+    const exportData = [
+      {
+        Tanggal: `Kartu Stok ${form.itemid}`,
+        ItemID: "",
+        Gudang: "",
+        Kegiatan: "",
+        Keterangan: "",
+        "IN ": "",
+        "OUT ": "",
+        "Saldo ": "",
+      },
+      {
+        Tanggal: `Periode: ${form.tgl1} s/d ${form.tgl2}`,
+        ItemID: "",
+        Gudang: "",
+        Kegiatan: "",
+        Keterangan: "",
+        "IN ": "",
+        "OUT ": "",
+        "Saldo ": "",
+      },
+      {}, // kosong
+      ...formattedData,
+      {}, // kosong
+      totalRow,
+    ];
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData, {
+      skipHeader: false,
+    });
+
+    worksheet["!cols"] = [
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 18 },
+      { wch: 14 },
+      { wch: 30 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 20 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Kartu Stok");
+
+    const excelBuffer = XLSX.write(workbook, {
+      bookType: "xlsx",
+      type: "array",
+    });
+
+    const blob = new Blob([excelBuffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    saveAs(blob, `Kartu_Stok_${form.itemid}_${form.tgl1}_sd_${form.tgl2}.xlsx`);
+  };
+  // hitung total dari semua gudang
+  const totalSaldoGudang = saldoSemuaGudang.reduce(
+    (sum, g) => sum + (g.saldo || 0),
+    0
+  );
 
   return (
     <div className="p-6 max-w-screen-xl pb-4 mb-4">
@@ -294,7 +382,6 @@ export default function KartuStockPage() {
           className="border p-2"
         />
 
-        {/* Pencarian Item */}
         <div className="relative" ref={dropdownRef}>
           <Input
             type="text"
@@ -327,24 +414,12 @@ export default function KartuStockPage() {
           <SelectContent>
             <SelectItem value="Gudang Utama">Gudang Utama</SelectItem>
             <SelectItem value="Gudang Injeksi">Gudang Injeksi</SelectItem>
-            <SelectItem value="Gudang Jadi">Gudang Plating</SelectItem>
-            <SelectItem value="Gudang Plating">Gudang Molding</SelectItem>
+            <SelectItem value="Gudang Plating">Gudang Plating</SelectItem>
+            <SelectItem value="Gudang Molding">Gudang Molding</SelectItem>
+            <SelectItem value="Gudang Assembly">Gudang Assembly</SelectItem>
+            <SelectItem value="Gudang Lokal">Gudang Lokal</SelectItem>
           </SelectContent>
         </Select>
-        <h1 className="text-pretty text-red-500">
-          Masukan Saldo Awal dari laporan Excel
-        </h1>
-        <Input
-          type="text"
-          inputMode="numeric"
-          name="saldoAwalManual"
-          placeholder="Masukkan Saldo Awal dari laporan excel"
-          value={form.saldoAwalManual === "" ? "" : form.saldoAwalManual}
-          onChange={handleChange}
-          className="border p-2"
-          min={0}
-          step={1}
-        />
       </div>
 
       <Button
@@ -354,11 +429,89 @@ export default function KartuStockPage() {
       >
         {loading ? "Mengambil data..." : "Tampilkan Data"}
       </Button>
+      <Button
+        onClick={exportToExcel}
+        className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 w-full mt-2"
+        disabled={data.length === 0}
+      >
+        Export ke Excel
+      </Button>
+
+      {data.length > 0 && (
+        <div className="my-4 bg-yellow-50 border border-yellow-300 p-4 rounded text-sm">
+          <p className="mb-1">
+            <strong>Saldo Awal (Sistem, {gudangFilter}):</strong>{" "}
+            {Math.round(saldoAwalSistem)} 
+          </p>
+
+          <p className="mb-1">
+            <strong>Saldo Keseluruhan :</strong>{" "}
+            {saldoAwalKegiatanS !== null && saldoAwalKegiatanS !== undefined
+              ? Math.round(saldoAwalKegiatanS)
+              : "Tidak ada"}
+          </p>
+
+          {saldoSemuaGudang.length > 0 ? (
+            <div className="mt-2">
+              <strong>Saldo item di semua gudang:</strong>
+              <ul className="list-disc list-inside">
+                {saldoSemuaGudang.map((g, idx) => (
+                  <li key={idx}>
+                    {g.gudang}:{" "}
+                    {g.saldo !== null && g.saldo !== undefined
+                      ? Math.round(g.saldo)
+                      : "Tidak ada"}
+                  </li>
+                ))}
+              </ul>
+
+              {/* Hitung total semua gudang */}
+              {(() => {
+                const totalSaldoGudang = saldoSemuaGudang.reduce(
+                  (sum, g) => sum + (g.saldo || 0),
+                  0
+                );
+
+                return (
+                  <>
+                    <p className="mt-2 font-semibold">
+                      Total semua gudang: {Math.round(totalSaldoGudang)}
+                    </p>
+
+                    <p
+                      className={`mt-1 ${
+                        saldoAwalKegiatanS !== null &&
+                        Math.round(totalSaldoGudang) !==
+                          Math.round(saldoAwalKegiatanS)
+                          ? "text-red-600 font-bold"
+                          : "text-green-600 font-semibold"
+                      }`}
+                    >
+                      {saldoAwalKegiatanS !== null
+                        ? Math.round(totalSaldoGudang) ===
+                          Math.round(saldoAwalKegiatanS)
+                          ? "✔️ Sama dengan Saldo Semua"
+                          : `⚠️ Berbeda dengan Saldo Semua (${Math.round(
+                              saldoAwalKegiatanS
+                            )})`
+                        : "Saldo Semua belum tersedia"}
+                    </p>
+                  </>
+                );
+              })()}
+            </div>
+          ) : (
+            <div className="mt-2 text-gray-500 italic">
+              Tidak ada data dari semua gudang
+            </div>
+          )}
+        </div>
+      )}
 
       {error && <p className="text-red-500 mt-4">{error}</p>}
 
       {data.length > 0 && (
-        <div className="overflow-x-auto mt-6">
+        <div className="overflow-x-auto mt-6 mb-4">
           <table className="w-full border border-collapse text-sm">
             <thead>
               <tr className="bg-gray-200">
@@ -367,9 +520,9 @@ export default function KartuStockPage() {
                 <th className="border p-2">Gudang</th>
                 <th className="border p-2">Kegiatan</th>
                 <th className="border p-2">Keterangan</th>
-                <th className="border p-2">IN (Kg)</th>
-                <th className="border p-2">OUT (Kg)</th>
-                <th className="border p-2">Saldo (Kg)</th>
+                <th className="border p-2">IN</th>
+                <th className="border p-2">OUT</th>
+                <th className="border p-2">Saldo</th>
               </tr>
             </thead>
             <tbody>
@@ -382,7 +535,11 @@ export default function KartuStockPage() {
                     <tr
                       key={idx}
                       className={`hover:bg-gray-100 ${
-                        isSaldoAwal ? "bg-yellow-100 font-semibold" : ""
+                        isSaldoAwal
+                          ? "bg-green-200 font-semibold"
+                          : idx % 2 === 0
+                          ? "bg-white"
+                          : "bg-gray-100"
                       }`}
                     >
                       <td className="border p-2">

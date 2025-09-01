@@ -473,3 +473,11 @@ export  interface notif {
   itemName:string;
 
 }
+
+export interface saldoType {
+  ItemID: string;
+  Bulan: number;
+  Gudang: string;
+  Tahun: number;
+  Saldo: number;
+}
