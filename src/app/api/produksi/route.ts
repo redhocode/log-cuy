@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   try {
     const pool = await getPool();
     let query = `
-      SELECT TOP (10000)
+      SELECT TOP (1000000)
         hd.[ProdID] AS No_Produksi,
         hd.[ProdDate] AS Tanggal,
         d.[PRDeptName] AS Departemen,
