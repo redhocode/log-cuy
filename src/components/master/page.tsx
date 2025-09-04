@@ -12,9 +12,10 @@ import { Card, CardContent, CardHeader } from "../ui/card";
 // import toast from "react-hot-toast";
 import { toast } from "sonner";
 import ExcelUploader from "@/components/ExcelUploader";
+import ExcelUploader2 from "@/components/ExcelUploader";
 import * as XLSX from "xlsx";
 import { Button } from "../ui/button";
-import { masterType } from "@/lib/types";
+import { masterType,saldoType } from "@/lib/types";
 import { FileUp, RefreshCcw, Search } from "lucide-react";
 //import { set } from "date-fns";
 // Create a typed version of useDispatch
@@ -79,6 +80,10 @@ const DataMasterBarangPage: React.FC = () => {
     console.log("Data loaded:", newData);
     // Proses data yang diterima sesuai kebutuhan
   };
+  const handleDataLoaded2 = (newData: saldoType[]) => {
+    console.log("Data loaded:", newData);
+    // Proses data yang diterima sesuai kebutuhan
+  };
   return (
     <div className="flex flex-col p-14">
       <h1 className="text-5xl font-bold mb-4 flex justify-end">
@@ -123,9 +128,16 @@ const DataMasterBarangPage: React.FC = () => {
             onDataLoaded={handleDataLoaded}
             apiEndpoint="/api/master"
           />
+          <ExcelUploader2<saldoType>
+            onDataLoaded={handleDataLoaded2}
+            apiEndpoint="/api/master/saldo"
+          />
         </CardContent>
       </Card>
-      <DataTable columns={columns(setSelectedRows, filteredData)} data={filteredData} />
+      <DataTable
+        columns={columns(setSelectedRows, filteredData)}
+        data={filteredData}
+      />
     </div>
   );
 };
