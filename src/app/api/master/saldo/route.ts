@@ -69,15 +69,15 @@ export async function POST(request: Request) {
     const errors: string[] = [];
     for (let i = 0; i < jsonData.length; i++) {
       const item = jsonData[i];
-      if (
-        !item.ItemID ||
-        !item.Gudang ||
-        !item.Bulan ||
-        !item.Tahun ||
-        item.Saldo === undefined
-      ) {
-        errors.push(`Invalid data at row ${i + 2}: ${JSON.stringify(item)}`);
-      }
+if (
+  !item.ItemID ||
+  !item.Gudang ||
+  !item.Bulan ||
+  !item.Tahun ||
+  isNaN(Number(item.Saldo))
+) {
+  errors.push(`Invalid data at row ${i + 2}: ${JSON.stringify(item)}`);
+}
     }
 
     if (errors.length > 0) {

@@ -45,6 +45,7 @@ const navItems = [
   { href: "/dashboard/retur", label: "Retur Produksi", icon: Package2 },
   { href: "/dashboard/mutasi", label: "Mutasi Gudang", icon: Package2 },
   { href: "/dashboard/kartustock", label: "Kartu Stock", icon: Package2 },
+  { href: "/dashboard/stock", label: "Stock Pergudang", icon: Package2 },
   //   { href: "/dashboard/import", label: "Import", icon: Import },
 ];
 
