@@ -1,6 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import sql from "mssql";
 import { getPool } from "@/lib/config"; // Ensure this path is correct
+
+// In-memory cache
+const cache = new Map<string, { data: any; stockAkhir: any }>();
 
 // Function to call the stored procedure and get data
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -29,11 +33,10 @@ async function getRpStockL(params: any) {
 
 export async function GET(req: Request) {
   try {
+    const url = new URL(req.url);
+
     // Hardcoded Periode value (201905)
     const periodeR = "201905"; // Fixed Periode
-
-    // Getting query params from URL
-    const url = new URL(req.url);
     const loc = url.searchParams.get("loc") || "%";
     const item = url.searchParams.get("item") || "%";
     const tgl = new Date(url.searchParams.get("tgl") || "2023-12-31");
@@ -43,7 +46,16 @@ export async function GET(req: Request) {
     const kategori = url.searchParams.get("kategori") || "BAHAN BAKU";
     const minus = parseInt(url.searchParams.get("minus") || "0");
 
-    // Prepare parameters for stored procedure
+    // Cache key (unik per parameter)
+    const cacheKey = `${periodeR}-${loc}-${item}-${tgl.toISOString()}-${company}-${tipestock}-${jenisbarang}-${kategori}-${minus}`;
+
+    // 🔹 Cek cache dulu
+    if (cache.has(cacheKey)) {
+      console.log("✅ Data dari cache:", cacheKey);
+      return NextResponse.json(cache.get(cacheKey));
+    }
+
+    // Prepare parameters
     const params = {
       periodeR,
       loc,
@@ -56,35 +68,31 @@ export async function GET(req: Request) {
       minus,
     };
 
-    // Call function to get data from stored procedure
-    // Measure execution time
-const startTime = Date.now();
-const data = await getRpStockL(params);
-const endTime = Date.now();
-const duration = endTime - startTime;
+    // Execute stored procedure
+    const startTime = Date.now();
+    const data = await getRpStockL(params);
+    const endTime = Date.now();
+    console.log(`🕒 Stored Procedure executed in ${endTime - startTime} ms`);
 
-console.log(`🕒 Stored Procedure executed in ${duration} ms`);
+    // Hitung stock akhir
+    const stockAkhir = data.reduce(
+      (acc, item) => {
+        const totalKgs = parseFloat(item.totalkgs);
+        if (!isNaN(totalKgs)) {
+          acc.totalKgs += totalKgs;
+        }
+        return acc;
+      },
+      { totalKgs: 0 }
+    );
 
-const stockAkhir = data.reduce(
-  (acc, item) => {
-    // Pastikan `totalkgs` di-convert menjadi number
-    const totalKgs = parseFloat(item.totalkgs);
+    const response = { data, stockAkhir };
 
-    // Jika totalkgs bernilai valid (termasuk negatif)
-    if (!isNaN(totalKgs)) {
-      acc.totalKgs += totalKgs; // Tambahkan totalkgs (termasuk negatif)
-    }
+    // 🔹 Simpan ke cache (expire 5 menit)
+    cache.set(cacheKey, response);
+    setTimeout(() => cache.delete(cacheKey), 5 * 60 * 1000);
 
-    return acc;
-  },
-  { totalKgs: 0 }
-); // Mulai dengan total 0
-
-console.log("Total stock (including negative values):", stockAkhir.totalKgs);
-
-
-    // Return the data and stock calculation
-    return NextResponse.json({ data, stockAkhir });
+    return NextResponse.json(response);
   } catch (error) {
     console.error("Error in API route:", error);
     return NextResponse.json(
