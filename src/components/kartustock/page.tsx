@@ -441,7 +441,7 @@ export default function KartuStockPage() {
         <div className="my-4 bg-yellow-50 border border-yellow-300 p-4 rounded text-sm">
           <p className="mb-1">
             <strong>Saldo Awal (Sistem, {gudangFilter}):</strong>{" "}
-            {Math.round(saldoAwalSistem)} 
+            {Math.round(saldoAwalSistem)}
           </p>
 
           <p className="mb-1">
@@ -531,24 +531,60 @@ export default function KartuStockPage() {
                 return data.map((row, idx) => {
                   saldo += row.KgI - row.KgO;
                   const isSaldoAwal = row.Kegiatan === "S";
+                  const moveDate = new Date(row.MoveDate);
+                  const isAwalBulan = moveDate.getDate() === 1;
+
+                  // cek apakah ini baris terakhir di tanggal yang sama
+                  const nextRow = data[idx + 1];
+                  const isLastInDateGroup =
+                    !nextRow ||
+                    new Date(nextRow.MoveDate).getDate() !== moveDate.getDate();
+
+                  let extraNote = "";
+                  const highlightRow =
+                    isAwalBulan && isLastInDateGroup && !isSaldoAwal;
+
+                  if (highlightRow) {
+                    // hitung bulan sebelumnya
+                    const prevMonth = new Date(moveDate);
+                    prevMonth.setMonth(prevMonth.getMonth() - 1);
+
+                    const bulanSebelumnya = prevMonth.toLocaleString("id-ID", {
+                      month: "long",
+                    });
+                    const tahunSebelumnya = prevMonth.getFullYear();
+
+                    extraNote = ` (Saldo akhir ${bulanSebelumnya} ${tahunSebelumnya})`;
+                  }
+
                   return (
                     <tr
                       key={idx}
-                      className={`hover:bg-gray-100 ${
-                        isSaldoAwal
-                          ? "bg-green-200 font-semibold"
-                          : idx % 2 === 0
-                          ? "bg-white"
-                          : "bg-gray-100"
-                      }`}
+                      className={`hover:bg-gray-100 
+            ${isSaldoAwal ? "bg-green-200 font-semibold" : ""} 
+            ${highlightRow ? "bg-yellow-100" : ""} 
+            ${
+              !isSaldoAwal && !highlightRow
+                ? idx % 2 === 0
+                  ? "bg-white"
+                  : "bg-gray-50"
+                : ""
+            }`}
                     >
                       <td className="border p-2">
-                        {new Date(row.MoveDate).toLocaleDateString("id-ID")}
+                        {moveDate.toLocaleDateString("id-ID")}
                       </td>
                       <td className="border p-2">{row.ItemID}</td>
                       <td className="border p-2">{row.LocName}</td>
                       <td className="border p-2 text-center">{row.NoMemo}</td>
-                      <td className="border p-2">{row.Keterangan}</td>
+                      <td className="border p-2">
+                        {row.Keterangan}
+                        {extraNote && (
+                          <span className="text-blue-600 font-medium">
+                            {extraNote}
+                          </span>
+                        )}
+                      </td>
                       <td className="border p-2 text-right">
                         {Math.round(row.KgI)}
                       </td>
@@ -563,6 +599,7 @@ export default function KartuStockPage() {
                 });
               })()}
             </tbody>
+
             <tfoot>
               {(() => {
                 const totalIn = data.reduce((sum, row) => sum + row.KgI, 0);
