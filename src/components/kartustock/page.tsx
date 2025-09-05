@@ -22,7 +22,7 @@ interface KartuStockData {
   Loc: string;
   Jumlah: number;
   Tanggal: string;
-  MoveDate: Date;
+  MoveDate: string | Date;
   LocName: string;
   ItemID: string;
   KgI: number;
@@ -134,58 +134,41 @@ export default function KartuStockPage() {
     fetchItems();
   }, []);
 
-  const fetchData = async () => {
-    setLoading(true);
-    setError("");
+ const fetchData = async () => {
+   setLoading(true);
+   setError("");
 
-    if (!form.itemid) {
-      setError("Mohon pilih item terlebih dahulu");
-      setLoading(false);
-      return;
-    }
+   if (!form.itemid) {
+     setError("Mohon pilih item terlebih dahulu");
+     setLoading(false);
+     return;
+   }
 
-    try {
-      const tgl2Next = new Date(form.tgl2);
-      tgl2Next.setDate(tgl2Next.getDate() + 1);
+   try {
+     const tgl2Next = new Date(form.tgl2);
+     tgl2Next.setDate(tgl2Next.getDate() + 1);
 
-      const adjustedForm = {
-        ...form,
-        tgl2: tgl2Next.toISOString().slice(0, 10),
-      };
+     const adjustedForm = {
+       ...form,
+       tgl2: tgl2Next.toISOString().slice(0, 10),
+     };
 
-      const params = new URLSearchParams(
-        adjustedForm as unknown as Record<string, string>
-      ).toString();
+     const params = new URLSearchParams(
+       adjustedForm as unknown as Record<string, string>
+     ).toString();
 
-      const res = await axios.get<KartuStockData[]>(
-        `/api/kartustock?${params}`
-      );
+     const res = await axios.get<KartuStockData[]>(`/api/kartustock?${params}`);
 
-      // filter transaksi sesuai gudang + item
-      const transaksi = res.data.filter(
-        (row) =>
-          row.LocName?.trim().toLowerCase() === gudangFilter.toLowerCase() &&
-          row.ItemID.toUpperCase() === form.itemid.toUpperCase()
-      );
+     // filter transaksi sesuai gudang + item
+     const transaksi = res.data.filter(
+       (row) =>
+         row.LocName?.trim().toLowerCase() === gudangFilter.toLowerCase() &&
+         row.ItemID.toUpperCase() === form.itemid.toUpperCase()
+     );
 
-      // cari kegiatan S dari data kartustock
-      // cari kegiatan "S" pertama untuk item yang dipilih
-      const kegiatanSItem = res.data.find(
-        (row) =>
-          row.Kegiatan?.trim().toUpperCase() === "S" &&
-          row.ItemID?.toUpperCase() === form.itemid?.toUpperCase()
-      );
-
-      setSaldoAwalKegiatanS(kegiatanSItem ? kegiatanSItem.KgI : null);
-
-      // cari kegiatan S di kartustock
-
-      // console.log(
-      //   "DEBUG KARTUSTOCK:",
-      //   res.data.filter((r) => r.Kegiatan?.toUpperCase() === "S")
-      // );
-
-      // fetch saldo awal dari API /api/master/saldo
+     // -----------------------------
+     // ✅ Ambil saldo awal dari API
+     // -----------------------------
      let saldoAwalDariAPI = 0;
      try {
        const saldoRes = await axios.get("/api/master/saldo");
@@ -201,7 +184,6 @@ export default function KartuStockPage() {
        const bulan = tgl1Date.getMonth() + 1;
        const tahun = tgl1Date.getFullYear();
 
-       // ✅ Filter dulu hanya untuk itemid yang sedang dipilih
        const saldoItem = allSaldo.filter(
          (s) =>
            s.ItemID.toUpperCase() === form.itemid.toUpperCase() &&
@@ -209,7 +191,6 @@ export default function KartuStockPage() {
            s.Tahun === tahun
        );
 
-       // ✅ cari gudang terpilih dari hasil filter
        const found = saldoItem.find(
          (s) => s.Gudang.toLowerCase() === gudangFilter.toLowerCase()
        );
@@ -218,10 +199,9 @@ export default function KartuStockPage() {
          saldoAwalDariAPI = found.Saldo;
          setSaldoAwalSistem(found.Saldo);
        } else {
-         setSaldoAwalSistem(0); // default kalau tidak ada
+         setSaldoAwalSistem(0);
        }
 
-       // ✅ simpan semua gudang dari itemid ini
        setSaldoSemuaGudang(
          saldoItem.map((s) => ({ gudang: s.Gudang, saldo: s.Saldo }))
        );
@@ -231,39 +211,72 @@ export default function KartuStockPage() {
        setSaldoSemuaGudang([]);
      }
 
-      // jika tidak ada kegiatan S → tambahkan manual
-      const hasSaldoAwal = transaksi.some((row) => row.Kegiatan === "S");
-      let finalData = transaksi;
-      if (!hasSaldoAwal) {
-        if (transaksi.length > 0) {
-          const ref = transaksi[0];
-          const saldoAwalRow: KartuStockData = {
-            Item: ref.Item || "",
-            Loc: ref.Loc || "",
-            Jumlah: 0,
-            Tanggal: form.tgl1,
-            MoveDate: new Date(form.tgl1),
-            LocName: ref.LocName || "",
-            ItemID: ref.ItemID || "",
-            KgI: saldoAwalDariAPI,
-            KgO: 0,
-            Saldo: saldoAwalDariAPI,
-            Kegiatan: "S",
-            Keterangan: "Saldo Awal",
-            NoMemo: "Auto",
-          };
-          finalData = [saldoAwalRow, ...transaksi];
-        }
-      }
+     // -----------------------------
+     // ✅ Kalau tidak ada transaksi
+     // -----------------------------
+     if (transaksi.length === 0) {
+       const saldoAwalRow: KartuStockData = {
+         Item: form.item,
+         Loc: "",
+         Jumlah: 0,
+         Tanggal: form.tgl1,
+         MoveDate: new Date(form.tgl1),
+         LocName: gudangFilter,
+         ItemID: form.itemid,
+         KgI: saldoAwalDariAPI, // pakai dari API
+         KgO: 0,
+         Saldo: saldoAwalDariAPI, // pakai dari API
+         Kegiatan: "S",
+         Keterangan: `Saldo Awal (${saldoAwalDariAPI})`,
+         NoMemo: "-",
+       };
+       setData([saldoAwalRow]);
+       setLoading(false);
+       return;
+     }
 
-      setData(finalData);
-    } catch (err) {
-      console.error(err);
-      setError("Gagal mengambil data");
-    } finally {
-      setLoading(false);
-    }
-  };
+     // -----------------------------
+     // ✅ Kalau transaksi ada
+     // -----------------------------
+     const kegiatanSItem = res.data.find(
+       (row) =>
+         row.Kegiatan?.trim().toUpperCase() === "S" &&
+         row.ItemID?.toUpperCase() === form.itemid?.toUpperCase()
+     );
+     setSaldoAwalKegiatanS(kegiatanSItem ? kegiatanSItem.KgI : null);
+
+     const hasSaldoAwal = transaksi.some((row) => row.Kegiatan === "S");
+     let finalData = transaksi;
+
+     if (!hasSaldoAwal && transaksi.length > 0) {
+       const ref = transaksi[0];
+       const saldoAwalRow: KartuStockData = {
+         Item: ref.Item || "",
+         Loc: ref.Loc || "",
+         Jumlah: 0,
+         Tanggal: form.tgl1,
+         MoveDate: new Date(form.tgl1),
+         LocName: ref.LocName || "",
+         ItemID: ref.ItemID || "",
+         KgI: saldoAwalDariAPI,
+         KgO: 0,
+         Saldo: saldoAwalDariAPI,
+         Kegiatan: "S",
+         Keterangan: "Saldo Awal",
+         NoMemo: "Auto",
+       };
+       finalData = [saldoAwalRow, ...transaksi];
+     }
+
+     setData(finalData);
+   } catch (err) {
+     console.error(err);
+     setError("Gagal mengambil data");
+   } finally {
+     setLoading(false);
+   }
+ };
+
   const exportToExcel = () => {
     if (data.length === 0) return;
 
@@ -370,6 +383,7 @@ export default function KartuStockPage() {
         <Input
           type="date"
           name="tgl1"
+          disabled
           value={form.tgl1}
           onChange={handleChange}
           className="border p-2"
@@ -451,7 +465,7 @@ export default function KartuStockPage() {
               : "Tidak ada"}
           </p>
 
-          {saldoSemuaGudang.length > 0 ? (
+          {saldoSemuaGudang.length >= 0 ? (
             <div className="mt-2">
               <strong>Saldo item di semua gudang:</strong>
               <ul className="list-disc list-inside">
@@ -528,52 +542,80 @@ export default function KartuStockPage() {
             <tbody>
               {(() => {
                 let saldo = 0;
+                const bulanDitandai: { [key: string]: boolean } = {};
+
+                // 🔑 bulan & tahun awal pencarian
+                const tgl1Date = new Date(form.tgl1);
+                const bulanAwal = tgl1Date.getMonth();
+                const tahunAwal = tgl1Date.getFullYear();
+
                 return data.map((row, idx) => {
                   saldo += row.KgI - row.KgO;
                   const isSaldoAwal = row.Kegiatan === "S";
                   const moveDate = new Date(row.MoveDate);
-                  const isAwalBulan = moveDate.getDate() === 1;
 
-                  // cek apakah ini baris terakhir di tanggal yang sama
+                  // baris terakhir di tanggal yang sama
                   const nextRow = data[idx + 1];
                   const isLastInDateGroup =
                     !nextRow ||
-                    new Date(nextRow.MoveDate).getDate() !== moveDate.getDate();
+                    new Date(nextRow.MoveDate).getDate() !==
+                      moveDate.getDate() ||
+                    new Date(nextRow.MoveDate).getMonth() !==
+                      moveDate.getMonth() ||
+                    new Date(nextRow.MoveDate).getFullYear() !==
+                      moveDate.getFullYear();
+
+                  // kunci bulan-tahun
+                  const keyBulan = `${moveDate.getMonth()}-${moveDate.getFullYear()}`;
+
+                  // apakah sudah pernah ditandai bulan ini?
+                  const belumDitandai = !bulanDitandai[keyBulan];
+
+                  // ✅ hanya tandai kalau bukan bulan pertama
+                  const bukanBulanPertama =
+                    moveDate.getMonth() !== bulanAwal ||
+                    moveDate.getFullYear() !== tahunAwal;
+
+                  // tentukan highlight
+                  const highlightRow =
+                    isLastInDateGroup &&
+                    belumDitandai &&
+                    !isSaldoAwal &&
+                    bukanBulanPertama;
 
                   let extraNote = "";
-                  const highlightRow =
-                    isAwalBulan && isLastInDateGroup && !isSaldoAwal;
-
                   if (highlightRow) {
-                    // hitung bulan sebelumnya
-                    const prevMonth = new Date(moveDate);
-                    prevMonth.setMonth(prevMonth.getMonth() - 1);
-
-                    const bulanSebelumnya = prevMonth.toLocaleString("id-ID", {
+                    bulanDitandai[keyBulan] = true; // tandai supaya tidak dobel
+                    const bulanTeks = moveDate.toLocaleString("id-ID", {
                       month: "long",
                     });
-                    const tahunSebelumnya = prevMonth.getFullYear();
-
-                    extraNote = ` (Saldo akhir ${bulanSebelumnya} ${tahunSebelumnya})`;
+                    const tahunTeks = moveDate.getFullYear();
+                    extraNote = ` (Saldo Awal ${bulanTeks} ${tahunTeks})`;
                   }
 
                   return (
                     <tr
                       key={idx}
                       className={`hover:bg-gray-100 
-            ${isSaldoAwal ? "bg-green-200 font-semibold" : ""} 
-            ${highlightRow ? "bg-yellow-100" : ""} 
-            ${
-              !isSaldoAwal && !highlightRow
-                ? idx % 2 === 0
-                  ? "bg-white"
-                  : "bg-gray-50"
-                : ""
-            }`}
+          ${isSaldoAwal ? "bg-green-200 font-semibold" : ""} 
+          ${highlightRow ? "bg-yellow-100" : ""} 
+          ${
+            !isSaldoAwal && !highlightRow
+              ? idx % 2 === 0
+                ? "bg-white"
+                : "bg-gray-50"
+              : ""
+          }`}
                     >
                       <td className="border p-2">
-                        {moveDate.toLocaleDateString("id-ID")}
+                        {typeof row.MoveDate === "string"
+                          ? row.MoveDate.substring(0, 10)
+                              .split("-")
+                              .reverse()
+                              .join("/")
+                          : new Date(row.MoveDate).toLocaleDateString("id-ID")}
                       </td>
+
                       <td className="border p-2">{row.ItemID}</td>
                       <td className="border p-2">{row.LocName}</td>
                       <td className="border p-2 text-center">{row.NoMemo}</td>
