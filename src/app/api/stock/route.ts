@@ -1,42 +1,40 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import sql from "mssql";
-import { getPool } from "@/lib/config"; // Ensure this path is correct
+import { getPool } from "@/lib/config";
 
-// In-memory cache
-const cache = new Map<string, { data: any; stockAkhir: any }>();
+type CacheValue = {
+  data: any[];
+  stockAkhir: { totalKgs: number };
+  expiresAt: number;
+};
 
-// Function to call the stored procedure and get data
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const CACHE_TTL = 5 * 60 * 1000; // 5 menit
+const cache = new Map<string, CacheValue>();
+
 async function getRpStockL(params: any) {
   const pool = await getPool();
-  try {
-    const result = await pool
-      .request()
-      .input("PeriodeR", sql.VarChar(6), params.periodeR)
-      .input("Loc", sql.VarChar(6), params.loc)
-      .input("Item", sql.VarChar(500), params.item)
-      .input("Tgl", sql.DateTime, params.tgl)
-      .input("company", sql.Int, params.company)
-      .input("tipestock", sql.SmallInt, params.tipestock)
-      .input("jenisbarang", sql.SmallInt, params.jenisbarang)
-      .input("kategori", sql.VarChar(20), params.kategori)
-      .input("minus", sql.Int, params.minus)
-      .execute("[dbo].[rpStockL]");
+  const result = await pool
+    .request()
+    .input("PeriodeR", sql.VarChar(6), params.periodeR)
+    .input("Loc", sql.VarChar(6), params.loc)
+    .input("Item", sql.VarChar(500), params.item)
+    .input("Tgl", sql.DateTime, params.tgl)
+    .input("company", sql.Int, params.company)
+    .input("tipestock", sql.SmallInt, params.tipestock)
+    .input("jenisbarang", sql.SmallInt, params.jenisbarang)
+    .input("kategori", sql.VarChar(20), params.kategori)
+    .input("minus", sql.Int, params.minus)
+    .execute("[dbo].[rpStockL]");
 
-    return result.recordset;
-  } catch (error) {
-    console.error("Error executing stored procedure:", error);
-    throw new Error("Database query failed");
-  }
+  return result.recordset;
 }
 
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
 
-    // Hardcoded Periode value (201905)
-    const periodeR = "201905"; // Fixed Periode
+    const periodeR = "201905"; // fixed periode
     const loc = url.searchParams.get("loc") || "%";
     const item = url.searchParams.get("item") || "%";
     const tgl = new Date(url.searchParams.get("tgl") || "2023-12-31");
@@ -46,16 +44,18 @@ export async function GET(req: Request) {
     const kategori = url.searchParams.get("kategori") || "BAHAN BAKU";
     const minus = parseInt(url.searchParams.get("minus") || "0");
 
-    // Cache key (unik per parameter)
     const cacheKey = `${periodeR}-${loc}-${item}-${tgl.toISOString()}-${company}-${tipestock}-${jenisbarang}-${kategori}-${minus}`;
 
-    // 🔹 Cek cache dulu
-    if (cache.has(cacheKey)) {
-      console.log("✅ Data dari cache:", cacheKey);
-      return NextResponse.json(cache.get(cacheKey));
+    // 🔹 cek cache valid
+    const cached = cache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      console.log("✅ dari cache:", cacheKey);
+      return NextResponse.json({
+        data: cached.data,
+        stockAkhir: cached.stockAkhir,
+      });
     }
 
-    // Prepare parameters
     const params = {
       periodeR,
       loc,
@@ -68,33 +68,29 @@ export async function GET(req: Request) {
       minus,
     };
 
-    // Execute stored procedure
     const startTime = Date.now();
     const data = await getRpStockL(params);
-    const endTime = Date.now();
-    console.log(`🕒 Stored Procedure executed in ${endTime - startTime} ms`);
+    console.log(`🕒 Query selesai dalam ${Date.now() - startTime} ms`);
 
-    // Hitung stock akhir
     const stockAkhir = data.reduce(
       (acc, item) => {
         const totalKgs = parseFloat(item.totalkgs);
-        if (!isNaN(totalKgs)) {
-          acc.totalKgs += totalKgs;
-        }
+        if (!isNaN(totalKgs)) acc.totalKgs += totalKgs;
         return acc;
       },
       { totalKgs: 0 }
     );
 
-    const response = { data, stockAkhir };
+    // simpan ke cache dengan TTL
+    cache.set(cacheKey, {
+      data,
+      stockAkhir,
+      expiresAt: Date.now() + CACHE_TTL,
+    });
 
-    // 🔹 Simpan ke cache (expire 5 menit)
-    cache.set(cacheKey, response);
-    setTimeout(() => cache.delete(cacheKey), 5 * 60 * 1000);
-
-    return NextResponse.json(response);
+    return NextResponse.json({ data, stockAkhir });
   } catch (error) {
-    console.error("Error in API route:", error);
+    console.error("❌ API Error:", error);
     return NextResponse.json(
       { error: "Failed to fetch data" },
       { status: 500 }
