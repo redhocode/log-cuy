@@ -8,7 +8,7 @@ import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
-
+import { Card,CardContent,CardHeader,CardFooter,CardTitle } from "../ui/card";
 import {
   Select,
   SelectContent,
@@ -51,10 +51,11 @@ export default function KartuStockPage() {
     null
   );
   const [saldoAwalSistem, setSaldoAwalSistem] = useState(0);
-
+const [selectedGudang, setSelectedGudang] = useState<string | null>(null);
   const [saldoSemuaGudang, setSaldoSemuaGudang] = useState<
     { gudang: string; saldo: number }[]
   >([]);
+   const [hanyaBulanTerakhir, setHanyaBulanTerakhir] = useState(true);
   const [form, setForm] = useState<FormState>({
     tgl1: "2025-07-01",
     tgl2: "2025-07-31",
@@ -368,310 +369,327 @@ export default function KartuStockPage() {
     saveAs(blob, `Kartu_Stok_${form.itemid}_${form.tgl1}_sd_${form.tgl2}.xlsx`);
   };
   // hitung total dari semua gudang
-  const totalSaldoGudang = saldoSemuaGudang.reduce(
-    (sum, g) => sum + (g.saldo || 0),
-    0
-  );
+
+
 
   return (
-    <div className="p-6 max-w-screen-xl pb-4 mb-4">
-      <h1 className="text-2xl font-bold mb-4">
-        Cek Koreksi Kartu Stok mutasi barang
-      </h1>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 relative">
-        <Input
-          type="date"
-          name="tgl1"
-          disabled
-          value={form.tgl1}
-          onChange={handleChange}
-          className="border p-2"
-        />
-        <Input
-          type="date"
-          name="tgl2"
-          value={form.tgl2}
-          onChange={handleChange}
-          className="border p-2"
-        />
-
-        <div className="relative" ref={dropdownRef}>
-          <Input
-            type="text"
-            name="item"
-            value={form.item}
-            onChange={handleChange}
-            placeholder="Cari item berdasarkan ID atau nama"
-            className="border p-2 w-full"
-            autoComplete="off"
-          />
-          {searchResults.length > 0 && (
-            <ul className="absolute z-10 bg-white border w-full max-h-60 overflow-auto">
-              {searchResults.map((item) => (
-                <li
-                  key={item.id}
-                  className="p-2 hover:bg-blue-100 cursor-pointer"
-                  onClick={() => handleSelectItem(item)}
-                >
-                  {item.id} - {item.name}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <Select value={gudangFilter} onValueChange={setGudangFilter}>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Pilih Gudang" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="Gudang Utama">Gudang Utama</SelectItem>
-            <SelectItem value="Gudang Injeksi">Gudang Injeksi</SelectItem>
-            <SelectItem value="Gudang Plating">Gudang Plating</SelectItem>
-            <SelectItem value="Gudang Molding">Gudang Molding</SelectItem>
-            <SelectItem value="Gudang Assembly">Gudang Assembly</SelectItem>
-            <SelectItem value="Gudang Lokal">Gudang Lokal</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <Button
-        onClick={fetchData}
-        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 w-full"
-        disabled={loading}
-      >
-        {loading ? "Mengambil data..." : "Tampilkan Data"}
-      </Button>
-      <Button
-        onClick={exportToExcel}
-        className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 w-full mt-2"
-        disabled={data.length === 0}
-      >
-        Export ke Excel
-      </Button>
-
-      {data.length > 0 && (
-        <div className="my-4 bg-yellow-50 border border-yellow-300 p-4 rounded text-sm">
-          <p className="mb-1">
-            <strong>Saldo Awal (Sistem, {gudangFilter}):</strong>{" "}
-            {Math.round(saldoAwalSistem)}
-          </p>
-
-          <p className="mb-1">
-            <strong>Saldo Keseluruhan :</strong>{" "}
-            {saldoAwalKegiatanS !== null && saldoAwalKegiatanS !== undefined
-              ? Math.round(saldoAwalKegiatanS)
-              : "Tidak ada"}
-          </p>
-
-          {saldoSemuaGudang.length >= 0 ? (
-            <div className="mt-2">
-              <strong>Saldo item di semua gudang:</strong>
-              <ul className="list-disc list-inside">
-                {saldoSemuaGudang.map((g, idx) => (
-                  <li key={idx}>
-                    {g.gudang}:{" "}
-                    {g.saldo !== null && g.saldo !== undefined
-                      ? Math.round(g.saldo)
-                      : "Tidak ada"}
-                  </li>
-                ))}
-              </ul>
-
-              {/* Hitung total semua gudang */}
-              {(() => {
-                const totalSaldoGudang = saldoSemuaGudang.reduce(
-                  (sum, g) => sum + (g.saldo || 0),
-                  0
-                );
-
-                return (
-                  <>
-                    <p className="mt-2 font-semibold">
-                      Total semua gudang: {Math.round(totalSaldoGudang)}
-                    </p>
-
-                    <p
-                      className={`mt-1 ${
-                        saldoAwalKegiatanS !== null &&
-                        Math.round(totalSaldoGudang) !==
-                          Math.round(saldoAwalKegiatanS)
-                          ? "text-red-600 font-bold"
-                          : "text-green-600 font-semibold"
-                      }`}
+    <Card className="p-6 w-[1200px] pb-4 mb-4 h-fit">
+      <CardHeader>
+        <CardTitle className="text-2xl font-bold mb-4">
+          Cek Koreksi Kartu Stok mutasi barang
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="p-6 max-w-screen-xl pb-4 mb-4">
+          <div className="flex flex-col gap-4 mb-6 relative">
+            <Input
+              type="date"
+              name="tgl1"
+              disabled
+              value={form.tgl1}
+              onChange={handleChange}
+              className="border p-2"
+            />
+            <Input
+              type="date"
+              name="tgl2"
+              value={form.tgl2}
+              onChange={handleChange}
+              className="border p-2"
+            />
+            <div className="relative" ref={dropdownRef}>
+              <Input
+                type="text"
+                name="item"
+                value={form.item}
+                onChange={handleChange}
+                placeholder="Cari item berdasarkan ID atau nama"
+                className="border p-2 w-full"
+                autoComplete="off"
+              />
+              {searchResults.length > 0 && (
+                <ul className="absolute z-10 bg-white border w-full max-h-60 overflow-auto">
+                  {searchResults.map((item) => (
+                    <li
+                      key={item.id}
+                      className="p-2 hover:bg-blue-100 cursor-pointer"
+                      onClick={() => handleSelectItem(item)}
                     >
-                      {saldoAwalKegiatanS !== null
-                        ? Math.round(totalSaldoGudang) ===
-                          Math.round(saldoAwalKegiatanS)
-                          ? "✔️ Sama dengan Saldo Semua"
-                          : `⚠️ Berbeda dengan Saldo Semua (${Math.round(
-                              saldoAwalKegiatanS
-                            )})`
-                        : "Saldo Semua belum tersedia"}
-                    </p>
-                  </>
-                );
-              })()}
+                      {item.id} - {item.name}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-          ) : (
-            <div className="mt-2 text-gray-500 italic">
-              Tidak ada data dari semua gudang
+
+            <Select value={gudangFilter} onValueChange={setGudangFilter}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Pilih Gudang" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Gudang Utama">Gudang Utama</SelectItem>
+                <SelectItem value="Gudang Injeksi">Gudang Injeksi</SelectItem>
+                <SelectItem value="Gudang Plating">Gudang Plating</SelectItem>
+                <SelectItem value="Gudang Molding">Gudang Molding</SelectItem>
+                <SelectItem value="Gudang Assembly">Gudang Assembly</SelectItem>
+                <SelectItem value="Gudang Lokal">Gudang Lokal</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button
+            onClick={fetchData}
+            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 w-full"
+            disabled={loading}
+          >
+            {loading ? "Mengambil data..." : "Tampilkan Data"}
+          </Button>
+          <Button
+            onClick={exportToExcel}
+            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 w-full mt-2"
+            disabled={data.length === 0}
+          >
+            Export ke Excel
+          </Button>
+
+          {data.length > 0 && (
+            <div className="my-4 bg-yellow-50 border border-yellow-300 p-4 rounded text-sm">
+              <p className="mb-1">
+                <strong>Saldo Awal (Sistem, {gudangFilter}):</strong>{" "}
+                {Math.round(saldoAwalSistem)}
+              </p>
+
+              <p className="mb-1">
+                <strong>Saldo Keseluruhan :</strong>{" "}
+                {saldoAwalKegiatanS !== null && saldoAwalKegiatanS !== undefined
+                  ? Math.round(saldoAwalKegiatanS)
+                  : "Tidak ada"}
+              </p>
+
+              {saldoSemuaGudang.length >= 0 ? (
+                <div className="mt-2">
+                  <strong>Saldo item di semua gudang:</strong>
+                  <ul className="list-disc list-inside">
+                    {saldoSemuaGudang.map((g, idx) => (
+                      <li key={idx}>
+                        {g.gudang}:{" "}
+                        {g.saldo !== null && g.saldo !== undefined
+                          ? Math.round(g.saldo)
+                          : "Tidak ada"}
+                      </li>
+                    ))}
+                  </ul>
+
+                  {/* Hitung total semua gudang */}
+                  {(() => {
+                    const totalSaldoGudang = saldoSemuaGudang.reduce(
+                      (sum, g) => sum + (g.saldo || 0),
+                      0
+                    );
+
+                    return (
+                      <>
+                        <p className="mt-2 font-semibold">
+                          Total semua gudang: {Math.round(totalSaldoGudang)}
+                        </p>
+
+                        <p
+                          className={`mt-1 ${
+                            saldoAwalKegiatanS !== null &&
+                            Math.round(totalSaldoGudang) !==
+                              Math.round(saldoAwalKegiatanS)
+                              ? "text-red-600 font-bold"
+                              : "text-green-600 font-semibold"
+                          }`}
+                        >
+                          {saldoAwalKegiatanS !== null
+                            ? Math.round(totalSaldoGudang) ===
+                              Math.round(saldoAwalKegiatanS)
+                              ? "✔️ Sama dengan Saldo Semua"
+                              : `⚠️ Berbeda dengan Saldo Semua (${Math.round(
+                                  saldoAwalKegiatanS
+                                )})`
+                            : "Saldo Semua belum tersedia"}
+                        </p>
+                      </>
+                    );
+                  })()}
+                </div>
+              ) : (
+                <div className="mt-2 text-gray-500 italic">
+                  Tidak ada data dari semua gudang
+                </div>
+              )}
             </div>
           )}
-        </div>
-      )}
 
-      {error && <p className="text-red-500 mt-4">{error}</p>}
+          {error && <p className="text-red-500 mt-4">{error}</p>}
 
-      {data.length > 0 && (
-        <div className="overflow-x-auto mt-6 mb-4">
-          <table className="w-full border border-collapse text-sm">
-            <thead>
-              <tr className="bg-gray-200">
-                <th className="border p-2">Tanggal</th>
-                <th className="border p-2">Item ID</th>
-                <th className="border p-2">Gudang</th>
-                <th className="border p-2">Kegiatan</th>
-                <th className="border p-2">Keterangan</th>
-                <th className="border p-2">IN</th>
-                <th className="border p-2">OUT</th>
-                <th className="border p-2">Saldo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(() => {
-                let saldo = 0;
-                const bulanDitandai: { [key: string]: boolean } = {};
-
-                // 🔑 bulan & tahun awal pencarian
-                const tgl1Date = new Date(form.tgl1);
-                const bulanAwal = tgl1Date.getMonth();
-                const tahunAwal = tgl1Date.getFullYear();
-
-                return data.map((row, idx) => {
-                  saldo += row.KgI - row.KgO;
-                  const isSaldoAwal = row.Kegiatan === "S";
-                  const moveDate = new Date(row.MoveDate);
-
-                  // baris terakhir di tanggal yang sama
-                  const nextRow = data[idx + 1];
-                  const isLastInDateGroup =
-                    !nextRow ||
-                    new Date(nextRow.MoveDate).getDate() !==
-                      moveDate.getDate() ||
-                    new Date(nextRow.MoveDate).getMonth() !==
-                      moveDate.getMonth() ||
-                    new Date(nextRow.MoveDate).getFullYear() !==
-                      moveDate.getFullYear();
-
-                  // kunci bulan-tahun
-                  const keyBulan = `${moveDate.getMonth()}-${moveDate.getFullYear()}`;
-
-                  // apakah sudah pernah ditandai bulan ini?
-                  const belumDitandai = !bulanDitandai[keyBulan];
-
-                  // ✅ hanya tandai kalau bukan bulan pertama
-                  const bukanBulanPertama =
-                    moveDate.getMonth() !== bulanAwal ||
-                    moveDate.getFullYear() !== tahunAwal;
-
-                  // tentukan highlight
-                  const highlightRow =
-                    isLastInDateGroup &&
-                    belumDitandai &&
-                    !isSaldoAwal &&
-                    bukanBulanPertama;
-
-                  let extraNote = "";
-                  if (highlightRow) {
-                    bulanDitandai[keyBulan] = true; // tandai supaya tidak dobel
-                    const bulanTeks = moveDate.toLocaleString("id-ID", {
-                      month: "long",
-                    });
-                    const tahunTeks = moveDate.getFullYear();
-                    extraNote = ` (Saldo Awal ${bulanTeks} ${tahunTeks})`;
-                  }
-
-                  return (
-                    <tr
-                      key={idx}
-                      className={`hover:bg-gray-100 
-          ${isSaldoAwal ? "bg-green-200 font-semibold" : ""} 
-          ${highlightRow ? "bg-yellow-100" : ""} 
-          ${
-            !isSaldoAwal && !highlightRow
-              ? idx % 2 === 0
-                ? "bg-white"
-                : "bg-gray-50"
-              : ""
-          }`}
-                    >
-                      <td className="border p-2">
-                        {typeof row.MoveDate === "string"
-                          ? row.MoveDate.substring(0, 10)
-                              .split("-")
-                              .reverse()
-                              .join("/")
-                          : new Date(row.MoveDate).toLocaleDateString("id-ID")}
-                      </td>
-
-                      <td className="border p-2">{row.ItemID}</td>
-                      <td className="border p-2">{row.LocName}</td>
-                      <td className="border p-2 text-center">{row.NoMemo}</td>
-                      <td className="border p-2">
-                        {row.Keterangan}
-                        {extraNote && (
-                          <span className="text-blue-600 font-medium">
-                            {extraNote}
-                          </span>
-                        )}
-                      </td>
-                      <td className="border p-2 text-right">
-                        {Math.round(row.KgI)}
-                      </td>
-                      <td className="border p-2 text-right">
-                        {Math.round(row.KgO)}
-                      </td>
-                      <td className="border p-2 text-right font-semibold">
-                        {Math.round(saldo)}
-                      </td>
-                    </tr>
-                  );
-                });
-              })()}
-            </tbody>
-
-            <tfoot>
-              {(() => {
-                const totalIn = data.reduce((sum, row) => sum + row.KgI, 0);
-                const totalOut = data.reduce((sum, row) => sum + row.KgO, 0);
-                const totalSaldo = data.reduce(
-                  (sum, row) => sum + (row.KgI - row.KgO),
-                  0
-                );
-
-                return (
-                  <tr className="bg-green-200 font-bold">
-                    <td className="border p-2 text-center" colSpan={5}>
-                      Total
-                    </td>
-                    <td className="border p-2 text-right">
-                      {Math.round(totalIn)}
-                    </td>
-                    <td className="border p-2 text-right">
-                      {Math.round(totalOut)}
-                    </td>
-                    <td className="border p-2 text-right">
-                      {Math.round(totalSaldo)}
-                    </td>
+          {data.length > 0 && (
+            <div className="overflow-x-auto mt-6 mb-4">
+              <table className="w-full border border-collapse text-sm">
+                <thead>
+                  <tr className="bg-gray-200">
+                    <th className="border p-2">Tanggal</th>
+                    <th className="border p-2">Item ID</th>
+                    <th className="border p-2">Gudang</th>
+                    <th className="border p-2">Kegiatan</th>
+                    <th className="border p-2">Keterangan</th>
+                    <th className="border p-2">IN</th>
+                    <th className="border p-2">OUT</th>
+                    <th className="border p-2">Saldo</th>
                   </tr>
-                );
-              })()}
-            </tfoot>
-          </table>
+                </thead>
+                <tbody>
+                  {(() => {
+                    let saldo = 0;
+                    const bulanDitandai: { [key: string]: boolean } = {};
+
+                    const tgl1Date = new Date(form.tgl1);
+                    const bulanAwal = tgl1Date.getMonth();
+                    const tahunAwal = tgl1Date.getFullYear();
+
+                    const rows: JSX.Element[] = [];
+
+                    data.forEach((row, idx) => {
+                      saldo += row.KgI - row.KgO;
+                      const isSaldoAwal = row.Kegiatan === "S";
+                      const moveDate = new Date(row.MoveDate);
+
+                      const nextRow = data[idx + 1];
+                      const isLastInDateGroup =
+                        !nextRow ||
+                        new Date(nextRow.MoveDate).getDate() !==
+                          moveDate.getDate() ||
+                        new Date(nextRow.MoveDate).getMonth() !==
+                          moveDate.getMonth() ||
+                        new Date(nextRow.MoveDate).getFullYear() !==
+                          moveDate.getFullYear();
+
+                      const keyBulan = `${moveDate.getMonth()}-${moveDate.getFullYear()}`;
+                      const belumDitandai = !bulanDitandai[keyBulan];
+
+                      const bukanBulanPertama =
+                        moveDate.getMonth() !== bulanAwal ||
+                        moveDate.getFullYear() !== tahunAwal;
+
+                      const highlightRow =
+                        isLastInDateGroup &&
+                        belumDitandai &&
+                        !isSaldoAwal &&
+                        bukanBulanPertama;
+
+                      rows.push(
+                        <tr
+                          key={idx}
+                          className={`hover:bg-gray-100 
+            ${isSaldoAwal ? "bg-green-200 font-semibold" : ""} 
+            ${highlightRow ? "bg-yellow-100" : ""} 
+            ${
+              !isSaldoAwal && !highlightRow
+                ? idx % 2 === 0
+                  ? "bg-white"
+                  : "bg-gray-50"
+                : ""
+            }`}
+                        >
+                          <td className="border p-2">
+                            {typeof row.MoveDate === "string"
+                              ? row.MoveDate.substring(0, 10)
+                                  .split("-")
+                                  .reverse()
+                                  .join("/")
+                              : new Date(row.MoveDate).toLocaleDateString(
+                                  "id-ID"
+                                )}
+                          </td>
+
+                          <td className="border p-2">{row.ItemID}</td>
+                          <td className="border p-2">{row.LocName}</td>
+                          <td className="border p-2 text-center">
+                            {row.NoMemo}
+                          </td>
+                          <td className="border p-2">{row.Keterangan}</td>
+                          <td className="border p-2 text-right">
+                            {Math.round(row.KgI)}
+                          </td>
+                          <td className="border p-2 text-right">
+                            {Math.round(row.KgO)}
+                          </td>
+                          <td className="border p-2 text-right font-semibold">
+                            {Math.round(saldo)}
+                          </td>
+                        </tr>
+                      );
+
+                      // 👉 kalau baris terakhir di bulan, tambahkan baris "Saldo Awal Bulan ..."
+                      if (highlightRow) {
+                        bulanDitandai[keyBulan] = true;
+                        const bulanTeks = moveDate.toLocaleString("id-ID", {
+                          month: "long",
+                        });
+                        const tahunTeks = moveDate.getFullYear();
+
+                        rows.push(
+                          <tr
+                            key={`saldo-awal-${keyBulan}`}
+                            className="bg-yellow-100 font-medium"
+                          >
+                            <td className="border p-2 text-center" colSpan={7}>
+                              Saldo Awal {bulanTeks} {tahunTeks}
+                            </td>
+                            <td className="border p-2 text-right font-semibold">
+                              {Math.round(saldo)}
+                            </td>
+                          </tr>
+                        );
+                      }
+                    });
+
+                    return rows;
+                  })()}
+                </tbody>
+
+                <tfoot>
+                  {(() => {
+                    const totalIn = data.reduce((sum, row) => sum + row.KgI, 0);
+                    const totalOut = data.reduce(
+                      (sum, row) => sum + row.KgO,
+                      0
+                    );
+                    const totalSaldo = data.reduce(
+                      (sum, row) => sum + (row.KgI - row.KgO),
+                      0
+                    );
+
+                    return (
+                      <tr className="bg-green-200 font-bold">
+                        <td className="border p-2 text-center" colSpan={5}>
+                          Total
+                        </td>
+                        <td className="border p-2 text-right">
+                          {Math.round(totalIn)}
+                        </td>
+                        <td className="border p-2 text-right">
+                          {Math.round(totalOut)}
+                        </td>
+                        <td className="border p-2 text-right">
+                          {Math.round(totalSaldo)}
+                        </td>
+                      </tr>
+                    );
+                  })()}
+                </tfoot>
+              </table>
+            </div>
+          )}
         </div>
-      )}
-    </div>
+      </CardContent>
+      <CardFooter>
+        <p className="text-xs text-gray-500">
+          Note: Hubungi IT jika ada memiliki pertanyaan seputar laporan ini.
+        </p>
+      </CardFooter>
+    </Card>
   );
 }
