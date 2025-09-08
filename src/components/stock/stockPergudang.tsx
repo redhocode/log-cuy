@@ -24,6 +24,8 @@ interface StockItem {
   kategori: string;
   totalkgs: string;
 }
+import * as XLSX from "xlsx";
+import { saveAs } from "file-saver";
 
 const StockPergudang: React.FC = () => {
   const [data, setData] = useState<StockItem[]>([]);
@@ -35,6 +37,7 @@ const StockPergudang: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split("T")[0] // default hari ini
   );
+const [cacheData, setCacheData] = useState<{ [key: string]: StockItem[] }>({});
 
   const debounceTimeout = useRef<any>(null);
   const periodeR = "201905";
@@ -76,35 +79,49 @@ const StockPergudang: React.FC = () => {
   };
 
   // fetch data dari API → SELALU ambil semua item (%)
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const response = await fetch(
-          `/api/stock?periodeR=${periodeR}&loc=%&item=%&tgl=${selectedDate}&company=0&tipestock=0&jenisbarang=0&kategori=%&minus=0`
-        );
+ useEffect(() => {
+   const fetchData = async () => {
+     // cek cache dulu
+     if (cacheData[selectedDate]) {
+       setData(cacheData[selectedDate]);
+       setFilteredData(applyFilter(cacheData[selectedDate], filterOption));
+       setLoading(false);
+       return;
+     }
 
-        if (!response.ok) {
-          setError("System Busy, Please reload");
-          return;
-        }
+     setLoading(true);
+     try {
+       const response = await fetch(
+         `/api/stock?periodeR=${periodeR}&loc=%&item=%&tgl=${selectedDate}&company=0&tipestock=0&jenisbarang=0&kategori=%&minus=0`
+       );
 
-        const result = await response.json();
-        if (result.data) {
-          setData(result.data);
-          setFilteredData(applyFilter(result.data, filterOption));
-        } else {
-          setError("System Busy, Please reload");
-        }
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
+       if (!response.ok) {
+         setError("System Busy, Please reload");
+         return;
+       }
 
-    fetchData();
-  }, [selectedDate]);
+       const result = await response.json();
+       if (result.data) {
+         setData(result.data);
+         setFilteredData(applyFilter(result.data, filterOption));
+
+         // simpan ke cache frontend
+         setCacheData((prev) => ({
+           ...prev,
+           [selectedDate]: result.data,
+         }));
+       } else {
+         setError("System Busy, Please reload");
+       }
+     } catch (err: any) {
+       setError(err.message);
+     } finally {
+       setLoading(false);
+     }
+   };
+
+   fetchData();
+ }, [selectedDate]);
 
   // kalau filterOption berubah → filter ulang data
   useEffect(() => {
@@ -138,6 +155,37 @@ const StockPergudang: React.FC = () => {
 
   if (loading) return <Loading />;
   if (error) return <div>Error: {error}</div>;
+const handleExport = () => {
+  // pilih data yang sudah difilter
+  const exportData = dataWithStockAkhir.map((item) => ({
+    ItemID: item.itemid,
+    ItemName: item.itemname,
+    Kategori: item.kategori,
+    StockAkhir: item.stockAkhir,
+  }));
+
+  // buat worksheet dan workbook
+  const ws = XLSX.utils.json_to_sheet(exportData);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Stock");
+
+  // nama file sesuai gudang
+  const gudang =
+    filterOption === "utama"
+      ? "Gudang_Utama"
+      : filterOption === "injeksi"
+      ? "Gudang_Injeksi"
+      : "Semua_Gudang";
+
+  const fileName = `Laporan_Stock_${gudang}_${selectedDate}.xlsx`;
+
+  // simpan file
+  const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  saveAs(
+    new Blob([excelBuffer], { type: "application/octet-stream" }),
+    fileName
+  );
+};
 
   return (
     <div>
@@ -178,6 +226,15 @@ const StockPergudang: React.FC = () => {
           onChange={handleSearchChange}
           className="w-[300px]"
         />
+      </div>
+      {/* Tombol Export */}
+      <div className="mb-4">
+        <button
+          onClick={handleExport}
+          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+        >
+          Export ke Excel
+        </button>
       </div>
 
       {/* Table */}
