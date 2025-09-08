@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
+import { cartonItems } from "./carton";
 interface KartuStockData {
   Item: string;
   Loc: string;
@@ -161,11 +161,27 @@ const [selectedGudang, setSelectedGudang] = useState<string | null>(null);
      const res = await axios.get<KartuStockData[]>(`/api/kartustock?${params}`);
 
      // filter transaksi sesuai gudang + item
-     const transaksi = res.data.filter(
-       (row) =>
-         row.LocName?.trim().toLowerCase() === gudangFilter.toLowerCase() &&
-         row.ItemID.toUpperCase() === form.itemid.toUpperCase()
-     );
+    //  const transaksi = res.data.filter(
+    //    (row) =>
+    //      row.LocName?.trim().toLowerCase() === gudangFilter.toLowerCase() &&
+    //      row.ItemID.toUpperCase() === form.itemid.toUpperCase()
+    //  );
+    let transaksi: KartuStockData[] = [];
+
+    // cek apakah item termasuk special (lihat specialItems.ts)
+    if (cartonItems.includes(form.itemid.toUpperCase())) {
+      // tampilkan semua gudang
+      transaksi = res.data.filter(
+        (row) => row.ItemID.toUpperCase() === form.itemid.toUpperCase()
+      );
+    } else {
+      // default: sesuai gudang yang dipilih user
+      transaksi = res.data.filter(
+        (row) =>
+          row.LocName?.trim().toLowerCase() === gudangFilter.toLowerCase() &&
+          row.ItemID.toUpperCase() === form.itemid.toUpperCase()
+      );
+    }
 
      // -----------------------------
      // ✅ Ambil saldo awal dari API
