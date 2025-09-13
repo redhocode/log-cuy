@@ -21,7 +21,7 @@ export async function GET(req: Request) {
     CONVERT(VARCHAR(10), a.PlanDate, 23)   AS tanggal_planning, -- YYYY-MM-DD
     a.Remark               AS Nama_PO,
     e.ItemID               AS item_po,
-    a.Kgs                 AS qty_po,
+    e.Kgs                 AS qty_po,
     c.ItemID               AS item_bom,          
     CASE 
         WHEN prod.itemid IS NOT NULL THEN 'Sudah Produksi'
@@ -46,7 +46,7 @@ OUTER APPLY (
         d.ProdDate
     FROM taPRproddt d
     WHERE d.NoPO = a.OrderID 
-      AND d.ItemType = 'H'
+      AND d.ItemType = 'H' and e.ItemID=c.ItemID
     ORDER BY d.ProdDate DESC
 ) prod
 WHERE (@start IS NULL OR a.PlanDate >= @start)

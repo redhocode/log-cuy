@@ -24,6 +24,7 @@ export default function TrackingTree() {
   const [end, setEnd] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [deptFilter, setDeptFilter] = useState("ALL");
 
   const loadData = async () => {
     setLoading(true);
@@ -43,7 +44,7 @@ export default function TrackingTree() {
     setLoading(false);
   };
 
-  // 🔍 Filter data sesuai pencarian + status produksi
+  // 🔍 Filter data sesuai pencarian + status produksi + departemen
   const filtered = data.filter((row) => {
     const q = search.toLowerCase();
     const matchSearch =
@@ -57,7 +58,9 @@ export default function TrackingTree() {
     const matchStatus =
       statusFilter === "ALL" || row.status_produksi === statusFilter;
 
-    return matchSearch && matchStatus;
+   const matchDept = deptFilter === "ALL" || row.departemen === deptFilter;
+
+   return matchSearch && matchStatus && matchDept;
   });
 
   // Group by SPK → item_po → hasil produksi unik
@@ -167,6 +170,23 @@ export default function TrackingTree() {
               <option value="Belum Produksi">Belum Produksi</option>
             </select>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-600">
+              Departemen
+            </label>
+            <select
+              className="border rounded-lg px-3 py-2 w-48"
+              value={deptFilter}
+              onChange={(e) => setDeptFilter(e.target.value)}
+            >
+              <option value="ALL">Semua</option>
+              <option value="SP">Spray</option>
+              <option value="IN">Injeksi</option>
+              <option value="MO">Molding</option>
+              <option value="AS">Assembly</option>
+              <option value="PL">Plating</option>
+            </select>
+          </div>
           <button
             onClick={loadData}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg shadow hover:bg-blue-700 transition"
@@ -215,8 +235,12 @@ export default function TrackingTree() {
                         <th className="border px-3 py-2 text-left">
                           Departemen
                         </th>
-                        <th className="border px-3 py-2 text-left">Tanggal Produksi</th>
-                     <th className="border px-3 py-2 text-left">Status Pengiriman</th>
+                        <th className="border px-3 py-2 text-left">
+                          Tanggal Produksi
+                        </th>
+                        <th className="border px-3 py-2 text-left">
+                          Status Pengiriman
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -250,6 +274,7 @@ export default function TrackingTree() {
                           <td className="border px-3 py-2">
                             {formatDate(row.tanggal_produksi)}
                           </td>
+                          <td className="border px-3 py-2">-</td>
                         </tr>
                       ))}
                     </tbody>
