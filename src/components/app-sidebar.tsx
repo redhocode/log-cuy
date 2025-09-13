@@ -29,6 +29,7 @@ import Link from "next/link";
 import { Label } from "./ui/label";
 const masterItems = [
   { href: "/dashboard/", label: "Stock Gudang", icon: BellDot },
+  { href: "/dashboard/bom", label: "BOM", icon: Package2 },
   { href: "/dashboard/pengeluaran", label: "Laporan Exim", icon: BellDot },
   { href: "/dashboard/barang", label: "Master Barang", icon: Package2 },
   { href: "/dashboard/cekppn", label: "Hitung PPN", icon: Package2 },
@@ -38,6 +39,7 @@ const masterItems = [
   // { href: "/dashboard/notajual", label: "Nota Jual 2.5", icon: Package2 },
 ];
 const navItems = [
+ 
   { href: "/dashboard/spk", label: "SPK", icon: Package2 },
   { href: "/dashboard/data", label: "Produksi", icon: Package2 },
   { href: "/dashboard/lbm", label: "LBM", icon: Package2 },
@@ -59,10 +61,16 @@ const items = [
 ]
 const Items2 = [
   
-  { href: "/dashboard/purchase", label: "Purchase", icon: Package2 },
+  { href: "/dashboard/purchase", label: "Pembelian", icon: Package2 },
   { href: "/dashboard/penerimaan", label: "Penerimaan", icon: Package2 },
-  { href: "/dashboard/trackpo", label: "Track PO", icon: Package2 },
+  //{ href: "/dashboard/trackpo", label: "Track PO", icon: Package2 },
+ // { href: "/dashboard/po", label: "Monitoring PO Produksi", icon: Package2 },
   // { href: "/dashboard/laprod", label: "LapProd", icon: Package2 },
+];
+const Items5 = [
+ 
+  { href: "/dashboard/po", label: "PO Produksi", icon: Package2 },
+
 ];
 // const Items3 = [
 //   { href: "/dashboard/kas", label: "Kas", icon: Wallet, disabled: true },
@@ -188,6 +196,35 @@ export default function AppSidebar() {
                 </SidebarMenuItem>
               </Collapsible> */}
               {/* Collapsible Section with Nav Links */}
+              <Collapsible defaultOpen className="group/collapsible">
+                <SidebarMenuItem>
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuButton className="flex items-center gap-2">
+                      <Package2 className="h-5 w-5" />
+                      <span>Monitoring</span>
+                    </SidebarMenuButton>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <SidebarMenuSub>
+                      {Items5.map(({ href, label, icon: Icon }) => (
+                        <SidebarMenuItem key={href}>
+                          <SidebarMenuButton asChild>
+                            <Button
+                              variant={pathname === href ? "outline" : "ghost"}
+                              onClick={() => router.push(href)}
+                              className="flex items-center gap-2 justify-start"
+                            >
+                              <Icon className="h-5 w-5" />
+                              <span>{label}</span>
+                            </Button>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      ))}
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </SidebarMenuItem>
+              </Collapsible>
+
               <Collapsible defaultOpen className="group/collapsible">
                 <SidebarMenuItem>
                   <CollapsibleTrigger asChild>
