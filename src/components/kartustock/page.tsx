@@ -560,6 +560,8 @@ const [selectedGudang, setSelectedGudang] = useState<string | null>(null);
                   {(() => {
                     let saldo = 0;
                     const bulanDitandai: { [key: string]: boolean } = {};
+                    let totalInBulan = 0;
+                    let totalOutBulan = 0;
 
                     const tgl1Date = new Date(form.tgl1);
                     const bulanAwal = tgl1Date.getMonth();
@@ -569,6 +571,9 @@ const [selectedGudang, setSelectedGudang] = useState<string | null>(null);
 
                     data.forEach((row, idx) => {
                       saldo += row.KgI - row.KgO;
+                      totalInBulan += row.KgI;
+                      totalOutBulan += row.KgO;
+
                       const isSaldoAwal = row.Kegiatan === "S";
                       const moveDate = new Date(row.MoveDate);
 
@@ -599,15 +604,15 @@ const [selectedGudang, setSelectedGudang] = useState<string | null>(null);
                         <tr
                           key={idx}
                           className={`hover:bg-gray-100 
-            ${isSaldoAwal ? "bg-green-200 font-semibold" : ""} 
-            ${highlightRow ? "bg-yellow-100" : ""} 
-            ${
-              !isSaldoAwal && !highlightRow
-                ? idx % 2 === 0
-                  ? "bg-white"
-                  : "bg-gray-50"
-                : ""
-            }`}
+        ${isSaldoAwal ? "bg-green-200 font-semibold" : ""} 
+        ${highlightRow ? "bg-white" : ""} 
+        ${
+          !isSaldoAwal && !highlightRow
+            ? idx % 2 === 0
+              ? "bg-white"
+              : "bg-gray-50"
+            : ""
+        }`}
                         >
                           <td className="border p-2">
                             {typeof row.MoveDate === "string"
@@ -649,18 +654,29 @@ const [selectedGudang, setSelectedGudang] = useState<string | null>(null);
                         rows.push(
                           <tr
                             key={`saldo-awal-${keyBulan}`}
-                            className="bg-yellow-100 font-medium"
+                            className="bg-blue-300 font-medium"
                           >
-                            <td className="border p-2 text-center" colSpan={7}>
+                            <td className="border p-2 text-center" colSpan={5}>
                               Saldo Awal {bulanTeks} {tahunTeks}
+                            </td>
+                            <td className="border p-2 text-right">
+                              {Math.round(totalInBulan)}
+                            </td>
+                            <td className="border p-2 text-right">
+                              {Math.round(totalOutBulan)}
                             </td>
                             <td className="border p-2 text-right font-semibold">
                               {Math.round(saldo)}
                             </td>
                           </tr>
                         );
+
+                        // reset total masuk/keluar bulan
+                        totalInBulan = 0;
+                        totalOutBulan = 0;
                       }
                     });
+
 
                     return rows;
                   })()}
