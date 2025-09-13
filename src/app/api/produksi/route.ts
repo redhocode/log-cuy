@@ -110,7 +110,9 @@ import { NextResponse } from "next/server";
 import sql from "mssql";
 import { ProduksiType } from "@/lib/types";
 import { getPool } from "@/lib/config";
-import { redis } from "@/lib/redis";
+
+
+export const revalidate = 60;
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -119,20 +121,7 @@ export async function GET(request: Request) {
   const prodType = url.searchParams.get("prodType");
   const itemType = url.searchParams.get("itemType");
 
-  // bikin key unik biar cache beda-beda sesuai parameter
-  const cacheKey = `produksi:${startDate || "all"}:${endDate || "all"}:${
-    prodType || "all"
-  }:${itemType || "all"}`;
-
   try {
-    // cek cache di Redis dulu
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      return NextResponse.json(JSON.parse(cached), {
-        headers: { "Cache-Control": "public, max-age=60" },
-      });
-    }
-
     const pool = await getPool();
     let query = `
       SELECT TOP (1000000)
@@ -150,17 +139,23 @@ export async function GET(request: Request) {
         dt.[Kgs],
         dt.[UserName] 
       FROM [cp].[dbo].[taPRProdHd] AS hd
-      INNER JOIN [cp].[dbo].[taPRProdDt] AS dt ON hd.[ProdID] = dt.[ProdID] AND hd.[ProdType] = dt.[ProdType]
-      INNER JOIN [cp].[dbo].[taPROrder] AS sp ON hd.[OrderID] = sp.[OrderID]
-      INNER JOIN [cp].[dbo].[taLocation] AS g ON hd.[LocID] = g.[LocID]
-      INNER JOIN [cp].[dbo].[taDeptPROrder] AS d ON hd.[DeptID] = d.[PRDeptID]
-      WHERE hd.[ProdType] IN ('IN','SP','MO','PL','AS') AND dt.[ItemType] IN ('B','H')
+      INNER JOIN [cp].[dbo].[taPRProdDt] AS dt 
+        ON hd.[ProdID] = dt.[ProdID] AND hd.[ProdType] = dt.[ProdType]
+      INNER JOIN [cp].[dbo].[taPROrder] AS sp 
+        ON hd.[OrderID] = sp.[OrderID]
+      INNER JOIN [cp].[dbo].[taLocation] AS g 
+        ON hd.[LocID] = g.[LocID]
+      INNER JOIN [cp].[dbo].[taDeptPROrder] AS d 
+        ON hd.[DeptID] = d.[PRDeptID]
+      WHERE hd.[ProdType] IN ('IN','SP','MO','PL','AS') 
+        AND dt.[ItemType] IN ('B','H')
     `;
 
     const conditions: string[] = [];
     if (startDate && endDate) {
       conditions.push(
-        `CONVERT(DATE, hd.[ProdDate]) >= @StartDate AND CONVERT(DATE, hd.[ProdDate]) <= @EndDate`
+        `CONVERT(DATE, hd.[ProdDate]) >= @StartDate 
+         AND CONVERT(DATE, hd.[ProdDate]) <= @EndDate`
       );
     }
     if (prodType) {
@@ -186,20 +181,19 @@ export async function GET(request: Request) {
       requestQuery.input("ItemType", sql.NVarChar, itemType);
     }
 
-    const result = await requestQuery.query<ProduksiType>(query);
+    const result = await requestQuery.query(query);
 
-    const formattedRecords = result.recordset.map((record) => ({
+    const formattedRecords = result.recordset.map((record: ProduksiType) => ({
       ...record,
       Tanggal: record.Tanggal
         ? record.Tanggal.toISOString().split("T")[0]
         : null,
     }));
 
-    // simpan hasil ke Redis (TTL 60 detik)
-    await redis.set(cacheKey, JSON.stringify(formattedRecords), "EX", 60);
-
     return NextResponse.json(formattedRecords, {
-      headers: { "Cache-Control": "public, max-age=60" },
+      headers: {
+        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=30",
+      },
     });
   } catch (error) {
     console.error("Error fetching data:", error);
