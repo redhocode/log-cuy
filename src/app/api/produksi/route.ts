@@ -1,21 +1,138 @@
+// import { NextResponse } from "next/server";
+// import sql from "mssql";
+import { DataProduksi } from "@/lib/types";
+import * as XLSX from "xlsx";
+// // SQL Server Configuration
+// import {getPool} from "@/lib/config";
+
+// // Define a type for the record structure
+
+// export async function GET(request: Request) {
+//   const url = new URL(request.url);
+//   const startDate = url.searchParams.get("startDate");
+//   const endDate = url.searchParams.get("endDate");
+//   // const remark = url.searchParams.get("remark");
+//   const prodType = url.searchParams.get("prodType");
+//   const itemType = url.searchParams.get("itemType");
+
+//   try {
+//     const pool = await getPool();
+//     let query = `
+//       SELECT TOP (10000)
+//         hd.[ProdID] AS No_Produksi,
+//         hd.[ProdDate] AS Tanggal,
+//         d.[PRDeptName] AS Departemen,
+//         dt.[ItemType] AS Tipe_Produksi,
+//         hd.[OrderID] AS SPK,
+//         hd.[NoRator],
+//         sp.[Remark] AS Nama_PO,
+//         g.[LocName] AS Gudang,
+//         hd.[Remark],
+//         dt.[ItemID],
+//         dt.[Bags],
+//         dt.[Kgs],
+//         dt.[UserName] 
+//       FROM [cp].[dbo].[taPRProdHd] AS hd
+//       INNER JOIN [cp].[dbo].[taPRProdDt] AS dt ON hd.[ProdID] = dt.[ProdID] AND hd.[ProdType] = dt.[ProdType]
+//       INNER JOIN [cp].[dbo].[taPROrder] AS sp ON hd.[OrderID] = sp.[OrderID]
+//       INNER JOIN [cp].[dbo].[taLocation] AS g ON hd.[LocID] = g.[LocID]
+//       INNER JOIN [cp].[dbo].[taDeptPROrder] AS d ON hd.[DeptID] = d.[PRDeptID]
+//       WHERE hd.[ProdType] IN ('IN','SP','MO','PL','AS') AND dt.[ItemType] IN ('B','H')
+//     `;
+
+//     const conditions: string[] = [];
+
+//     // Menambahkan filter berdasarkan tanggal, jika ada
+//   if (startDate && endDate) {
+//     conditions.push(
+//       `CONVERT(DATE, hd.[ProdDate]) >= @StartDate AND CONVERT(DATE, hd.[ProdDate]) <= @EndDate`
+//     );
+//   }
+
+
+//     // Menambahkan filter berdasarkan remark, jika ada (cari 5 karakter terakhir)
+//     // if (remark) {
+//     //   console.log("Using remark in SQL:", remark); // Debug: Cek nilai remark yang diterima
+//     //   conditions.push(`RIGHT(hd.[Remark], 5) = @Remark`);
+//     // }
+
+//     // Filter berdasarkan prodType, jika ada
+//     if (prodType) {
+//       conditions.push(`hd.[ProdType] = @ProdType`);
+//     }
+
+//     // Filter berdasarkan itemType, jika ada
+//     if (itemType) {
+//       conditions.push(`dt.[ItemType] = @ItemType`);
+//     }
+
+//     // Gabungkan kondisi WHERE jika ada
+//     if (conditions.length > 0) {
+//       query += " AND " + conditions.join(" AND ");
+//     }
+
+//     query += ` ORDER BY hd.[ProdID] DESC`;
+
+//     const requestQuery = pool.request();
+
+//     // Menambahkan parameter untuk tanggal dan remark
+//     if (startDate && endDate) {
+//       requestQuery.input("StartDate", sql.Date, new Date(startDate));
+//       requestQuery.input("EndDate", sql.Date, new Date(endDate));
+//     }
+
+//     // if (remark) {
+//     //   requestQuery.input("Remark", sql.NVarChar, remark);
+//     // }
+//     if (prodType) {
+//       requestQuery.input("ProdType", sql.NVarChar, prodType);
+//     }
+//     if (itemType) {
+//       requestQuery.input("ItemType", sql.NVarChar, itemType);
+//     }
+
+//     const result = await requestQuery.query<ProduksiType>(query);
+
+//     // Format the HeaderProdDate to show only the date part
+//     const formattedRecords = result.recordset.map((record) => ({
+//       ...record,
+//      Tanggal: record.Tanggal ? record.Tanggal.toISOString().split("T")[0] : null, // If ProdDate is null or undefined, return null
+// }));
+
+//     return NextResponse.json(formattedRecords);
+//   } catch (error) {
+//     console.error("Error fetching data:", error);
+//     return NextResponse.json({ error: "Error fetching data" }, { status: 500 });
+//   }
+// }
+
 import { NextResponse } from "next/server";
 import sql from "mssql";
-import { ProduksiType, DataProduksi } from "@/lib/types";
-import * as XLSX from "xlsx";
-// SQL Server Configuration
-import {getPool} from "@/lib/config";
-
-// Define a type for the record structure
+import { ProduksiType } from "@/lib/types";
+import { getPool } from "@/lib/config";
+import { redis } from "@/lib/redis";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const startDate = url.searchParams.get("startDate");
   const endDate = url.searchParams.get("endDate");
-  // const remark = url.searchParams.get("remark");
   const prodType = url.searchParams.get("prodType");
   const itemType = url.searchParams.get("itemType");
 
+  // bikin key unik biar cache beda-beda sesuai parameter
+  const cacheKey = `produksi:${startDate || "all"}:${endDate || "all"}:${
+    prodType || "all"
+  }:${itemType || "all"}`;
+
   try {
+    // cek cache di Redis dulu
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      return NextResponse.json(JSON.parse(cached), {
+        headers: { "Cache-Control": "public, max-age=60" },
+      });
+    }
+
     const pool = await getPool();
     let query = `
       SELECT TOP (1000000)
@@ -41,49 +158,27 @@ export async function GET(request: Request) {
     `;
 
     const conditions: string[] = [];
-
-    // Menambahkan filter berdasarkan tanggal, jika ada
-  if (startDate && endDate) {
-    conditions.push(
-      `CONVERT(DATE, hd.[ProdDate]) >= @StartDate AND CONVERT(DATE, hd.[ProdDate]) <= @EndDate`
-    );
-  }
-
-
-    // Menambahkan filter berdasarkan remark, jika ada (cari 5 karakter terakhir)
-    // if (remark) {
-    //   console.log("Using remark in SQL:", remark); // Debug: Cek nilai remark yang diterima
-    //   conditions.push(`RIGHT(hd.[Remark], 5) = @Remark`);
-    // }
-
-    // Filter berdasarkan prodType, jika ada
+    if (startDate && endDate) {
+      conditions.push(
+        `CONVERT(DATE, hd.[ProdDate]) >= @StartDate AND CONVERT(DATE, hd.[ProdDate]) <= @EndDate`
+      );
+    }
     if (prodType) {
       conditions.push(`hd.[ProdType] = @ProdType`);
     }
-
-    // Filter berdasarkan itemType, jika ada
     if (itemType) {
       conditions.push(`dt.[ItemType] = @ItemType`);
     }
-
-    // Gabungkan kondisi WHERE jika ada
     if (conditions.length > 0) {
       query += " AND " + conditions.join(" AND ");
     }
-
     query += ` ORDER BY hd.[ProdID] DESC`;
 
     const requestQuery = pool.request();
-
-    // Menambahkan parameter untuk tanggal dan remark
     if (startDate && endDate) {
       requestQuery.input("StartDate", sql.Date, new Date(startDate));
       requestQuery.input("EndDate", sql.Date, new Date(endDate));
     }
-
-    // if (remark) {
-    //   requestQuery.input("Remark", sql.NVarChar, remark);
-    // }
     if (prodType) {
       requestQuery.input("ProdType", sql.NVarChar, prodType);
     }
@@ -93,19 +188,24 @@ export async function GET(request: Request) {
 
     const result = await requestQuery.query<ProduksiType>(query);
 
-    // Format the HeaderProdDate to show only the date part
     const formattedRecords = result.recordset.map((record) => ({
       ...record,
-     Tanggal: record.Tanggal ? record.Tanggal.toISOString().split("T")[0] : null, // If ProdDate is null or undefined, return null
-}));
+      Tanggal: record.Tanggal
+        ? record.Tanggal.toISOString().split("T")[0]
+        : null,
+    }));
 
-    return NextResponse.json(formattedRecords);
+    // simpan hasil ke Redis (TTL 60 detik)
+    await redis.set(cacheKey, JSON.stringify(formattedRecords), "EX", 60);
+
+    return NextResponse.json(formattedRecords, {
+      headers: { "Cache-Control": "public, max-age=60" },
+    });
   } catch (error) {
     console.error("Error fetching data:", error);
     return NextResponse.json({ error: "Error fetching data" }, { status: 500 });
   }
 }
-
 
 
 export async function POST(request: Request) {
