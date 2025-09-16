@@ -16,21 +16,28 @@ export async function GET(req: Request) {
     if (end) request.input("end", end);
 
     const result = await request.query(`
-      SELECT 
+ SELECT 
     a.OrderID              AS SPK,
-    CONVERT(VARCHAR(10), a.PlanDate, 23)   AS tanggal_planning, -- YYYY-MM-DD
+    CONVERT(VARCHAR(10), a.PlanDate, 23)   AS tanggal_planning,
     a.Remark               AS Nama_PO,
     e.ItemID               AS item_po,
-    e.Kgs                 AS qty_po,
+    e.Kgs                  AS qty_po,
     c.ItemID               AS item_bom,          
     CASE 
-        WHEN prod.itemid IS NOT NULL THEN 'Sudah Produksi'
+        WHEN d.ItemID IS NOT NULL THEN 'Sudah Produksi'
         ELSE 'Belum Produksi'
     END                    AS status_produksi,
-    prod.itemid            AS item_produksi,
-    prod.kgs               AS qty,
-    prod.prodtype          AS departemen,
-    CONVERT(VARCHAR(10), prod.ProdDate, 23) AS tanggal_produksi -- YYYY-MM-DD
+    d.ItemID               AS item_produksi,
+    d.Kgs                  AS qty,
+    d.ItemType             AS NamaJenis,
+    d.ProdType             AS departemen,
+    CONVERT(VARCHAR(10), d.ProdDate, 23) AS tanggal_produksi,
+    f.Remark               AS Nama_PO_Kirim,
+    CONVERT(VARCHAR(10), f.MoveDate, 23) AS tanggal_kirim,
+    CASE
+        WHEN f.MoveDate IS NOT NULL THEN 'Sudah Dikirim'
+        ELSE 'Belum Dikirim'
+    END                    AS status_kirim
 FROM taPROrder a
 INNER JOIN taProrderDT e 
     ON e.OrderID = a.OrderID
@@ -38,20 +45,15 @@ INNER JOIN taPackingHD b
     ON e.ItemID = b.ItemID
 INNER JOIN taPackingDT c 
     ON c.TransID = b.TransID
-OUTER APPLY (
-    SELECT TOP 1 
-        d.ItemID, 
-        d.Kgs, 
-        d.ProdType, 
-        d.ProdDate
-    FROM taPRproddt d
-    WHERE d.NoPO = a.OrderID 
-      AND d.ItemType = 'H' and e.ItemID=c.ItemID
-    ORDER BY d.ProdDate DESC
-) prod
+LEFT JOIN taPRproddt d 
+    ON d.NoPO = a.OrderID 
+LEFT JOIN taTransOHD2 f 
+    ON a.NoSO = f.OrderID
 WHERE (@start IS NULL OR a.PlanDate >= @start)
   AND (@end IS NULL OR a.PlanDate <= @end)
-ORDER BY a.OrderID DESC, e.ItemID, c.ItemID;
+ORDER BY a.OrderID DESC, e.ItemID, c.ItemID, d.ProdDate;
+
+
 
     `);
 

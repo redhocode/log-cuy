@@ -9,14 +9,20 @@ interface SOData {
     item:string;
     company:string;
     tipe:string;
+    kredit:number;
+    jenisTOP:number;
+
 }
 export async function GET(request:Request) {
     const url = new URL(request.url);
     const tgl1 = url.searchParams.get("tgl1");
     const tgl2 = url.searchParams.get("tgl2");
+    const no = url.searchParams.get("No") || "%";
     const item = url.searchParams.get("item") || "%";
     const company = url.searchParams.get("company") || "%";
+    const kredit = url.searchParams.get("kredit") || 0;
     const tipe = url.searchParams.get("tipe") || "%";
+    const jenisTOP = url.searchParams.get("jenisTOP") || 0;
 
     if (!tgl1 || !tgl2) {
         return NextResponse.json({ message: "Parameter tidak lengkap!" }, { status: 400 });
@@ -28,8 +34,11 @@ export async function GET(request:Request) {
             .input("tgl1", sql.Date, tgl1)
             .input("tgl2", sql.Date, tgl2)
             .input("item", sql.NVarChar, item)
+            .input("no", sql.NVarChar, no)
             .input("company", sql.NVarChar, company)
             .input("tipe", sql.NVarChar, tipe)
+            .input("kredit", sql.Int, kredit)
+            .input("jenisTOP", sql.Int, jenisTOP)
             .execute("dbo.rpMonitoringSO");
 
         return NextResponse.json(result.recordset as SOData[]);
