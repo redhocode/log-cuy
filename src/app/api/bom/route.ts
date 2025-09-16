@@ -9,6 +9,8 @@ interface BomData {
   ItemID: string;
   ItemName: string;
   BahanQty: number;
+  Departemen: string;
+  KodeJenis: string;
 }
 
 export async function GET(request: Request) {
