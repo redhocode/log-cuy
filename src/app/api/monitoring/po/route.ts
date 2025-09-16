@@ -29,7 +29,7 @@ let query = `
       NULLIF(CONVERT(VARCHAR(10), d.ProdDate, 23), '') AS tanggal_produksi,
       f.Remark AS Nama_PO_Kirim,
       NULLIF(CONVERT(VARCHAR(10), f.MoveDate, 23), '') AS tanggal_kirim,
-      CASE WHEN d.ItemID IS NOT NULL THEN 'Sudah Produksi' ELSE 'Belum Produksi' END AS status_produksi,
+      CASE WHEN d.ItemID IS NOT NULL THEN 'Sudah Produksi' ELSE 'Proses Produksi' END AS status_produksi,
       CASE WHEN f.MoveDate IS NOT NULL THEN 'Sudah Dikirim' ELSE 'Belum Dikirim' END AS status_kirim
   FROM taPROrder a
   INNER JOIN taProrderDT e ON e.OrderID = a.OrderID
