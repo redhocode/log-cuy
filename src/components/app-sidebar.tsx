@@ -68,9 +68,8 @@ const Items2 = [
   // { href: "/dashboard/laprod", label: "LapProd", icon: Package2 },
 ];
 const Items5 = [
- 
   { href: "/dashboard/po", label: "PO Produksi", icon: Package2 },
-
+  { href: "/dashboard/so", label: "SO", icon: Package2 },
 ];
 // const Items3 = [
 //   { href: "/dashboard/kas", label: "Kas", icon: Wallet, disabled: true },
