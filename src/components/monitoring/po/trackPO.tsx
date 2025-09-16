@@ -216,6 +216,7 @@ export default function TrackingTree() {
               <option value="ALL">Semua</option>
               <option value="Sudah Produksi">Sudah Produksi</option>
               <option value="Belum Produksi">Belum Produksi</option>
+              <option value="Proses Produksi">Proses Produksi</option>
             </select>
           </div>
 
@@ -375,6 +376,7 @@ export default function TrackingTree() {
                           row.item_produksi,
                           row.qty,
                           row.departemen,
+                          row.tanggal_produksi,
                         ].join("|");
                         if (!uniqueBahan.has(key)) {
                           uniqueBahan.set(key, row);
@@ -396,6 +398,9 @@ export default function TrackingTree() {
                               <th className="border px-3 py-2 text-left">
                                 Departemen
                               </th>
+                              <th className="border px-3 py-2 text-left">
+                                Tanggal Pengambilan
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
@@ -414,6 +419,9 @@ export default function TrackingTree() {
                                 </td>
                                 <td className="border px-3 py-2">
                                   {mapDept(row.departemen)}
+                                </td>
+                                <td className="border px-3 py-2">
+                                  {formatDate(row.tanggal_produksi)}
                                 </td>
                               </tr>
                             ))}
