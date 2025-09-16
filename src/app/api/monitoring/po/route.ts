@@ -33,7 +33,7 @@ SELECT TOP 200
     CASE WHEN d.ItemID IS NOT NULL THEN 'Sudah Produksi' ELSE 'Belum Produksi' END AS status_produksi,
     CASE WHEN f.MoveDate IS NOT NULL THEN 'Sudah Dikirim' ELSE 'Belum Dikirim' END AS status_kirim
 FROM taPROrder a
-INNER JOIN taProrderDT e ON e.OrderID = a.OrderID
+LEFT JOIN taProrderDT e ON e.OrderID = a.OrderID
 LEFT JOIN taPRproddt d  ON d.NoPO = a.OrderID 
 LEFT JOIN taTransOHD2 f ON a.NoSO = f.OrderID
 WHERE a.PlanDate BETWEEN @start AND @end
