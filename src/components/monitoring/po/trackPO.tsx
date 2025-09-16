@@ -51,6 +51,7 @@ export default function TrackingTree() {
     const params: string[] = [];
     if (start) params.push(`start=${start}`);
     if (end) params.push(`end=${end}`);
+    if (search) params.push(`search=${encodeURIComponent(search)}`); // 🔑 tambahkan ini
     if (params.length > 0) url += "?" + params.join("&");
 
     const res = await fetch(url);
@@ -63,24 +64,42 @@ export default function TrackingTree() {
     setLoading(false);
   };
 
-  // filter data
+  //filter data
   const filtered = data.filter((row) => {
-    const q = search.toLowerCase();
-    const matchSearch =
-      !search ||
-      row.SPK.toLowerCase().includes(q) ||
-      row.Nama_PO.toLowerCase().includes(q) ||
-      row.item_po.toLowerCase().includes(q) ||
-      (row.item_produksi ?? "").toLowerCase().includes(q) ||
-      (row.departemen ?? "").toLowerCase().includes(q);
+    if (!search && statusFilter === "ALL" && deptFilter === "ALL") return true;
 
+    const q = search.toLowerCase();
+
+    // gabung semua kolom jadi satu string (null → kosong)
+    const rowStr = [
+      row.SPK,
+      row.Nama_PO,
+      row.item_po,
+      row.item_produksi,
+      row.departemen,
+      row.status_produksi,
+      row.status_kirim,
+      row.tanggal_planning,
+      row.tanggal_produksi,
+      row.tanggal_kirim,
+    ]
+      .map((v) => (v ?? "").toString().toLowerCase())
+      .join(" ");
+
+    const matchSearch = !search || rowStr.includes(q);
     const matchStatus =
       statusFilter === "ALL" || row.status_produksi === statusFilter;
-
     const matchDept = deptFilter === "ALL" || row.departemen === deptFilter;
 
     return matchSearch && matchStatus && matchDept;
   });
+  // cukup filter status & departemen, search biar backend yang urus
+  // const filtered = data.filter((row) => {
+  //   const matchStatus =
+  //     statusFilter === "ALL" || row.status_produksi === statusFilter;
+  //   const matchDept = deptFilter === "ALL" || row.departemen === deptFilter;
+  //   return matchStatus && matchDept;
+  // });
 
   // group by SPK
   const grouped: any = {};
