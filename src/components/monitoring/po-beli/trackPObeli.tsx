@@ -46,6 +46,7 @@ export default function MonitoringPOPage() {
     {}
   );
   const [stockLoading, setStockLoading] = useState<Record<string, boolean>>({});
+const [searchTerm, setSearchTerm] = useState("");
 
   const fetchData = async () => {
     setLoading(true);
@@ -134,7 +135,19 @@ export default function MonitoringPOPage() {
       if (filter === "masuk") return po.adaPenerimaan;
       if (filter === "pembelian") return !po.adaPenerimaan;
       return true;
-    });
+    })
+    .filter((po) => {
+  if (!searchTerm.trim()) return true;
+  const keyword = searchTerm.toLowerCase();
+  const matchOrderId = po.header.orderid.toLowerCase().includes(keyword);
+  const matchName = po.header.companyname1.toLowerCase().includes(keyword);
+  if (matchOrderId || matchName) return true;
+  // Check items
+  const matchItem = po.items.some((it) =>
+    it.records[0].itemname.toLowerCase().includes(keyword)
+  );
+  return matchOrderId || matchItem;
+});
 
   // Fetch kartu stok ketika ada PO baru
   useEffect(() => {
@@ -187,6 +200,17 @@ export default function MonitoringPOPage() {
             <option value="masuk">Barang Masuk</option>
           </select>
         </div>
+        <div>
+          <label className="block text-sm">Cari (PO / Barang)</label>
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Cari PO atau Barang..."
+            className="border rounded p-1 w-48"
+          />
+        </div>
+
         <button
           onClick={fetchData}
           className="bg-blue-600 text-white px-4 py-2 rounded"
@@ -390,13 +414,18 @@ export default function MonitoringPOPage() {
                                       {s.Keterangan || "-"}
                                     </td>
                                     <td className="border p-1 text-right">
-                                      {s.KgI?.toLocaleString("id-ID") || 0}
+                                      {Math.round(
+                                        Number(s.KgI) || 0
+                                      ).toLocaleString("id-ID")}
                                     </td>
+
                                     <td className="border p-1 text-right">
                                       {s.KgO?.toLocaleString("id-ID") || 0}
                                     </td>
                                     <td className="border p-1 text-right">
-                                      {s.Saldo?.toLocaleString("id-ID") || 0}
+                                      {Math.round(
+                                        Number(s.Saldo) || 0
+                                      ).toLocaleString("id-ID")}
                                     </td>
                                     <td colSpan={5}></td>
                                   </tr>
@@ -408,23 +437,25 @@ export default function MonitoringPOPage() {
                                     Total
                                   </td>
                                   <td className="border p-1 text-right">
-                                    {stockData[it.itemid]
-                                      .reduce((sum, s) => sum + (s.KgI || 0), 0)
-                                      .toLocaleString("id-ID")}
+                                    {Math.round(
+                                      stockData[it.itemid].reduce(
+                                        (sum, s) => sum + (s.KgI || 0),
+                                        0
+                                      )
+                                    ).toLocaleString("id-ID")}
                                   </td>
+
                                   <td className="border p-1 text-right">
                                     {stockData[it.itemid]
                                       .reduce((sum, s) => sum + (s.KgO || 0), 0)
                                       .toLocaleString("id-ID")}
                                   </td>
                                   <td className="border p-1 text-right">
-                                    {stockData[it.itemid]
-                                      .reduce(
-                                        (sum, s) => sum + (s.Saldo || 0),
-                                        0
-                                      )
-                                      .toLocaleString("id-ID")}
+                                    {Math.round(
+                                      stockData[it.itemid].at(-1)?.Saldo || 0
+                                    ).toLocaleString("id-ID")}
                                   </td>
+
                                   <td colSpan={5}></td>
                                 </tr>
                               </>
