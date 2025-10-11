@@ -86,11 +86,11 @@ const [selectedGudang, setSelectedGudang] = useState<string | null>(null);
       if (value.trim() === "") {
         setSearchResults([]);
       } else {
-        const filtered = items.filter(
-          (item) =>
-            item.name.toLowerCase().includes(value.toLowerCase()) ||
-            item.id.toLowerCase().includes(value.toLowerCase())
+        const filtered = items.filter((item) =>
+          (item.name?.toLowerCase() || "").includes(value.toLowerCase()) ||
+          (item.id?.toLowerCase() || "").includes(value.toLowerCase())
         );
+        
         setSearchResults(filtered);
       }
       setForm((prev) => ({ ...prev, itemid: "" }));
@@ -115,18 +115,20 @@ const [selectedGudang, setSelectedGudang] = useState<string | null>(null);
         setSearchResults([]);
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
   }, []);
 
   useEffect(() => {
     const fetchItems = async () => {
       try {
         const res = await axios.get("/api/master");
+        console.log("Hasil API master:", res.data);
         const mapped = res.data.map((item: any) => ({
           id: item.ItemID,
           name: item.ItemName,
         }));
+        console.log("Items mapped:", mapped);
         setItems(mapped);
       } catch (err) {
         console.error("Gagal ambil data master item:", err);

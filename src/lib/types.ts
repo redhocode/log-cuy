@@ -140,6 +140,7 @@ export type PenerimaanType = {
   Tanggal: Date;
   Gudang: string;
   No_Transaksi: string;
+  TipeDok:string;
   
 }
 

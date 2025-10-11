@@ -23,6 +23,7 @@ export async function GET(request: Request) {
         c.[CompanyName1] AS Supplier,
         hd.[Nopol],
         hd.[Nopen],
+        e.[TipeDok],
         dt.[ItemID],
         dt.[Bags],
         dt.[Kgs],
@@ -35,6 +36,7 @@ export async function GET(request: Request) {
       INNER JOIN [cp].[dbo].[taSupplier] AS c
       ON hd.[CompanyID] = c.[CompanyID]
       INNER JOIN [cp].[dbo].[taLocation] AS g ON hd.[LocID] = g.[LocID]
+      INNER JOIN [cp].[dbo].[taPOHd] as e ON hd.OrderID = e.OrderID
     `;
 
    if (startDate && endDate) {
