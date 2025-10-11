@@ -35,11 +35,14 @@ const masterItems = [
   { href: "/dashboard/cekppn", label: "Hitung PPN", icon: Package2 },
   { href: "/dashboard/supplier", label: "Supplier", icon: User2 },
   { href: "/dashboard/absensi", label: "Disk log Ansensi", icon: TimerReset },
+  // { href: "/dashboard/qr", label: "QR Code", icon: Package2 },
+  // { href: "/dashboard/qr/cetak", label: "Cetak QR", icon: Package2 },
+  // { href: "/laporan", label: "Input laporan excel", icon: Package2 },
   // { href: "/dashboard/print", label: "Nota Jual", icon: Printer },
   // { href: "/dashboard/notajual", label: "Nota Jual 2.5", icon: Package2 },
 ];
 const navItems = [
- 
+  { href: "/dashboard/ppic", label: "PPIC", icon: Package2 },
   { href: "/dashboard/spk", label: "SPK", icon: Package2 },
   { href: "/dashboard/data", label: "Produksi", icon: Package2 },
   { href: "/dashboard/lbm", label: "LBM", icon: Package2 },
