@@ -11,6 +11,8 @@ import { Button } from "../ui/button";
 import { toast } from "sonner";
 import { Input } from "../ui/input";
 import { Send } from "lucide-react";
+import * as XLSX from "xlsx";
+import { saveAs } from "file-saver";
 const itemsToCheck = [
   "ABS CHIMEY PA-757",
   "pewarna 1834 (hitam)",
@@ -132,7 +134,7 @@ const StockList: React.FC = () => {
         const formattedDate = currentDate.toISOString().split("T")[0];
 
         const response = await fetch(
-          `/api/stock?periodeR=${periodeR}&loc=GUDUT&item=%&tgl=${formattedDate}&company=0&tipestock=0&jenisbarang=3&kategori=BAHAN%20BAKU&minus=0`
+          `/api/stocki?periodeR=${periodeR}&loc=GUDUT&item=%&tgl=${formattedDate}&company=0&tipestock=0&jenisbarang=3&kategori=BAHAN%20BAKU&minus=0`
         );
 
         if (!response.ok) {
@@ -294,6 +296,32 @@ const createTelegramMessage = () => {
     toast.success("Notification sent successfully!");
   };
 
+ const handleExportToExcel = () => {
+   // Transform data to match table format
+   const exportData = filteredItemsWithStockAkhir.map((item, index) => ({
+     No: index + 1,
+     "Item ID": item.itemid,
+     Nama: item.itemname,
+     Qty: item.stockAkhir,
+     Kategori: item.kategori,
+   }));
+
+   // Create worksheet and workbook
+   const worksheet = XLSX.utils.json_to_sheet(exportData);
+   const workbook = XLSX.utils.book_new();
+   XLSX.utils.book_append_sheet(workbook, worksheet, "Stock Menipis");
+
+   // Export file
+   const excelBuffer = XLSX.write(workbook, {
+     bookType: "xlsx",
+     type: "array",
+   });
+   const dataBlob = new Blob([excelBuffer], {
+     type: "application/octet-stream",
+   });
+   saveAs(dataBlob, "Laporan_Stock_Menipis.xlsx");
+ };
+
   return (
     <div>
       <h1> Laporan Stock Bahan Baku</h1>
@@ -307,7 +335,8 @@ const createTelegramMessage = () => {
           style={{ marginBottom: "10px", padding: "5px", width: "300px" }}
         />
       </div>
-      <div className="mt-4">
+<div className="flex gap-4">
+   
         <Button
           onClick={handleSendNotification}
           className="bg-blue-500 text-white p-2 rounded"
@@ -316,7 +345,15 @@ const createTelegramMessage = () => {
           <Send className="mr-2 h-4 w-4" />
           {loadingNotification ? "Sending..." : "Kirim Notifikasi"}
         </Button>
-      </div>
+    
+      <Button
+        onClick={handleExportToExcel}
+        className="bg-green-500 text-white p-2 rounded  mr-2"
+        >
+        Export to Excel
+      </Button>
+        </div>
+
       {filteredItemsWithStockAkhir.length > 0 ? (
         <>
           <div className="mb-2 text-red-500">
