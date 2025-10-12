@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/production-plan/page.tsx
 "use client";
 import { useState, useEffect, useMemo } from "react";
@@ -44,6 +46,7 @@ interface ProductionPlan {
   stock?: StockItem[];
   error?: string;
   viewMode: "table" | "tree";
+  committed: boolean;
 }
 
 // ==================== TIPE DATA UNTUK EXPORT ====================
@@ -54,6 +57,8 @@ interface MaterialRequirement {
   availableStock: number;
   shortage: number;
   status: string;
+  level: number;
+  departemen: string;
   poList: string[];
   poDetails: {
     poId: string;
@@ -61,6 +66,27 @@ interface MaterialRequirement {
     needed: number;
     productionQty: number;
   }[];
+}
+
+interface MaterialRequirementNew {
+  CODE: string;
+  "Sum of total": number;
+  "Total others": number;
+  "WH Stoc": number;
+  "Remaining sto": number;
+  status: string;
+  departemen: string;
+}
+
+interface CommittedPO {
+  noSPK: string;
+  kodeBarang: string;
+  qty: number;
+  materialUsage: { itemId: string; usedQty: number }[];
+}
+
+interface AdjustedStock {
+  [itemId: string]: number;
 }
 
 // ==================== KOMPONEN BOM TREE ====================
@@ -252,6 +278,9 @@ export default function ProductionPlanPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [exportLoading, setExportLoading] = useState(false);
+  const [committedPOs, setCommittedPOs] = useState<CommittedPO[]>([]);
+  const [adjustedStock, setAdjustedStock] = useState<AdjustedStock>({});
+  const [committing, setCommitting] = useState<string | null>(null);
 
   // State untuk filter tanggal
   const [dateFilter, setDateFilter] = useState({
@@ -286,7 +315,7 @@ export default function ProductionPlanPage() {
   ) => {
     const newItemsPerPage = parseInt(e.target.value);
     setItemsPerPage(newItemsPerPage);
-    setCurrentPage(1); // Reset ke halaman pertama saat mengubah items per page
+    setCurrentPage(1);
   };
 
   // ==================== FUNGSI UTAMA ====================
@@ -309,7 +338,6 @@ export default function ProductionPlanPage() {
         orderDate = new Date().toISOString().split("T")[0];
       }
 
-      // PERBAIKAN: Gunakan parameter SESUAI stored procedure
       const apiUrl = `/api/stock/ppic?tgl1=${orderDate}&tgl2=${orderDate}&loc=%25&periodeR=201905&kategori=%25&itemid=${encodeURIComponent(
         itemId
       )}`;
@@ -341,7 +369,6 @@ export default function ProductionPlanPage() {
       }
 
       if (result.data && Array.isArray(result.data) && result.data.length > 0) {
-        // Cari item yang sesuai dengan itemId yang diminta
         interface StockApiItem {
           KodeBarang: string;
           NamaBarang?: string;
@@ -408,18 +435,136 @@ export default function ProductionPlanPage() {
         stockData.push(stockItem);
       }
 
-      // Delay kecil untuk tidak membebani server
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
 
     console.log(`✅ [fetchStockForItems] Selesai: ${stockData.length} items`);
 
-    // Log hasil stok
     stockData.forEach((item) => {
       console.log(`📊 ${item.itemid}: ${item.stockAkhir}`);
     });
 
     return stockData;
+  };
+
+  // FUNGSI: Dapatkan stok yang sudah disesuaikan
+  const getAdjustedStock = (itemId: string, originalStock: number): number => {
+    const adjustment = adjustedStock[itemId] || 0;
+    return Math.max(0, originalStock - adjustment);
+  };
+
+  // FUNGSI: Commit PO dan kurangi stok
+  const commitPO = async (index: number) => {
+    const globalIndex = (currentPage - 1) * itemsPerPage + index;
+    const plan = orders[globalIndex];
+
+    if (!plan.bom || !plan.stock) {
+      alert("BOM belum diload untuk PO ini!");
+      return;
+    }
+
+    setCommitting(plan.order.No_SPK);
+
+    try {
+      const materialUsage: { itemId: string; usedQty: number }[] = [];
+
+      plan.bom.flat.forEach((bomItem) => {
+        if (bomItem.Level > 0) {
+          const needed = bomItem.Qty * plan.order.QTY;
+          const availableStock =
+            plan.stock?.find((s) => s.itemid === bomItem.ItemID)?.stockAkhir ||
+            0;
+          const usedQty = Math.min(needed, availableStock);
+
+          if (usedQty > 0) {
+            materialUsage.push({
+              itemId: bomItem.ItemID,
+              usedQty: usedQty,
+            });
+          }
+        }
+      });
+
+      const committedPO: CommittedPO = {
+        noSPK: plan.order.No_SPK,
+        kodeBarang: plan.order.Kode_Barang,
+        qty: plan.order.QTY,
+        materialUsage: materialUsage,
+      };
+
+      setCommittedPOs((prev) => [...prev, committedPO]);
+
+      const newAdjustedStock = { ...adjustedStock };
+      materialUsage.forEach((usage) => {
+        newAdjustedStock[usage.itemId] =
+          (newAdjustedStock[usage.itemId] || 0) + usage.usedQty;
+      });
+      setAdjustedStock(newAdjustedStock);
+
+      setOrders((prev) =>
+        prev.map((item, i) =>
+          i === globalIndex ? { ...item, committed: true } : item
+        )
+      );
+
+      console.log(`✅ PO ${plan.order.No_SPK} berhasil di-commit`);
+      console.log(`📦 Material usage:`, materialUsage);
+    } catch (error) {
+      console.error(`❌ Gagal commit PO ${plan.order.No_SPK}:`, error);
+      alert("Gagal commit PO. Silakan coba lagi.");
+    } finally {
+      setCommitting(null);
+    }
+  };
+
+  // FUNGSI: Uncommit PO dan kembalikan stok
+  const uncommitPO = (index: number) => {
+    const globalIndex = (currentPage - 1) * itemsPerPage + index;
+    const plan = orders[globalIndex];
+
+    setCommittedPOs((prev) =>
+      prev.filter((po) => po.noSPK !== plan.order.No_SPK)
+    );
+
+    const committedPO = committedPOs.find(
+      (po) => po.noSPK === plan.order.No_SPK
+    );
+    if (committedPO) {
+      const newAdjustedStock = { ...adjustedStock };
+      committedPO.materialUsage.forEach((usage) => {
+        newAdjustedStock[usage.itemId] = Math.max(
+          0,
+          (newAdjustedStock[usage.itemId] || 0) - usage.usedQty
+        );
+      });
+      setAdjustedStock(newAdjustedStock);
+    }
+
+    setOrders((prev) =>
+      prev.map((item, i) =>
+        i === globalIndex ? { ...item, committed: false } : item
+      )
+    );
+
+    console.log(`↩️ PO ${plan.order.No_SPK} di-uncommit`);
+  };
+
+  // FUNGSI: Reset semua committed PO
+  const resetCommittedPOs = () => {
+    if (
+      confirm(
+        "Apakah Anda yakin ingin mereset semua PO yang sudah di-commit? Stok akan dikembalikan ke nilai semula."
+      )
+    ) {
+      setCommittedPOs([]);
+      setAdjustedStock({});
+
+      setOrders((prev) =>
+        prev.map((order) => ({ ...order, committed: false }))
+      );
+
+      console.log("🔄 Semua PO committed telah direset");
+    }
   };
 
   // Load BOM dan stok
@@ -435,19 +580,21 @@ export default function ProductionPlanPage() {
 
       console.log(`📦 [loadBomWithStock] Loading BOM untuk ${kodeBarang}`);
 
-      // Ambil data BOM
       const bomResponse = await axios.get(
         `/api/bom/ppic?itemid=${encodeURIComponent(kodeBarang)}`
       );
 
       console.log(`✅ [loadBomWithStock] BOM diterima:`, bomResponse.data);
 
-      // Ambil semua item IDs dari BOM
       const itemIds = bomResponse.data.flat.map((item: BomItem) => item.ItemID);
       console.log(`📋 [loadBomWithStock] Item IDs dari BOM:`, itemIds);
 
-      // Ambil stok untuk semua items satu per satu
       const stockData = await fetchStockForItems(itemIds, orderDate);
+
+      const adjustedStockData = stockData.map((stockItem) => ({
+        ...stockItem,
+        stockAkhir: getAdjustedStock(stockItem.itemid, stockItem.stockAkhir),
+      }));
 
       setOrders((prev) =>
         prev.map((item, i) =>
@@ -455,10 +602,10 @@ export default function ProductionPlanPage() {
             ? {
                 ...item,
                 bom: bomResponse.data,
-                stock: stockData,
+                stock: adjustedStockData,
                 loading: false,
                 expanded: true,
-                viewMode: "table", // Default view mode
+                viewMode: "table",
               }
             : item
         )
@@ -510,13 +657,20 @@ export default function ProductionPlanPage() {
             order.order.Tanggal_Order
           );
 
+          const adjustedStockData = stockData.map((stockItem) => ({
+            ...stockItem,
+            stockAkhir: getAdjustedStock(
+              stockItem.itemid,
+              stockItem.stockAkhir
+            ),
+          }));
+
           ordersWithBom[i] = {
             ...order,
             bom: bomResponse.data,
-            stock: stockData,
+            stock: adjustedStockData,
           };
 
-          // Delay untuk tidak membebani server
           await new Promise((resolve) => setTimeout(resolve, 200));
         } catch (err) {
           console.error(
@@ -566,45 +720,59 @@ export default function ProductionPlanPage() {
     try {
       setExportLoading(true);
 
-      // Ambil semua PO yang dipilih (dari semua halaman)
-      const selectedPlans = orders.filter((plan) => plan.selected);
+      const selectedPlans = orders.filter(
+        (plan) => plan.selected && !plan.committed
+      );
 
       if (selectedPlans.length === 0) {
-        alert("Pilih minimal satu PO untuk di-export!");
+        alert("Pilih minimal satu PO yang belum di-commit untuk di-export!");
         return;
       }
 
       console.log(`📊 Mengexport ${selectedPlans.length} PO ke Excel`);
 
-      // Load BOM untuk PO yang dipilih tapi belum load BOM
       const plansWithBom = await loadBomForSelectedOrders(selectedPlans);
-
-      // Filter hanya yang berhasil load BOM
       const validPlans = plansWithBom.filter((plan) => plan.bom);
 
       if (validPlans.length === 0) {
-        alert(
-          "Tidak ada PO yang berhasil load BOM. Pastikan PO sudah expand dan BOM berhasil di-load."
-        );
+        alert("Tidak ada PO yang berhasil load BOM.");
         return;
       }
 
-      console.log(`✅ ${validPlans.length} PO berhasil load BOM`);
+      // Kumpulkan informasi PO
+      const poNumbers = validPlans.map((plan) => plan.order.No_SPK).join(", ");
+      const poNames = validPlans.map((plan) => plan.order.Nama_PO).join(" | ");
+      const totalQty = validPlans.reduce(
+        (sum, plan) => sum + plan.order.QTY,
+        0
+      );
 
-      // Kumpulkan semua kebutuhan material dari semua PO yang dipilih
-      const materialRequirements = new Map<string, MaterialRequirement>();
+      // Proses data material dengan pengelompokan per departemen
+      const materialRequirementsByDept = new Map<
+        string,
+        Map<string, MaterialRequirement>
+      >();
 
       validPlans.forEach((plan) => {
         if (plan.bom?.flat && plan.stock) {
           plan.bom.flat.forEach((bomItem) => {
+            if (bomItem.Level === 0) return;
+
             const needed = bomItem.Qty * plan.order.QTY;
             const availableStock =
               plan.stock?.find((s) => s.itemid === bomItem.ItemID)
                 ?.stockAkhir || 0;
+            const departemen = bomItem.Departemen || "UMUM";
 
-            if (materialRequirements.has(bomItem.ItemID)) {
-              // Jika item sudah ada, tambahkan kebutuhan
-              const existing = materialRequirements.get(bomItem.ItemID)!;
+            // Inisialisasi map untuk departemen jika belum ada
+            if (!materialRequirementsByDept.has(departemen)) {
+              materialRequirementsByDept.set(departemen, new Map());
+            }
+
+            const deptMap = materialRequirementsByDept.get(departemen)!;
+
+            if (deptMap.has(bomItem.ItemID)) {
+              const existing = deptMap.get(bomItem.ItemID)!;
               existing.totalNeeded += needed;
               existing.poList.push(plan.order.No_SPK);
               existing.poDetails.push({
@@ -614,14 +782,15 @@ export default function ProductionPlanPage() {
                 productionQty: plan.order.QTY,
               });
             } else {
-              // Jika item baru, buat entry baru
-              materialRequirements.set(bomItem.ItemID, {
+              deptMap.set(bomItem.ItemID, {
                 itemId: bomItem.ItemID,
                 itemName: bomItem.ItemName,
                 totalNeeded: needed,
                 availableStock: availableStock,
                 shortage: Math.max(0, needed - availableStock),
                 status: needed > availableStock ? "KURANG" : "CUKUP",
+                level: bomItem.Level,
+                departemen: departemen,
                 poList: [plan.order.No_SPK],
                 poDetails: [
                   {
@@ -637,42 +806,74 @@ export default function ProductionPlanPage() {
         }
       });
 
-      // Update shortage dan status untuk semua item
-      materialRequirements.forEach((requirement) => {
-        requirement.shortage = Math.max(
-          0,
-          requirement.totalNeeded - requirement.availableStock
+      // Buat workbook
+      const workbook = XLSX.utils.book_new();
+
+      // ==================== SHEET 1: MATERIAL REQUIREMENT PER DEPARTEMEN ====================
+      const allDepartemenData: any[] = [];
+
+      materialRequirementsByDept.forEach((deptMap, departemen) => {
+        const requirementsArray = Array.from(deptMap.values());
+
+        // Header departemen
+        allDepartemenData.push({
+          Departemen: `DEPARTEMEN: ${departemen}`,
+          "Kode Item": "",
+          "Nama Item": "",
+          "Total Kebutuhan": "",
+          "Stok Tersedia": "",
+          Kekurangan: "",
+          Status: "",
+          "Jumlah PO": "",
+          "List PO": "",
+        });
+
+        // Data per departemen
+        requirementsArray.forEach((req, index) => {
+          allDepartemenData.push({
+            Departemen: "",
+            "Kode Item": req.itemId,
+            "Nama Item": req.itemName,
+            "Total Kebutuhan": req.totalNeeded,
+            "Stok Tersedia": req.availableStock,
+            Kekurangan: req.shortage,
+            Status: req.status,
+            "Jumlah PO": req.poList.length,
+            "List PO": req.poList.join(", "),
+          });
+        });
+
+        // Total per departemen
+        const totalKebutuhan = requirementsArray.reduce(
+          (sum, req) => sum + req.totalNeeded,
+          0
         );
-        requirement.status = requirement.shortage > 0 ? "KURANG" : "CUKUP";
+        const totalKekurangan = requirementsArray.reduce(
+          (sum, req) => sum + req.shortage,
+          0
+        );
+        const itemsKurang = requirementsArray.filter(
+          (req) => req.shortage > 0
+        ).length;
+
+        allDepartemenData.push({
+          Departemen: `TOTAL ${departemen}`,
+          "Kode Item": "",
+          "Nama Item": "",
+          "Total Kebutuhan": totalKebutuhan,
+          "Stok Tersedia": "",
+          Kekurangan: totalKekurangan,
+          Status: itemsKurang > 0 ? "KURANG" : "CUKUP",
+          "Jumlah PO": "",
+          "List PO": `${itemsKurang} ITEM KURANG`,
+        });
+
+        allDepartemenData.push({}); // Baris kosong antar departemen
       });
 
-      // Konversi ke array untuk Excel
-      const requirementsArray = Array.from(materialRequirements.values());
-
-      // Urutkan berdasarkan shortage terbesar
-      requirementsArray.sort((a, b) => b.shortage - a.shortage);
-
-      // Siapkan data untuk Excel
-      const excelData = requirementsArray.map((req, index) => ({
-        No: index + 1,
-        "Kode Item": req.itemId,
-        "Nama Item": req.itemName,
-        "Total Kebutuhan": req.totalNeeded,
-        "Stok Tersedia": req.availableStock,
-        Kekurangan: req.shortage,
-        Status: req.status,
-        "Jumlah PO": req.poList.length,
-        "List PO": req.poList.join(", "),
-        Keterangan:
-          req.shortage > 0 ? `BUTUH ${req.shortage} UNIT` : "STOK CUKUP",
-      }));
-
-      // Buat worksheet
-      const worksheet = XLSX.utils.json_to_sheet(excelData);
-
-      // Set column widths
-      const columnWidths = [
-        { wch: 5 }, // No
+      const departemenWorksheet = XLSX.utils.json_to_sheet(allDepartemenData);
+      const departemenColumnWidths = [
+        { wch: 20 }, // Departemen
         { wch: 15 }, // Kode Item
         { wch: 40 }, // Nama Item
         { wch: 15 }, // Total Kebutuhan
@@ -681,37 +882,180 @@ export default function ProductionPlanPage() {
         { wch: 10 }, // Status
         { wch: 10 }, // Jumlah PO
         { wch: 30 }, // List PO
-        { wch: 20 }, // Keterangan
+      ];
+      departemenWorksheet["!cols"] = departemenColumnWidths;
+      XLSX.utils.book_append_sheet(
+        workbook,
+        departemenWorksheet,
+        "Per Departemen"
+      );
+
+      // ==================== SHEET 2: MATERIAL REQUIREMENT KESELURUHAN ====================
+      // Kumpulkan semua data untuk sheet keseluruhan
+      const allMaterialRequirements = new Map<string, MaterialRequirement>();
+
+      materialRequirementsByDept.forEach((deptMap) => {
+        deptMap.forEach((requirement, itemId) => {
+          if (allMaterialRequirements.has(itemId)) {
+            const existing = allMaterialRequirements.get(itemId)!;
+            existing.totalNeeded += requirement.totalNeeded;
+            existing.poList = [
+              ...Array.from(new Set([...existing.poList, ...requirement.poList])),
+            ];
+            existing.poDetails.push(...requirement.poDetails);
+          } else {
+            allMaterialRequirements.set(itemId, { ...requirement });
+          }
+        });
+      });
+
+      const requirementsArray = Array.from(allMaterialRequirements.values());
+      const formattedData = requirementsArray
+        .map((req) => {
+          const remainingStock = req.availableStock - req.totalNeeded;
+          return {
+            CODE: req.itemId,
+            "Sum of total": req.totalNeeded,
+            "Total others": 0,
+            "WH Stoc": req.availableStock,
+            "Remaining sto": remainingStock,
+            status: remainingStock < 0 ? "KURANG" : "CUKUP",
+            departemen: req.departemen,
+          };
+        })
+        .sort((a, b) => a.CODE.localeCompare(b.CODE));
+
+      // Hitung total
+      const totalSum = formattedData.reduce(
+        (sum, item) => sum + item["Sum of total"],
+        0
+      );
+      const totalWHStoc = formattedData.reduce(
+        (sum, item) => sum + item["WH Stoc"],
+        0
+      );
+      const totalRemaining = formattedData.reduce(
+        (sum, item) => sum + item["Remaining sto"],
+        0
+      );
+      const itemsWithShortage = formattedData.filter(
+        (item) => item["Remaining sto"] < 0
+      ).length;
+
+      const excelData = formattedData.map((item, index) => ({
+        CODE: item.CODE,
+        "Sum of total": item["Sum of total"],
+        "Total others": item["Total others"],
+        "WH Stoc": item["WH Stoc"],
+        "Remaining sto": item["Remaining sto"],
+        Status: item.status,
+        Departemen: item.departemen,
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet([]);
+
+      // Set column widths
+      const columnWidths = [
+        { wch: 15 }, // CODE
+        { wch: 15 }, // Sum of total
+        { wch: 15 }, // Total others
+        { wch: 12 }, // WH Stoc
+        { wch: 15 }, // Remaining sto
+        { wch: 12 }, // Status
+        { wch: 15 }, // Departemen
       ];
       worksheet["!cols"] = columnWidths;
 
-      // Buat workbook
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(
-        workbook,
-        worksheet,
-        "Kebutuhan Material Terakumulasi"
+      // Header dengan styling
+      const headerData = [
+        ["LAPORAN KEBUTUHAN MATERIAL PRODUCTION ORDER"],
+        [""],
+        [`Tanggal Generate: ${new Date().toLocaleDateString("id-ID")}`],
+        [`Jumlah PO: ${validPlans.length} PO`],
+        [`No. PO: ${poNumbers}`],
+        [`Nama PO: ${poNames}`],
+        [`Total QTY: ${totalQty.toLocaleString()} unit`],
+        [""],
+        [
+          "CODE",
+          "Sum of total",
+          "Total others",
+          "WH Stoc",
+          "Remaining sto",
+          "Status",
+          "Departemen",
+        ],
+      ];
+
+      XLSX.utils.sheet_add_aoa(worksheet, headerData, { origin: "A1" });
+
+      // Tambahkan data
+      XLSX.utils.sheet_add_json(worksheet, excelData, {
+        origin: "A10",
+        skipHeader: true,
+      });
+
+      // Hitung total
+      const dataLength = formattedData.length;
+      const footerData = [
+        [""],
+        ["TOTAL", totalSum, 0, totalWHStoc, totalRemaining, "", ""],
+        [""],
+        [
+          `Summary: ${itemsWithShortage} material kurang dari ${formattedData.length} total material`,
+        ],
+        [
+          "CATATAN: Nilai negatif pada Remaining Sto menunjukkan kekurangan stok",
+        ],
+        [""],
+        ["MANUAL STOCK CHECK"],
+        [`Untuk PO: ${poNumbers}`],
+        ["INJEKSI PLATING SPRAY"],
+      ];
+
+      XLSX.utils.sheet_add_aoa(worksheet, footerData, {
+        origin: `A${11 + dataLength}`,
+      });
+
+      // Merge cells untuk judul
+      if (!worksheet["!merges"]) worksheet["!merges"] = [];
+      worksheet["!merges"].push(
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
+        { s: { r: 2, c: 0 }, e: { r: 2, c: 2 } },
+        { s: { r: 3, c: 0 }, e: { r: 3, c: 2 } },
+        { s: { r: 4, c: 0 }, e: { r: 4, c: 2 } },
+        { s: { r: 5, c: 0 }, e: { r: 5, c: 2 } },
+        { s: { r: 6, c: 0 }, e: { r: 6, c: 2 } }
       );
 
-      // Sheet detail per PO
-      interface DetailDataRow {
-        "No SPK": string;
-        Tanggal: string;
-        "Nama PO": string;
-        "Kode Barang": string;
-        "QTY PO": number;
-        "Kode Item": string;
-        "Nama Item": string;
-        "Qty Per Unit": number;
-        Kebutuhan: number;
-        "Stok Tersedia": number;
-        Kekurangan: number;
-        Status: string;
-      }
-      const detailData: DetailDataRow[] = [];
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Material Requirement");
+
+      // ==================== SHEET 3: DETAIL PER PO ====================
+      const detailData: any[] = [];
+
       validPlans.forEach((plan) => {
+        // Header PO
+        detailData.push({
+          "No SPK": plan.order.No_SPK,
+          Tanggal: plan.order.Tanggal_Order,
+          "Nama PO": plan.order.Nama_PO,
+          "Kode Barang": plan.order.Kode_Barang,
+          "QTY PO": plan.order.QTY,
+          "Kode Item": "",
+          "Nama Item": "",
+          Departemen: "",
+          Level: "",
+          "Qty Per Unit": "",
+          Kebutuhan: "",
+          "Stok Tersedia": "",
+          Kekurangan: "",
+          Status: "",
+        });
+
         if (plan.bom?.flat) {
           plan.bom.flat.forEach((bomItem) => {
+            if (bomItem.Level === 0) return;
+
             const needed = bomItem.Qty * plan.order.QTY;
             const availableStock =
               plan.stock?.find((s) => s.itemid === bomItem.ItemID)
@@ -719,13 +1063,15 @@ export default function ProductionPlanPage() {
             const shortage = Math.max(0, needed - availableStock);
 
             detailData.push({
-              "No SPK": plan.order.No_SPK,
-              Tanggal: plan.order.Tanggal_Order,
-              "Nama PO": plan.order.Nama_PO,
-              "Kode Barang": plan.order.Kode_Barang,
-              "QTY PO": plan.order.QTY,
+              "No SPK": "",
+              Tanggal: "",
+              "Nama PO": "",
+              "Kode Barang": "",
+              "QTY PO": "",
               "Kode Item": bomItem.ItemID,
               "Nama Item": bomItem.ItemName,
+              Departemen: bomItem.Departemen || "UMUM",
+              Level: bomItem.Level,
               "Qty Per Unit": bomItem.Qty,
               Kebutuhan: needed,
               "Stok Tersedia": availableStock,
@@ -734,6 +1080,8 @@ export default function ProductionPlanPage() {
             });
           });
         }
+
+        detailData.push({}); // Baris kosong antar PO
       });
 
       const detailWorksheet = XLSX.utils.json_to_sheet(detailData);
@@ -742,9 +1090,11 @@ export default function ProductionPlanPage() {
         { wch: 12 }, // Tanggal
         { wch: 20 }, // Nama PO
         { wch: 15 }, // Kode Barang
-        { wch: 8 }, // QTY PO
+        { wch: 10 }, // QTY PO
         { wch: 15 }, // Kode Item
         { wch: 30 }, // Nama Item
+        { wch: 15 }, // Departemen
+        { wch: 8 }, // Level
         { wch: 12 }, // Qty Per Unit
         { wch: 12 }, // Kebutuhan
         { wch: 15 }, // Stok Tersedia
@@ -754,19 +1104,80 @@ export default function ProductionPlanPage() {
       detailWorksheet["!cols"] = detailColumnWidths;
       XLSX.utils.book_append_sheet(workbook, detailWorksheet, "Detail Per PO");
 
-      // Sheet summary PO
-      const summaryData = validPlans.map((plan, index) => ({
-        No: index + 1,
-        "No SPK": plan.order.No_SPK,
-        Tanggal: plan.order.Tanggal_Order,
-        "Nama PO": plan.order.Nama_PO,
-        "Kode Barang": plan.order.Kode_Barang,
-        "QTY PO": plan.order.QTY,
-        Status: plan.bom ? "BOM Loaded" : "No BOM",
-      }));
+      // ==================== SHEET 4: REKAPITULASI PER DEPARTEMEN ====================
+      const rekapData: any[] = [];
 
-      const summaryWorksheet = XLSX.utils.json_to_sheet(summaryData);
-      XLSX.utils.book_append_sheet(workbook, summaryWorksheet, "Summary PO");
+      materialRequirementsByDept.forEach((deptMap, departemen) => {
+        const requirementsArray = Array.from(deptMap.values());
+
+        const totalItems = requirementsArray.length;
+        const totalKebutuhan = requirementsArray.reduce(
+          (sum, req) => sum + req.totalNeeded,
+          0
+        );
+        const totalStok = requirementsArray.reduce(
+          (sum, req) => sum + req.availableStock,
+          0
+        );
+        const totalKekurangan = requirementsArray.reduce(
+          (sum, req) => sum + req.shortage,
+          0
+        );
+        const itemsKurang = requirementsArray.filter(
+          (req) => req.shortage > 0
+        ).length;
+        const itemsCukup = totalItems - itemsKurang;
+
+        rekapData.push({
+          Departemen: departemen,
+          "Jumlah Material": totalItems,
+          "Total Kebutuhan": totalKebutuhan,
+          "Total Stok Tersedia": totalStok,
+          "Total Kekurangan": totalKekurangan,
+          "Material Kurang": itemsKurang,
+          "Material Cukup": itemsCukup,
+          Status: itemsKurang > 0 ? "ADA KEKURANGAN" : "STOK CUKUP",
+        });
+      });
+
+      // Total keseluruhan
+      const totalAllMaterial = rekapData.reduce(
+        (sum, dept) => sum + dept["Jumlah Material"],
+        0
+      );
+      const totalAllKebutuhan = rekapData.reduce(
+        (sum, dept) => sum + dept["Total Kebutuhan"],
+        0
+      );
+      const totalAllKekurangan = rekapData.reduce(
+        (sum, dept) => sum + dept["Total Kekurangan"],
+        0
+      );
+
+      rekapData.push({
+        Departemen: "TOTAL KESELURUHAN",
+        "Jumlah Material": totalAllMaterial,
+        "Total Kebutuhan": totalAllKebutuhan,
+        "Total Stok Tersedia": "",
+        "Total Kekurangan": totalAllKekurangan,
+        "Material Kurang": "",
+        "Material Cukup": "",
+        Status: totalAllKekurangan > 0 ? "ADA KEKURANGAN" : "STOK CUKUP",
+      });
+
+      const rekapWorksheet = XLSX.utils.json_to_sheet(rekapData);
+      const rekapColumnWidths = [
+        { wch: 20 }, // Departemen
+        { wch: 15 }, // Jumlah Material
+        { wch: 18 }, // Total Kebutuhan
+        { wch: 18 }, // Total Stok Tersedia
+        { wch: 15 }, // Total Kekurangan
+        { wch: 15 }, // Material Kurang
+        { wch: 15 }, // Material Cukup
+        { wch: 15 }, // Status
+      ];
+      rekapWorksheet["!cols"] = rekapColumnWidths;
+      XLSX.utils.book_append_sheet(workbook, rekapWorksheet, "Rekap Dept");
 
       // Export file
       const excelBuffer = XLSX.write(workbook, {
@@ -777,15 +1188,20 @@ export default function ProductionPlanPage() {
         type: "application/octet-stream",
       });
 
-      const fileName = `Laporan_Kebutuhan_Material_${validPlans.length}_PO_${
-        new Date().toISOString().split("T")[0]
-      }.xlsx`;
-
+      const fileName = `Material_Requirement_${poNumbers.replace(
+        /[^a-zA-Z0-9]/g,
+        "_"
+      )}_${new Date().toISOString().split("T")[0]}.xlsx`;
       saveAs(dataBlob, fileName);
-      console.log(`✅ Export berhasil: ${fileName}`);
+
+      console.log(`✅ Export Excel berhasil`);
+
+      alert(
+        `Export berhasil!\n\n📊 Summary:\n- ${validPlans.length} PO: ${poNumbers}\n- ${formattedData.length} Material\n- ${itemsWithShortage} Material Kurang\n- ${materialRequirementsByDept.size} Departemen\n- File Excel telah disimpan`
+      );
     } catch (error) {
-      console.error("❌ Error dalam export:", error);
-      alert("Terjadi error saat mengexport data. Silakan coba lagi.");
+      console.error("❌ Error dalam export Excel:", error);
+      alert("Terjadi error saat mengexport data ke Excel.");
     } finally {
       setExportLoading(false);
     }
@@ -817,11 +1233,12 @@ export default function ProductionPlanPage() {
         loading: false,
         selected: false,
         loadingBom: false,
-        viewMode: "table", // Default view mode
+        viewMode: "table",
+        committed: false,
       }));
 
       setOrders(productionPlans);
-      setCurrentPage(1); // Reset ke halaman pertama saat data baru dimuat
+      setCurrentPage(1);
       console.log(
         `✅ [fetchOrders] Data orders berhasil diambil: ${productionPlans.length} orders`
       );
@@ -894,7 +1311,7 @@ export default function ProductionPlanPage() {
       `✓ [toggleSelection] Toggle selection untuk ${order.order.Kode_Barang}: ${newSelected}`
     );
 
-    if (newSelected && !order.bom && !order.loadingBom) {
+    if (newSelected && !order.bom && !order.loadingBom && !order.committed) {
       setOrders((prev) =>
         prev.map((item, i) =>
           i === globalIndex ? { ...item, loadingBom: true } : item
@@ -914,13 +1331,18 @@ export default function ProductionPlanPage() {
           order.order.Tanggal_Order
         );
 
+        const adjustedStockData = stockData.map((stockItem) => ({
+          ...stockItem,
+          stockAkhir: getAdjustedStock(stockItem.itemid, stockItem.stockAkhir),
+        }));
+
         setOrders((prev) =>
           prev.map((item, i) =>
             i === globalIndex
               ? {
                   ...item,
                   bom: bomResponse.data,
-                  stock: stockData,
+                  stock: adjustedStockData,
                   selected: newSelected,
                   loadingBom: false,
                   viewMode: "table",
@@ -970,7 +1392,9 @@ export default function ProductionPlanPage() {
   };
 
   const toggleSelectAll = () => {
-    const allSelected = paginatedOrders.every((order) => order.selected);
+    const allSelected = paginatedOrders.every(
+      (order) => order.selected && !order.committed
+    );
     const newSelected = !allSelected;
 
     console.log(
@@ -982,7 +1406,7 @@ export default function ProductionPlanPage() {
         const startIndex = (currentPage - 1) * itemsPerPage;
         const endIndex = startIndex + itemsPerPage;
 
-        if (index >= startIndex && index < endIndex) {
+        if (index >= startIndex && index < endIndex && !order.committed) {
           return { ...order, selected: newSelected };
         }
         return order;
@@ -991,13 +1415,17 @@ export default function ProductionPlanPage() {
   };
 
   const toggleSelectAllGlobal = () => {
-    const allSelected = orders.every((order) => order.selected);
+    const allSelected = orders.every(
+      (order) => order.selected && !order.committed
+    );
     const newSelected = !allSelected;
 
     console.log(`✓ [toggleSelectAllGlobal] Select all global: ${newSelected}`);
 
     setOrders((prev) =>
-      prev.map((order) => ({ ...order, selected: newSelected }))
+      prev.map((order) =>
+        !order.committed ? { ...order, selected: newSelected } : order
+      )
     );
   };
 
@@ -1099,7 +1527,7 @@ export default function ProductionPlanPage() {
         <tr
           className={`border-b ${
             plan.expanded ? "bg-blue-50" : "bg-white"
-          } hover:bg-gray-50`}
+          } hover:bg-gray-50 ${plan.committed ? "bg-green-50" : ""}`}
         >
           <td className="px-4 py-3 text-center">
             <div className="flex items-center justify-center">
@@ -1107,7 +1535,7 @@ export default function ProductionPlanPage() {
                 type="checkbox"
                 checked={plan.selected}
                 onChange={() => toggleSelection(index)}
-                disabled={plan.loadingBom}
+                disabled={plan.loadingBom || plan.committed}
                 className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
               />
               {plan.loadingBom && (
@@ -1143,6 +1571,39 @@ export default function ProductionPlanPage() {
           <td className="px-4 py-3 text-right font-bold">
             {plan.order.QTY.toLocaleString()}
           </td>
+
+          {/* Kolom Status Commit */}
+          <td className="px-4 py-3 text-center">
+            {plan.committed ? (
+              <div className="flex flex-col items-center gap-1">
+                <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-bold">
+                  ✓ Committed
+                </span>
+                <button
+                  onClick={() => uncommitPO(index)}
+                  className="text-xs text-red-600 hover:text-red-800 underline"
+                >
+                  Uncommit
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => commitPO(index)}
+                disabled={committing === plan.order.No_SPK || !plan.bom}
+                className="bg-orange-500 text-white px-3 py-1 rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50 flex items-center gap-1"
+              >
+                {committing === plan.order.No_SPK ? (
+                  <>
+                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Committing...
+                  </>
+                ) : (
+                  "Commit PO"
+                )}
+              </button>
+            )}
+          </td>
+
           <td
             className={`px-4 py-3 text-center font-bold ${
               hasShortage ? "text-red-600 bg-red-50" : "text-green-600"
@@ -1164,17 +1625,28 @@ export default function ProductionPlanPage() {
 
         {plan.expanded && plan.bom && plan.stock && (
           <tr>
-            <td colSpan={8} className="bg-gray-50 p-4">
+            <td colSpan={9} className="bg-gray-50 p-4">
               <div className="space-y-4">
                 <div className="flex justify-between items-center bg-white p-4 rounded-lg border border-gray-300">
                   <div>
                     <h4 className="font-bold text-lg">
                       📊 Detail BOM - {plan.order.Kode_Barang}
+                      {plan.committed && (
+                        <span className="ml-2 bg-green-100 text-green-800 px-2 py-1 rounded-full text-sm">
+                          ✓ Committed
+                        </span>
+                      )}
                     </h4>
                     <p className="text-sm text-gray-600">
                       SPK: {plan.order.No_SPK} | PO: {plan.order.Nama_PO} | Qty:{" "}
                       {plan.order.QTY.toLocaleString()} unit | Stok per:{" "}
                       {plan.order.Tanggal_Order}
+                      {Object.keys(adjustedStock).length > 0 && (
+                        <span className="text-orange-600 font-medium">
+                          {" "}
+                          | Stok sudah disesuaikan dengan PO committed
+                        </span>
+                      )}
                     </p>
                     {plan.error && (
                       <p className="text-sm text-red-600 mt-1">
@@ -1183,6 +1655,22 @@ export default function ProductionPlanPage() {
                     )}
                   </div>
                   <div className="flex gap-2">
+                    {!plan.committed && (
+                      <button
+                        onClick={() => commitPO(index)}
+                        disabled={committing === plan.order.No_SPK}
+                        className="bg-orange-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-orange-600 disabled:opacity-50 flex items-center gap-2"
+                      >
+                        {committing === plan.order.No_SPK ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            Committing...
+                          </>
+                        ) : (
+                          "🔒 Commit PO"
+                        )}
+                      </button>
+                    )}
                     <button
                       onClick={() => toggleViewMode(index)}
                       className={`px-4 py-2 rounded-lg font-medium ${
@@ -1205,6 +1693,28 @@ export default function ProductionPlanPage() {
                     </button>
                   </div>
                 </div>
+
+                {/* Tambahkan info committed PO */}
+                {committedPOs.length > 0 && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <h5 className="font-bold text-yellow-800 mb-2">
+                      📋 PO yang Sudah Di-commit ({committedPOs.length})
+                    </h5>
+                    <div className="text-sm text-yellow-700">
+                      <p>Stok sudah dikurangi untuk PO berikut:</p>
+                      <div className="mt-1 grid grid-cols-2 md:grid-cols-3 gap-2">
+                        {committedPOs.map((po) => (
+                          <span
+                            key={po.noSPK}
+                            className="bg-yellow-100 px-2 py-1 rounded text-xs"
+                          >
+                            {po.noSPK} ({po.materialUsage.length} material)
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
@@ -1387,7 +1897,8 @@ export default function ProductionPlanPage() {
               <button
                 onClick={exportToExcel}
                 disabled={
-                  exportLoading || orders.filter((p) => p.selected).length === 0
+                  exportLoading ||
+                  orders.filter((p) => p.selected && !p.committed).length === 0
                 }
                 className="bg-green-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-600 disabled:opacity-50 flex items-center gap-2"
               >
@@ -1400,6 +1911,38 @@ export default function ProductionPlanPage() {
                   "📊 Export to Excel"
                 )}
               </button>
+            </div>
+          </div>
+
+          {/* Kontrol Commit PO */}
+          <div className="bg-orange-50 p-4 rounded-lg border border-orange-200 mb-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-lg text-orange-800">
+                  🔒 Kontrol Commit PO
+                </h3>
+                <p className="text-orange-700 text-sm">
+                  • Commit PO untuk mengurangi stok yang tersedia untuk PO
+                  berikutnya
+                  <br />
+                  • Stok akan otomatis disesuaikan setelah PO di-commit
+                  <br />
+                  • PO yang sudah di-commit tidak bisa dipilih untuk export
+                  <br />• Gunakan Uncommit untuk mengembalikan stok
+                </p>
+              </div>
+              <div className="flex gap-4 items-center">
+                <div className="text-sm text-orange-800">
+                  <strong>{committedPOs.length}</strong> PO sudah di-commit
+                </div>
+                <button
+                  onClick={resetCommittedPOs}
+                  disabled={committedPOs.length === 0}
+                  className="bg-red-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-red-600 disabled:opacity-50"
+                >
+                  Reset All Commit
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1431,8 +1974,12 @@ export default function ProductionPlanPage() {
                   </button>
                 </div>
                 <div className="text-sm text-yellow-800">
-                  <strong>{orders.filter((p) => p.selected).length}</strong>{" "}
-                  dari <strong>{orders.length}</strong> PO terpilih
+                  <strong>
+                    {orders.filter((p) => p.selected && !p.committed).length}
+                  </strong>{" "}
+                  dari{" "}
+                  <strong>{orders.filter((p) => !p.committed).length}</strong>{" "}
+                  PO terpilih
                   {orders.filter((p) => p.selected && p.bom).length > 0 && (
                     <span>
                       {" "}
@@ -1497,7 +2044,7 @@ export default function ProductionPlanPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
               <div className="text-blue-600 font-bold">Total Order</div>
               <div className="text-2xl font-bold">{orders.length}</div>
@@ -1505,7 +2052,7 @@ export default function ProductionPlanPage() {
             <div className="bg-green-50 p-4 rounded-lg border border-green-200">
               <div className="text-green-600 font-bold">Terpilih</div>
               <div className="text-2xl font-bold">
-                {orders.filter((p) => p.selected).length}
+                {orders.filter((p) => p.selected && !p.committed).length}
               </div>
             </div>
             <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
@@ -1514,10 +2061,19 @@ export default function ProductionPlanPage() {
                 {orders.filter((p) => p.bom).length}
               </div>
             </div>
+            <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
+              <div className="text-orange-600 font-bold">Committed</div>
+              <div className="text-2xl font-bold">
+                {orders.filter((p) => p.committed).length}
+              </div>
+            </div>
             <div className="bg-red-50 p-4 rounded-lg border border-red-200">
               <div className="text-red-600 font-bold">Siap Export</div>
               <div className="text-2xl font-bold">
-                {orders.filter((p) => p.selected && p.bom).length}
+                {
+                  orders.filter((p) => p.selected && p.bom && !p.committed)
+                    .length
+                }
               </div>
             </div>
           </div>
@@ -1551,6 +2107,7 @@ export default function ProductionPlanPage() {
                     <th className="px-4 py-3 text-left">Nama PO</th>
                     <th className="px-4 py-3 text-left">Kode Barang</th>
                     <th className="px-4 py-3 text-right">QTY</th>
+                    <th className="px-4 py-3 text-center">Commit</th>
                     <th className="px-4 py-3 text-center">Status Stok</th>
                   </tr>
                 </thead>
