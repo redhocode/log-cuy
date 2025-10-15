@@ -720,25 +720,39 @@ export default function ProductionPlanPage() {
 
   // ==================== FUNGSI PENCARIAN ====================
 
-  // Filter orders berdasarkan pencarian
+  // FUNGSI PENCARIAN - FIXED VERSION
   const filteredOrders = useMemo(() => {
     if (!searchQuery.trim()) {
       return orders;
     }
 
     const query = searchQuery.toLowerCase().trim();
-    return orders.filter(
-      (order) =>
-        order.order.No_SPK.toLowerCase().includes(query) ||
-        order.order.Nama_PO.toLowerCase().includes(query) ||
-        order.order.Kode_Barang.toLowerCase().includes(query) ||
-        (order.order.combinedItems &&
-          order.order.combinedItems.some(
-            (item) =>
-              item.Nama_PO.toLowerCase().includes(query) ||
-              item.Kode_Barang.toLowerCase().includes(query)
-          ))
-    );
+    return orders.filter((order) => {
+      // Safe handling for null/undefined values
+      const noSPK = order.order.No_SPK || "";
+      const namaPO = order.order.Nama_PO || "";
+      const kodeBarang = order.order.Kode_Barang || "";
+
+      // Check main order fields
+      const mainMatch =
+        noSPK.toLowerCase().includes(query) ||
+        namaPO.toLowerCase().includes(query) ||
+        kodeBarang.toLowerCase().includes(query);
+
+      // Check combined items if they exist
+      const combinedMatch =
+        order.order.combinedItems &&
+        order.order.combinedItems.some((item) => {
+          const itemNamaPO = item.Nama_PO || "";
+          const itemKodeBarang = item.Kode_Barang || "";
+          return (
+            itemNamaPO.toLowerCase().includes(query) ||
+            itemKodeBarang.toLowerCase().includes(query)
+          );
+        });
+
+      return mainMatch || combinedMatch;
+    });
   }, [orders, searchQuery]);
 
   // Reset pencarian
