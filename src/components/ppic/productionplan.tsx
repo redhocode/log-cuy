@@ -705,6 +705,9 @@ export default function ProductionPlanPage() {
     endDate: "",
   });
 
+  // State untuk pencarian
+  const [searchQuery, setSearchQuery] = useState("");
+
   // State untuk pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -714,6 +717,35 @@ export default function ProductionPlanPage() {
     console.log("🔄 [forceRefreshUI] Memaksa refresh tampilan UI 强制刷新UI");
     setOrders((prev) => [...prev]);
   }, []);
+
+  // ==================== FUNGSI PENCARIAN ====================
+
+  // Filter orders berdasarkan pencarian
+  const filteredOrders = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return orders;
+    }
+
+    const query = searchQuery.toLowerCase().trim();
+    return orders.filter(
+      (order) =>
+        order.order.No_SPK.toLowerCase().includes(query) ||
+        order.order.Nama_PO.toLowerCase().includes(query) ||
+        order.order.Kode_Barang.toLowerCase().includes(query) ||
+        (order.order.combinedItems &&
+          order.order.combinedItems.some(
+            (item) =>
+              item.Nama_PO.toLowerCase().includes(query) ||
+              item.Kode_Barang.toLowerCase().includes(query)
+          ))
+    );
+  }, [orders, searchQuery]);
+
+  // Reset pencarian
+  const clearSearch = () => {
+    setSearchQuery("");
+    setCurrentPage(1);
+  };
 
   // ==================== FUNGSI SINKRONISASI COMMIT ====================
 
@@ -819,10 +851,10 @@ export default function ProductionPlanPage() {
   const paginatedOrders = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
-    return orders.slice(startIndex, endIndex);
-  }, [orders, currentPage, itemsPerPage]);
+    return filteredOrders.slice(startIndex, endIndex);
+  }, [filteredOrders, currentPage, itemsPerPage]);
 
-  const totalPages = Math.ceil(orders.length / itemsPerPage);
+  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
 
   const goToPage = (page: number) => {
     setCurrentPage(Math.max(1, Math.min(page, totalPages)));
@@ -887,11 +919,11 @@ export default function ProductionPlanPage() {
 
   // Statistik untuk penggabungan PO
   const combinedStats = useMemo(() => {
-    const totalOriginalOrders = orders.reduce((total, order) => {
+    const totalOriginalOrders = filteredOrders.reduce((total, order) => {
       return total + (order.order.combinedItems?.length || 1);
     }, 0);
 
-    const combinedCount = orders.filter(
+    const combinedCount = filteredOrders.filter(
       (order) =>
         order.order.combinedItems && order.order.combinedItems.length > 1
     ).length;
@@ -899,9 +931,9 @@ export default function ProductionPlanPage() {
     return {
       totalOriginalOrders,
       combinedCount,
-      saving: totalOriginalOrders - orders.length,
+      saving: totalOriginalOrders - filteredOrders.length,
     };
-  }, [orders]);
+  }, [filteredOrders]);
 
   // FUNGSI: Ambil semua kode barang dari PO gabungan
   const getAllKodeBarang = (kodeBarang: string): string[] => {
@@ -1131,7 +1163,7 @@ export default function ProductionPlanPage() {
   // FUNGSI: Refresh stok untuk satu PO
   const refreshStockForPlan = async (index: number) => {
     const globalIndex = (currentPage - 1) * itemsPerPage + index;
-    const plan = orders[globalIndex];
+    const plan = filteredOrders[globalIndex];
 
     if (plan.bom && plan.stock) {
       try {
@@ -1177,7 +1209,7 @@ export default function ProductionPlanPage() {
   // FUNGSI: Commit PO ke database - FIXED VERSION
   const commitPO = async (index: number): Promise<void> => {
     const globalIndex = (currentPage - 1) * itemsPerPage + index;
-    const plan = orders[globalIndex];
+    const plan = filteredOrders[globalIndex];
 
     if (!plan.bom || !plan.stock) {
       alert("BOM belum diload untuk PO ini! 此PO的BOM尚未加载!");
@@ -1325,7 +1357,7 @@ export default function ProductionPlanPage() {
   // FUNGSI: Uncommit PO dari database - FIXED VERSION
   const uncommitPO = async (index: number): Promise<void> => {
     const globalIndex = (currentPage - 1) * itemsPerPage + index;
-    const plan = orders[globalIndex];
+    const plan = filteredOrders[globalIndex];
 
     if (
       !confirm(
@@ -1633,7 +1665,7 @@ export default function ProductionPlanPage() {
       };
 
       // 1. Data Stock Summary (format seperti gambar)
-      for (const plan of orders) {
+      for (const plan of filteredOrders) {
         if (plan.bom && plan.stock) {
           const materialNeeds = calculateMaterialNeeds(
             plan.bom.flat,
@@ -1675,7 +1707,7 @@ export default function ProductionPlanPage() {
       }
 
       // 2. Data Production Orders
-      exportData.productionOrders = orders.map((plan, index) => {
+      exportData.productionOrders = filteredOrders.map((plan, index) => {
         const isCombined =
           plan.order.combinedItems && plan.order.combinedItems.length > 1;
         const combinedCount = plan.order.combinedItems?.length || 1;
@@ -1787,7 +1819,7 @@ export default function ProductionPlanPage() {
         ["PRODUCTION STOCK SUMMARY REPORT 生产库存汇总报告"],
         [""],
         ["Tanggal Export 导出日期", new Date().toLocaleString("id-ID")],
-        ["Total Production Orders 总生产订单数", orders.length],
+        ["Total Production Orders 总生产订单数", filteredOrders.length],
         [
           "Total Items dalam Summary 汇总总项目数",
           exportData.stockSummary.length,
@@ -1889,7 +1921,7 @@ export default function ProductionPlanPage() {
     try {
       setExportLoading(true);
 
-      const selectedOrders = orders.filter(
+      const selectedOrders = filteredOrders.filter(
         (order: any) => order.selected && !order.committed
       );
 
@@ -1919,7 +1951,7 @@ export default function ProductionPlanPage() {
 
           // Ambil data stok terbaru
           const updatedStock: StockItem[] = await fetchStockForItems(
-            plan.bom.flat.map((item: BomItem) => item.ItemID),
+            plan.bom.flat.map((item) => item.ItemID),
             plan.order.Tanggal_Order
           );
 
@@ -2266,13 +2298,18 @@ export default function ProductionPlanPage() {
     fetchOrders();
   };
 
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+    setCurrentPage(1); // Reset ke halaman pertama saat mencari
+  };
+
   const toggleOrder = async (
     index: number,
     kodeBarang: string,
     orderDate: string
   ) => {
     const globalIndex = (currentPage - 1) * itemsPerPage + index;
-    const order = orders[globalIndex];
+    const order = filteredOrders[globalIndex];
 
     if (order.expanded) {
       setOrders((prev) =>
@@ -2304,7 +2341,7 @@ export default function ProductionPlanPage() {
 
   const toggleSelection = async (index: number) => {
     const globalIndex = (currentPage - 1) * itemsPerPage + index;
-    const order = orders[globalIndex];
+    const order = filteredOrders[globalIndex];
     const newSelected = !order.selected;
 
     console.log(
@@ -2438,7 +2475,7 @@ export default function ProductionPlanPage() {
   };
 
   const toggleSelectAllGlobal = () => {
-    const allSelected = orders.every(
+    const allSelected = filteredOrders.every(
       (order) => order.selected && !order.committed
     );
     const newSelected = !allSelected;
@@ -2844,7 +2881,10 @@ export default function ProductionPlanPage() {
 
   const Pagination = () => {
     const startIndex = (currentPage - 1) * itemsPerPage + 1;
-    const endIndex = Math.min(currentPage * itemsPerPage, orders.length);
+    const endIndex = Math.min(
+      currentPage * itemsPerPage,
+      filteredOrders.length
+    );
 
     const getPageNumbers = () => {
       const pages = [];
@@ -2870,8 +2910,13 @@ export default function ProductionPlanPage() {
     return (
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
         <div className="text-sm text-gray-600">
-          Menampilkan {startIndex}-{endIndex} dari {orders.length} data 显示{" "}
-          {startIndex}-{endIndex} 条，共 {orders.length} 条数据
+          Menampilkan {startIndex}-{endIndex} dari {filteredOrders.length} data
+          显示 {startIndex}-{endIndex} 条，共 {filteredOrders.length} 条数据
+          {searchQuery && (
+            <span className="text-blue-600 ml-2">
+              (Hasil pencarian untuk {searchQuery} 搜索结果)
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -2968,7 +3013,7 @@ export default function ProductionPlanPage() {
               <div className="flex gap-2">
                 <button
                   onClick={exportToExcel}
-                  disabled={exportLoading || orders.length === 0}
+                  disabled={exportLoading || filteredOrders.length === 0}
                   className="bg-green-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-600 disabled:opacity-50 flex items-center gap-2"
                 >
                   {exportLoading ? (
@@ -2985,8 +3030,8 @@ export default function ProductionPlanPage() {
                   onClick={exportSelectedToExcel}
                   disabled={
                     exportLoading ||
-                    orders.filter((p) => p.selected && !p.committed).length ===
-                      0
+                    filteredOrders.filter((p) => p.selected && !p.committed)
+                      .length === 0
                   }
                   className="bg-purple-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-purple-600 disabled:opacity-50 flex items-center gap-2"
                 >
@@ -3009,6 +3054,43 @@ export default function ProductionPlanPage() {
             stockReservations={stockReservations}
             onRefresh={loadCommittedPOs}
           />
+
+          {/* Pencarian PO */}
+          <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-200 mb-6">
+            <h3 className="font-bold text-lg text-indigo-800 mb-4">
+              🔍 Pencarian PO 搜索PO
+            </h3>
+            <div className="flex gap-4 items-end flex-wrap">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Cari berdasarkan No SPK, Nama PO, atau Kode Barang
+                  根据生产订单号、PO名称或物料代码搜索
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={handleSearchChange}
+                    placeholder="Masukkan kata kunci pencarian... 输入搜索关键词..."
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={clearSearch}
+                      className="bg-gray-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-600"
+                    >
+                      Clear 清除
+                    </button>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  * Pencarian akan mencari di semua field: No SPK, Nama PO, dan
+                  Kode Barang
+                  <br />* 搜索将在所有字段中进行：生产订单号、PO名称和物料代码
+                </p>
+              </div>
+            </div>
+          </div>
 
           {/* Kontrol Commit PO */}
           <div className="bg-orange-50 p-4 rounded-lg border border-orange-200 mb-6">
@@ -3087,10 +3169,15 @@ export default function ProductionPlanPage() {
                 </div>
                 <div className="text-sm text-yellow-800">
                   <strong>
-                    {orders.filter((p) => p.selected && !p.committed).length}
+                    {
+                      filteredOrders.filter((p) => p.selected && !p.committed)
+                        .length
+                    }
                   </strong>{" "}
                   dari 来自{" "}
-                  <strong>{orders.filter((p) => !p.committed).length}</strong>{" "}
+                  <strong>
+                    {filteredOrders.filter((p) => !p.committed).length}
+                  </strong>{" "}
                   PO terpilih 选择的PO
                 </div>
               </div>
@@ -3124,7 +3211,7 @@ export default function ProductionPlanPage() {
                 </div>
                 <div>
                   <strong>{combinedStats.totalOriginalOrders}</strong> →{" "}
-                  <strong>{orders.length}</strong> data 数据
+                  <strong>{filteredOrders.length}</strong> data 数据
                 </div>
               </div>
             </div>
@@ -3175,9 +3262,15 @@ export default function ProductionPlanPage() {
                 </button>
               </div>
               <div className="text-sm text-gray-600">
-                Menampilkan 显示: {orders.length} PO
+                Menampilkan 显示: {filteredOrders.length} PO
                 {dateFilter.startDate && ` dari ${dateFilter.startDate} 从`}
                 {dateFilter.endDate && ` sampai ${dateFilter.endDate} 到`}
+                {searchQuery && (
+                  <span className="text-blue-600">
+                    {" "}
+                    (Hasil pencarian 搜索结果)
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -3185,12 +3278,15 @@ export default function ProductionPlanPage() {
           <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
             <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
               <div className="text-blue-600 font-bold">Total Order 总订单</div>
-              <div className="text-2xl font-bold">{orders.length}</div>
+              <div className="text-2xl font-bold">{filteredOrders.length}</div>
             </div>
             <div className="bg-green-50 p-4 rounded-lg border border-green-200">
               <div className="text-green-600 font-bold">Terpilih 已选择</div>
               <div className="text-2xl font-bold">
-                {orders.filter((p) => p.selected && !p.committed).length}
+                {
+                  filteredOrders.filter((p) => p.selected && !p.committed)
+                    .length
+                }
               </div>
             </div>
             <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
@@ -3198,13 +3294,13 @@ export default function ProductionPlanPage() {
                 Sudah Load BOM 已加载BOM
               </div>
               <div className="text-2xl font-bold">
-                {orders.filter((p) => p.bom).length}
+                {filteredOrders.filter((p) => p.bom).length}
               </div>
             </div>
             <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
               <div className="text-orange-600 font-bold">Committed 已提交</div>
               <div className="text-2xl font-bold">
-                {orders.filter((p) => p.committed).length}
+                {filteredOrders.filter((p) => p.committed).length}
               </div>
             </div>
             <div className="bg-red-50 p-4 rounded-lg border border-red-200">
@@ -3212,7 +3308,7 @@ export default function ProductionPlanPage() {
                 Bisa Di-commit 可提交
               </div>
               <div className="text-2xl font-bold">
-                {orders.filter((p) => p.bom && !p.committed).length}
+                {filteredOrders.filter((p) => p.bom && !p.committed).length}
               </div>
             </div>
             <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
@@ -3231,7 +3327,7 @@ export default function ProductionPlanPage() {
                 Stok Real-time 实时库存
               </div>
               <div className="text-2xl font-bold">
-                {orders.filter((p) => p.stockLastUpdated).length}
+                {filteredOrders.filter((p) => p.stockLastUpdated).length}
               </div>
               <div className="text-xs text-green-600">
                 PO dengan stok terbaru 有最新库存的PO
@@ -3255,7 +3351,7 @@ export default function ProductionPlanPage() {
           </div>
         )}
 
-        {!loading && orders.length > 0 && (
+        {!loading && filteredOrders.length > 0 && (
           <>
             <div className="bg-white rounded-lg shadow-sm overflow-hidden">
               <table className="w-full">
@@ -3290,17 +3386,29 @@ export default function ProductionPlanPage() {
           </>
         )}
 
-        {!loading && orders.length === 0 && (
+        {!loading && filteredOrders.length === 0 && (
           <div className="bg-white rounded-lg shadow-sm p-12 text-center">
             <div className="text-4xl mb-4">📭</div>
             <h3 className="text-lg font-bold text-gray-700 mb-2">
-              Tidak ada data produksi 没有生产数据
+              {searchQuery
+                ? "Tidak ada data produksi yang sesuai dengan pencarian 没有符合搜索条件的生产数据"
+                : "Tidak ada data produksi 没有生产数据"}
             </h3>
             <p className="text-gray-500">
-              {dateFilter.startDate || dateFilter.endDate
+              {searchQuery
+                ? `Tidak ditemukan PO dengan kata kunci "${searchQuery}" 未找到包含关键词"${searchQuery}"的PO`
+                : dateFilter.startDate || dateFilter.endDate
                 ? "Tidak ada data sesuai filter tanggal yang dipilih 没有符合所选日期筛选条件的数据"
                 : "Data order produksi tidak ditemukan 未找到生产订单数据"}
             </p>
+            {searchQuery && (
+              <button
+                onClick={clearSearch}
+                className="mt-4 bg-blue-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-600"
+              >
+                Tampilkan Semua PO 显示所有PO
+              </button>
+            )}
           </div>
         )}
       </div>
