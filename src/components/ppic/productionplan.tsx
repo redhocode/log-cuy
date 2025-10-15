@@ -723,18 +723,22 @@ export default function ProductionPlanPage() {
   // Filter orders berdasarkan pencarian
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
   // FUNGSI PENCARIAN - FIXED VERSION
 =======
 >>>>>>> e450d1d (add search)
 =======
   // FUNGSI PENCARIAN - FIXED VERSION
 >>>>>>> 75f884e (fix search)
+=======
+>>>>>>> 6b8dc91 (refresh after commit)
   const filteredOrders = useMemo(() => {
     if (!searchQuery.trim()) {
       return orders;
     }
 
     const query = searchQuery.toLowerCase().trim();
+<<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
 =======
@@ -767,6 +771,8 @@ export default function ProductionPlanPage() {
     });
 <<<<<<< HEAD
 =======
+=======
+>>>>>>> 6b8dc91 (refresh after commit)
     return orders.filter(
       (order) =>
         order.order.No_SPK.toLowerCase().includes(query) ||
@@ -779,9 +785,12 @@ export default function ProductionPlanPage() {
               item.Kode_Barang.toLowerCase().includes(query)
           ))
     );
+<<<<<<< HEAD
 >>>>>>> e450d1d (add search)
 =======
 >>>>>>> 75f884e (fix search)
+=======
+>>>>>>> 6b8dc91 (refresh after commit)
   }, [orders, searchQuery]);
 
   // Reset pencarian
