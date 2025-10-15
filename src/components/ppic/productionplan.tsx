@@ -721,13 +721,17 @@ export default function ProductionPlanPage() {
   // ==================== FUNGSI PENCARIAN ====================
 
   // Filter orders berdasarkan pencarian
+<<<<<<< HEAD
   // FUNGSI PENCARIAN - FIXED VERSION
+=======
+>>>>>>> e450d1d (add search)
   const filteredOrders = useMemo(() => {
     if (!searchQuery.trim()) {
       return orders;
     }
 
     const query = searchQuery.toLowerCase().trim();
+<<<<<<< HEAD
     return orders.filter((order) => {
       // Safe handling for null/undefined values
       const noSPK = order.order.No_SPK || "";
@@ -754,6 +758,20 @@ export default function ProductionPlanPage() {
 
       return mainMatch || combinedMatch;
     });
+=======
+    return orders.filter(
+      (order) =>
+        order.order.No_SPK.toLowerCase().includes(query) ||
+        order.order.Nama_PO.toLowerCase().includes(query) ||
+        order.order.Kode_Barang.toLowerCase().includes(query) ||
+        (order.order.combinedItems &&
+          order.order.combinedItems.some(
+            (item) =>
+              item.Nama_PO.toLowerCase().includes(query) ||
+              item.Kode_Barang.toLowerCase().includes(query)
+          ))
+    );
+>>>>>>> e450d1d (add search)
   }, [orders, searchQuery]);
 
   // Reset pencarian
