@@ -560,8 +560,7 @@ const CommittedPOsPanel: React.FC<{
     <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 mb-6">
       <div className="flex justify-between items-center">
         <h3 className="font-bold text-lg text-blue-800">
-          📋 History PO yang Sudah Di-commit ({committedPOs.length})
-          已提交PO历史 ({committedPOs.length})
+          📋 History PO yang Sudah Di-commit 
         </h3>
         <div className="flex gap-2">
           <button
@@ -807,7 +806,7 @@ export default function ProductionPlanPage() {
     );
   }, [committedPOs, orders.length]); // Tambah orders.length sebagai dependency
 
-  // FUNGSI: Load data committed PO dari database - FIXED VERSION
+  // FUNGSI: Load data committed PO dari database - IMPROVED VERSION
   const loadCommittedPOs = async (): Promise<void> => {
     try {
       console.log(
@@ -815,6 +814,11 @@ export default function ProductionPlanPage() {
       );
 
       const response = await fetch("/api/ppic/committed-pos");
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const result = await response.json();
 
       if (result.success) {
@@ -829,12 +833,11 @@ export default function ProductionPlanPage() {
         setCommittedPOs(newCommittedPOs);
         setStockReservations(newReservations);
 
-        // === PERBAIKAN: PASTIKAN SINKRONISASI DIPANGGIL ===
-        console.log(
-          "🔄 [loadCommittedPOs] Memanggil syncCommitStatus 调用同步提交状态"
-        );
-        syncCommitStatus();
-        forceRefreshUI();
+        // === PERBAIKAN: PASTIKAN SINKRONISASI DIPANGGIL SETELAH STATE UPDATE ===
+        setTimeout(() => {
+          syncCommitStatus();
+          forceRefreshUI();
+        }, 100);
       } else {
         console.error(
           "❌ [loadCommittedPOs] Gagal load committed POs 加载已提交PO失败:",
@@ -1407,8 +1410,7 @@ export default function ProductionPlanPage() {
         `✅ [uncommitPO] Berhasil uncommit PO ${plan.order.No_SPK} 取消提交成功`
       );
 
-      // === PERBAIKAN: IMMEDIATE UI UPDATE ===
-      // Update state local SEBELUM load data dari database
+      // === PERBAIKAN: IMMEDIATE UI UPDATE DENGAN STATE YANG BENAR ===
       setOrders((prev) =>
         prev.map((item, i) =>
           i === globalIndex
@@ -1422,20 +1424,24 @@ export default function ProductionPlanPage() {
         )
       );
 
-      // Juga update committedPOs state
+      // === PERBAIKAN: UPDATE COMMITTED POS STATE ===
       setCommittedPOs((prev) =>
         prev.filter(
-          (po) => !(po.noSPK === plan.order.No_SPK && po.status === "COMMITTED")
+          (po) => po.noSPK !== plan.order.No_SPK || po.status !== "COMMITTED"
         )
       );
 
+      // === PERBAIKAN: FORCE REFRESH UI ===
       forceRefreshUI();
+
       alert(
         "PO berhasil di-uncommit! Stok telah dikembalikan. PO取消提交成功! 库存已退回"
       );
 
-      // Refresh data untuk memastikan konsistensi
-      await loadCommittedPOs();
+      // === PERBAIKAN: REFRESH DATA DENGAN DELAY UNTUK MEMASTIKAN KONSISTENSI ===
+      setTimeout(async () => {
+        await loadCommittedPOs();
+      }, 500);
     } catch (error) {
       console.error(
         `❌ [uncommitPO] Gagal uncommit PO ${plan.order.No_SPK}: 取消提交失败`,
@@ -1458,7 +1464,7 @@ export default function ProductionPlanPage() {
     }
   };
 
-  // FUNGSI: Reset semua committed PO
+  // FUNGSI: Reset semua committed PO - IMPROVED VERSION
   const resetCommittedPOs = async () => {
     if (
       !confirm(
@@ -1491,17 +1497,20 @@ export default function ProductionPlanPage() {
         }
       }
 
-      // Refresh data
-      await loadCommittedPOs();
-
-      // Update semua order menjadi uncommitted
+      // === PERBAIKAN: UPDATE STATE LOKAL LANGSUNG ===
       setOrders((prev) =>
         prev.map((order) => ({
           ...order,
           committed: false,
           commitID: undefined,
+          selected: false,
         }))
       );
+
+      setCommittedPOs((prev) => prev.filter((po) => po.status !== "COMMITTED"));
+
+      // Refresh data untuk memastikan konsistensi
+      await loadCommittedPOs();
 
       alert(
         `Berhasil reset ${committedPOsToReset.length} PO yang di-commit! 成功重置 ${committedPOsToReset.length} 个已提交PO!`
@@ -1665,269 +1674,7 @@ export default function ProductionPlanPage() {
     }
   };
 
-  // ==================== FUNGSI EXPORT KE EXCEL ====================
 
-  const exportToExcel = async () => {
-    try {
-      setExportLoading(true);
-
-      // Data yang akan di-export
-      const exportData = {
-        stockSummary: [] as any[], // Format utama seperti gambar
-        productionOrders: [] as any[],
-        committedPOs: [] as any[],
-      };
-
-      // 1. Data Stock Summary (format seperti gambar)
-      for (const plan of filteredOrders) {
-        if (plan.bom && plan.stock) {
-          const materialNeeds = calculateMaterialNeeds(
-            plan.bom.flat,
-            plan.order.QTY,
-            plan.stock
-          );
-
-          // Ambil data stok terbaru untuk menghitung total others
-          const updatedStock = await fetchStockForItems(
-            plan.bom.flat.map((item) => item.ItemID),
-            plan.order.Tanggal_Order
-          );
-
-          for (const item of materialNeeds.items) {
-            // Cari data stok terbaru untuk item ini
-            const stockItem = updatedStock.find(
-              (s) => s.itemid === item.ItemID
-            );
-
-            // Hitung total others = committedQty + reservedQty
-            const totalOthers =
-              (stockItem?.committedQty || 0) + (stockItem?.reservedQty || 0);
-            const whStock =
-              stockItem?.physicalStock || stockItem?.stockAkhir || 0;
-            const remainingStock = whStock - item.needed - totalOthers;
-
-            exportData.stockSummary.push({
-              CODE: item.ItemID,
-              "Sum of total": item.needed,
-              "Total others ( )": totalOthers,
-              "WH Stoc": whStock,
-              "Remaining sto": remainingStock,
-              "No SPK": plan.order.No_SPK,
-              "Nama PO": plan.order.Nama_PO,
-              Status: remainingStock >= 0 ? "CUKUP 充足" : "KURANG 不足",
-            });
-          }
-        }
-      }
-
-      // 2. Data Production Orders
-      exportData.productionOrders = filteredOrders.map((plan, index) => {
-        const isCombined =
-          plan.order.combinedItems && plan.order.combinedItems.length > 1;
-        const combinedCount = plan.order.combinedItems?.length || 1;
-
-        return {
-          No: index + 1,
-          "No SPK": plan.order.No_SPK,
-          "Tanggal Order": plan.order.Tanggal_Order,
-          "Nama PO": plan.order.Nama_PO,
-          "Kode Barang": plan.order.Kode_Barang,
-          QTY: plan.order.QTY,
-          Status: plan.committed ? "COMMITTED 已提交" : "PENDING 待处理",
-          "Commit ID": plan.commitID || "-",
-          "Tipe PO": isCombined
-            ? `Gabungan (${combinedCount} PO) 合并(${combinedCount}个PO)`
-            : "Single PO 单个PO",
-        };
-      });
-
-      // 3. Data Committed POs
-      exportData.committedPOs = committedPOs.map((po) => ({
-        "Commit ID": po.commitID,
-        "No SPK": po.noSPK,
-        "Kode Barang": po.kodeBarang,
-        "Nama PO": po.namaPO,
-        QTY: po.qty,
-        "Tanggal Commit": po.tanggalCommit,
-        Status: po.status,
-        "Total Materials": po.totalMaterials,
-        "Total Qty Reserved": po.totalQtyReserved,
-      }));
-
-      // Buat workbook dan worksheet
-      const wb = XLSX.utils.book_new();
-
-      // Worksheet 1: Stock Summary (format persis seperti gambar)
-      if (exportData.stockSummary.length > 0) {
-        // Format data untuk worksheet utama
-        const mainSheetData = exportData.stockSummary.map((item) => [
-          item["CODE"],
-          item["Sum of total"],
-          item["Total others ( )"],
-          item["WH Stoc"],
-          item["Remaining sto"],
-        ]);
-
-        // Tambahkan header
-        mainSheetData.unshift([
-          "CODE 代码",
-          "Sum of total 总需求",
-          "Total others ( ) 其他总量",
-          "WH Stoc 仓库库存",
-          "Remaining sto 剩余库存",
-        ]);
-
-        // Tambahkan manual stock notes (seperti di gambar)
-        mainSheetData.push([]);
-        mainSheetData.push([
-          "MANUAL STOCK FOR LSB PO#LASV1369 LSB PO#LASV1369手动库存",
-        ]);
-        mainSheetData.push(["INJEKS! PLATING SPRAY 注塑! 电镀 喷涂"]);
-
-        const ws1 = XLSX.utils.aoa_to_sheet(mainSheetData);
-        XLSX.utils.book_append_sheet(wb, ws1, "Stock Summary 库存汇总");
-
-        // Styling untuk worksheet utama
-        if (!ws1["!cols"]) ws1["!cols"] = [];
-        ws1["!cols"] = [
-          { wch: 15 }, // CODE
-          { wch: 15 }, // Sum of total
-          { wch: 15 }, // Total others ( )
-          { wch: 10 }, // WH Stoc
-          { wch: 15 }, // Remaining sto
-        ];
-      }
-
-      // Worksheet 2: Production Orders
-      const ws2 = XLSX.utils.json_to_sheet(exportData.productionOrders);
-      XLSX.utils.book_append_sheet(wb, ws2, "Production Orders 生产订单");
-
-      // Worksheet 3: Committed POs
-      if (exportData.committedPOs.length > 0) {
-        const ws3 = XLSX.utils.json_to_sheet(exportData.committedPOs);
-        XLSX.utils.book_append_sheet(wb, ws3, "Committed POs 已提交PO");
-      }
-
-      // Worksheet 4: Detailed Stock Analysis
-      if (exportData.stockSummary.length > 0) {
-        const detailedData = exportData.stockSummary.map((item) => ({
-          CODE: item.CODE,
-          "Sum of total": item["Sum of total"],
-          "Total others ( )": item["Total others ( )"],
-          "WH Stoc": item["WH Stoc"],
-          "Remaining sto": item["Remaining sto"],
-          "No SPK": item["No SPK"],
-          "Nama PO": item["Nama PO"],
-          Status: item.Status,
-          "Committed Qty": item["Total others ( )"], // Karena total others = committed + reserved
-          Kekurangan:
-            item["Remaining sto"] < 0 ? Math.abs(item["Remaining sto"]) : 0,
-        }));
-
-        const ws4 = XLSX.utils.json_to_sheet(detailedData);
-        XLSX.utils.book_append_sheet(wb, ws4, "Detailed Analysis 详细分析");
-      }
-
-      // Tambahkan worksheet untuk summary
-      const summaryData = [
-        ["PRODUCTION STOCK SUMMARY REPORT 生产库存汇总报告"],
-        [""],
-        ["Tanggal Export 导出日期", new Date().toLocaleString("id-ID")],
-        ["Total Production Orders 总生产订单数", filteredOrders.length],
-        [
-          "Total Items dalam Summary 汇总总项目数",
-          exportData.stockSummary.length,
-        ],
-        [
-          "Items dengan Stok Cukup 库存充足项目",
-          exportData.stockSummary.filter(
-            (item: any) => item["Remaining sto"] >= 0
-          ).length,
-        ],
-        [
-          "Items dengan Stok Kurang 库存不足项目",
-          exportData.stockSummary.filter(
-            (item: any) => item["Remaining sto"] < 0
-          ).length,
-        ],
-        [
-          "PO yang Sudah di-Commit 已提交PO",
-          committedPOs.filter((po) => po.status === "COMMITTED").length,
-        ],
-        [""],
-        ["KETERANGAN KOLOM 列说明:"],
-        ["CODE 代码", "Kode Item/Bahan 物料代码"],
-        ["Sum of total 总需求", "Total kebutuhan untuk PO ini 此PO的总需求"],
-        [
-          "Total others ( ) 其他总量",
-          "Total komitmen untuk PO lain (Committed + Reserved) 其他PO的总承诺量(已提交+已预留)",
-        ],
-        ["WH Stoc 仓库库存", "Stok fisik di gudang 仓库物理库存"],
-        [
-          "Remaining sto 剩余库存",
-          "Sisa stok = WH Stoc - Sum of total - Total others 剩余库存 = 仓库库存 - 总需求 - 其他总量",
-        ],
-        [""],
-        ["RUMUS 公式:"],
-        ["Remaining sto = WH Stoc - Sum of total - Total others"],
-        [
-          "Status = 'CUKUP 充足' jika Remaining sto >= 0, 'KURANG 不足' jika < 0",
-        ],
-      ];
-
-      const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
-      XLSX.utils.book_append_sheet(wb, wsSummary, "Summary 总结");
-
-      // Styling untuk summary
-      if (wsSummary["!merges"] === undefined) wsSummary["!merges"] = [];
-      wsSummary["!merges"].push(
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } },
-        { s: { r: 8, c: 0 }, e: { r: 8, c: 4 } },
-        { s: { r: 15, c: 0 }, e: { r: 15, c: 4 } }
-      );
-
-      // Set column widths untuk summary
-      wsSummary["!cols"] = [
-        { wch: 25 },
-        { wch: 40 },
-        { wch: 15 },
-        { wch: 15 },
-        { wch: 15 },
-      ];
-
-      // Generate filename dengan timestamp
-      const timestamp = new Date()
-        .toISOString()
-        .replace(/[:.]/g, "-")
-        .slice(0, -5);
-      const filename = `Stock_Summary_Export_${timestamp}.xlsx`;
-
-      // Export ke file
-      const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-      const blob = new Blob([wbout], { type: "application/octet-stream" });
-
-      saveAs(blob, filename);
-
-      console.log(`✅ Export berhasil 导出成功: ${filename}`);
-      console.log(`📊 Data yang di-export 导出数据:`);
-      console.log(
-        `   - Stock Summary 库存汇总: ${exportData.stockSummary.length} items`
-      );
-      console.log(
-        `   - Production Orders 生产订单: ${exportData.productionOrders.length}`
-      );
-      console.log(
-        `   - Committed POs 已提交PO: ${exportData.committedPOs.length}`
-      );
-    } catch (error) {
-      console.error("❌ Error dalam export ke Excel 导出到Excel错误:", error);
-      alert(
-        "Gagal mengekspor data ke Excel. Silakan coba lagi. 导出到Excel失败，请重试"
-      );
-    } finally {
-      setExportLoading(false);
-    }
-  };
 
   // ==================== FUNGSI EXPORT SELECTED ONLY ====================
 
@@ -2993,9 +2740,12 @@ export default function ProductionPlanPage() {
   }, []);
 
   // Sinkronkan setiap kali committedPOs berubah
-  useEffect(() => {
-    syncCommitStatus();
-  }, [committedPOs, syncCommitStatus]);
+ useEffect(() => {
+   if (committedPOs.length > 0 || orders.length > 0) {
+     console.log("🔄 [useEffect] Sinkronisasi commit status");
+     syncCommitStatus();
+   }
+ }, [committedPOs]);
 
   // ==================== RENDER COMPONENT ====================
 
@@ -3025,20 +2775,7 @@ export default function ProductionPlanPage() {
 
               {/* Tombol Export */}
               <div className="flex gap-2">
-                <button
-                  onClick={exportToExcel}
-                  disabled={exportLoading || filteredOrders.length === 0}
-                  className="bg-green-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-600 disabled:opacity-50 flex items-center gap-2"
-                >
-                  {exportLoading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Exporting... 导出中...
-                    </>
-                  ) : (
-                    "📊 Export All to Excel 导出全部到Excel"
-                  )}
-                </button>
+           
 
                 <button
                   onClick={exportSelectedToExcel}
