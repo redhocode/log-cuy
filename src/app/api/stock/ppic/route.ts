@@ -21,7 +21,7 @@ async function getRpStokPPIC(params: any) {
     .input("PeriodeR", sql.VarChar(6), params.periodeR)
     .input("kategori", sql.VarChar(20), params.kategori)
     .input("itemid", sql.VarChar(50), params.itemid)
-    .execute("[dbo].[rpStokPPIC]");
+    .execute("[dbo].[rpStokPPIC2]");
 
   return result.recordset;
 }

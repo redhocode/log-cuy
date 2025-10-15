@@ -1,8 +1,7 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // app/production-plan/page.tsx
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import axios from "axios";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
@@ -14,6 +13,9 @@ interface ProductionOrder {
   Nama_PO: string;
   Kode_Barang: string;
   QTY: number;
+  isCombined?: boolean;
+  combinedItems?: ProductionOrder[];
+  originalOrders?: ProductionOrder[];
 }
 
 interface BomItem {
@@ -31,6 +33,9 @@ interface StockItem {
   itemid: string;
   itemname: string;
   stockAkhir: number;
+  physicalStock?: number;
+  committedQty?: number;
+  reservedQty?: number;
 }
 
 interface ProductionPlan {
@@ -38,6 +43,12 @@ interface ProductionPlan {
   bom?: {
     flat: BomItem[];
     tree: BomItem[];
+    combinedBoms?: {
+      [kodeBarang: string]: {
+        flat: BomItem[];
+        tree: BomItem[];
+      };
+    };
   };
   expanded: boolean;
   loading: boolean;
@@ -47,47 +58,142 @@ interface ProductionPlan {
   error?: string;
   viewMode: "table" | "tree";
   committed: boolean;
+  commitID?: number;
+  stockLastUpdated?: string;
 }
 
-// ==================== TIPE DATA UNTUK EXPORT ====================
-interface MaterialRequirement {
-  itemId: string;
-  itemName: string;
-  totalNeeded: number;
-  availableStock: number;
-  shortage: number;
-  status: string;
-  level: number;
-  departemen: string;
-  poList: string[];
-  poDetails: {
-    poId: string;
-    poName: string;
-    needed: number;
-    productionQty: number;
-  }[];
-}
-
-interface MaterialRequirementNew {
-  CODE: string;
-  "Sum of total": number;
-  "Total others": number;
-  "WH Stoc": number;
-  "Remaining sto": number;
-  status: string;
-  departemen: string;
-}
-
+// ==================== TIPE DATA UNTUK COMMIT ====================
 interface CommittedPO {
+  commitID: number;
   noSPK: string;
   kodeBarang: string;
+  namaPO: string;
   qty: number;
-  materialUsage: { itemId: string; usedQty: number }[];
+  tanggalCommit: string;
+  userID: string;
+  status: string;
+  totalMaterials: number;
+  totalQtyReserved: number;
 }
 
-interface AdjustedStock {
-  [itemId: string]: number;
+interface MaterialUsageItem {
+  itemId: string;
+  itemName: string;
+  qtyPerUnit: number;
+  totalNeeded: number;
+  stockBefore: number;
+  stockAfter: number;
+  qtyUsed: number;
+  departemen?: string;
+  level: number;
 }
+
+interface StockReservation {
+  reservationID: number;
+  commitID: number;
+  itemID: string;
+  itemName: string;
+  reservedQty: number;
+  reservationDate: string;
+  status: string;
+  expiryDate: string;
+  noSPK: string;
+}
+
+interface ExportData {
+  stockSummary: any[];
+  departmentSummary: any[];
+  productionOrders: any[];
+}
+
+// interface MaterialItem {
+//   ItemID: string;
+//   ItemName: string;
+//   Departemen?: string;
+//   needed: number;
+// }
+
+// ==================== FUNGSI BANTU ====================
+
+// FUNGSI: Filter hanya komponen (bukan barang jadinya)
+const filterOnlyComponents = (bomItems: BomItem[]): BomItem[] => {
+  return bomItems.filter((item) => item.Level > 0); // Hanya tampilkan level > 0 (bukan produk akhir)
+};
+
+// FUNGSI: Build tree structure dari flat BOM
+const buildTreeStructure = (flatBom: BomItem[]): BomItem[] => {
+  if (!flatBom || flatBom.length === 0) return [];
+
+  // Buat map untuk akses cepat
+  const itemMap = new Map<string, BomItem>();
+  const rootItems: BomItem[] = [];
+
+  // Pertama, salin semua item ke map
+  flatBom.forEach((item) => {
+    const treeItem = { ...item, children: [] as BomItem[] };
+    itemMap.set(item.ItemID, treeItem);
+  });
+
+  // Kemudian, bangun struktur tree
+  flatBom.forEach((item) => {
+    const treeItem = itemMap.get(item.ItemID)!;
+
+    if (
+      !item.ParentItemID ||
+      item.ParentItemID === item.ItemID ||
+      !itemMap.has(item.ParentItemID)
+    ) {
+      // Ini adalah root item (produk akhir)
+      rootItems.push(treeItem);
+    } else {
+      // Ini adalah child item, tambahkan ke parent
+      const parent = itemMap.get(item.ParentItemID);
+      if (parent && parent.children) {
+        parent.children.push(treeItem);
+      }
+    }
+  });
+
+  console.log(
+    `🌳 [buildTreeStructure] Built tree with ${rootItems.length} root nodes`
+  );
+  return rootItems;
+};
+
+// ==================== FUNGSI PERHITUNGAN MATERIAL ====================
+
+// Perhitungan material needs untuk single PO
+const calculateMaterialNeeds = (
+  bom: BomItem[],
+  productionQty: number,
+  stock: StockItem[] = []
+) => {
+  if (!bom) return { totalNeeded: 0, totalShortage: 0, items: [] };
+
+  // PERBAIKAN: Filter hanya komponen (level > 0)
+  const componentsOnly = filterOnlyComponents(bom);
+
+  let totalNeeded = 0;
+  let totalShortage = 0;
+  const items = componentsOnly.map((item) => {
+    const needed = item.Qty * productionQty;
+    const availableStock =
+      stock.find((s) => s.itemid === item.ItemID)?.stockAkhir || 0;
+    const shortage = Math.max(0, needed - availableStock);
+
+    totalNeeded += needed;
+    totalShortage += shortage;
+
+    return {
+      ...item,
+      needed,
+      availableStock,
+      shortage,
+    };
+  });
+
+  return { totalNeeded, totalShortage, items };
+};
 
 // ==================== KOMPONEN BOM TREE ====================
 const SimpleBomTree: React.FC<{
@@ -97,6 +203,42 @@ const SimpleBomTree: React.FC<{
   orderDate: string;
 }> = ({ treeData, productionQty, stock, orderDate }) => {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+
+  // Jika treeData kosong, tampilkan pesan
+  if (!treeData || treeData.length === 0) {
+    return (
+      <div className="border border-gray-300 rounded-lg bg-white">
+        <div className="bg-gray-800 text-white px-4 py-3 rounded-t-lg">
+          <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center">
+              <div className="w-8 flex-shrink-0"></div>
+              <div className="flex-1 font-bold">
+                Struktur BOM (Tree View) BOM结构(树状视图)
+              </div>
+            </div>
+            <div className="text-xs text-gray-300">
+              Stok per tanggal: {orderDate} 库存日期: {orderDate}
+            </div>
+          </div>
+        </div>
+        <div className="p-8 text-center text-gray-500">
+          <div className="text-4xl mb-2">🌳</div>
+          <div className="font-bold mb-2">
+            Tree View Tidak Tersedia 树状视图不可用
+          </div>
+          <div className="text-sm">
+            Struktur tree BOM tidak dapat ditampilkan.
+            <br />
+            无法显示BOM树状结构。
+            <br />
+            Silakan gunakan Table View untuk melihat daftar komponen.
+            <br />
+            请使用表格视图查看组件列表。
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const toggleNode = (itemId: string) => {
     setExpandedNodes((prev) => {
@@ -160,34 +302,40 @@ const SimpleBomTree: React.FC<{
                 </div>
                 <div className="flex items-center mt-1 text-xs text-gray-500">
                   {node.Departemen && (
-                    <span className="mr-3">Dept: {node.Departemen}</span>
+                    <span className="mr-3">
+                      Dept: {node.Departemen} 部门: {node.Departemen}
+                    </span>
                   )}
                   {node.NamaJenis && (
-                    <span className="mr-3">Jenis: {node.NamaJenis}</span>
+                    <span className="mr-3">
+                      Jenis: {node.NamaJenis} 类型: {node.NamaJenis}
+                    </span>
                   )}
-                  <span>Level: {node.Level}</span>
+                  <span>
+                    Level: {node.Level} 层级: {node.Level}
+                  </span>
                 </div>
               </div>
 
               <div className="flex items-center gap-4 mr-4">
                 <div className="text-right">
-                  <div className="text-xs text-gray-500">Per Unit</div>
+                  <div className="text-xs text-gray-500">Per Unit 每单位</div>
                   <div className="font-mono text-sm font-bold">{node.Qty}</div>
                 </div>
                 <div className="text-right">
-                  <div className="text-xs text-gray-500">Butuh</div>
+                  <div className="text-xs text-gray-500">Butuh 需求</div>
                   <div className="font-mono text-sm font-bold text-red-600">
                     {needed.toLocaleString()}
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-xs text-gray-500">Stok</div>
+                  <div className="text-xs text-gray-500">Stok 库存</div>
                   <div className="font-mono text-sm font-bold text-green-600">
                     {availableStock.toLocaleString()}
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-xs text-gray-500">Status</div>
+                  <div className="text-xs text-gray-500">Status 状态</div>
                   <div
                     className={`font-mono text-sm font-bold ${
                       shortage > 0 ? "text-red-600" : "text-green-600"
@@ -222,20 +370,22 @@ const SimpleBomTree: React.FC<{
         <div className="flex items-center justify-between text-sm">
           <div className="flex items-center">
             <div className="w-8 flex-shrink-0"></div>
-            <div className="flex-1 font-bold">Struktur BOM (Tree View)</div>
+            <div className="flex-1 font-bold">
+              Struktur BOM (Tree View) BOM结构(树状视图)
+            </div>
           </div>
           <div className="text-xs text-gray-300">
-            Stok per tanggal: {orderDate}
+            Stok per tanggal: {orderDate} 库存日期: {orderDate}
           </div>
         </div>
         <div className="flex items-center text-sm mt-2">
           <div className="w-8 flex-shrink-0"></div>
           <div className="flex-1 font-bold"></div>
           <div className="flex items-center gap-4 mr-4">
-            <div className="text-right font-bold">Per Unit</div>
-            <div className="text-right font-bold">Butuh</div>
-            <div className="text-right font-bold">Stok</div>
-            <div className="text-right font-bold">Status</div>
+            <div className="text-right font-bold">Per Unit 每单位</div>
+            <div className="text-right font-bold">Butuh 需求</div>
+            <div className="text-right font-bold">Stok 库存</div>
+            <div className="text-right font-bold">Status 状态</div>
           </div>
         </div>
       </div>
@@ -248,27 +398,290 @@ const SimpleBomTree: React.FC<{
 
       <div className="bg-gray-100 px-4 py-2 rounded-b-lg border-t border-gray-300">
         <div className="flex justify-between items-center text-xs text-gray-600">
-          <span>Total Nodes: {treeData.length}</span>
-          <span>Expanded: {expandedNodes.size} nodes</span>
+          <span>
+            Total Nodes: {treeData.length} 总节点数: {treeData.length}
+          </span>
+          <span>
+            Expanded: {expandedNodes.size} nodes 展开: {expandedNodes.size} 节点
+          </span>
           <div className="flex gap-4">
             <button
               onClick={() => {
-                const firstLevelIds = treeData.map((node) => node.ItemID);
-                setExpandedNodes(new Set(firstLevelIds));
+                const allNodeIds = new Set<string>();
+                const collectAllIds = (nodes: BomItem[]) => {
+                  nodes.forEach((node) => {
+                    allNodeIds.add(node.ItemID);
+                    if (node.children) collectAllIds(node.children);
+                  });
+                };
+                collectAllIds(treeData);
+                setExpandedNodes(allNodeIds);
               }}
               className="text-blue-600 hover:text-blue-800 font-medium"
             >
-              Expand All
+              Expand All 全部展开
             </button>
             <button
               onClick={() => setExpandedNodes(new Set())}
               className="text-blue-600 hover:text-blue-800 font-medium"
             >
-              Collapse All
+              Collapse All 全部折叠
             </button>
           </div>
         </div>
       </div>
+    </div>
+  );
+};
+
+// ==================== KOMPONEN BOM TABLE VIEW ====================
+const BomTableView: React.FC<{
+  bom: BomItem[];
+  productionQty: number;
+  stock: StockItem[];
+  orderDate: string;
+  stockLastUpdated?: string;
+}> = ({ bom, productionQty, stock, orderDate, stockLastUpdated }) => {
+  // FILTER: Hanya tampilkan komponen (level > 0), bukan barang jadinya (level 0)
+  const componentsOnly = useMemo(() => {
+    return filterOnlyComponents(bom);
+  }, [bom]);
+
+  const materialNeeds = calculateMaterialNeeds(
+    componentsOnly,
+    productionQty,
+    stock
+  );
+
+  return (
+    <div className="border border-gray-300 rounded-lg bg-white">
+      <div className="bg-gray-100 px-4 py-3 border-b border-gray-300 flex justify-between items-center">
+        <div>
+          <h4 className="font-bold">
+            Daftar Komponen (Table View) 组件列表(表格视图)
+          </h4>
+          <p className="text-xs text-gray-600 mt-1">
+            *Hanya menampilkan komponen (Level 1+), tidak termasuk barang
+            jadinya (Level 0)
+            <br />
+            *仅显示组件(级别1+)，不包括成品(级别0)
+          </p>
+          {stockLastUpdated && (
+            <p className="text-xs text-green-600 mt-1">
+              Stok diperbarui:{" "}
+              {new Date(stockLastUpdated).toLocaleString("id-ID")}
+              <br />
+              库存更新: {new Date(stockLastUpdated).toLocaleString("zh-CN")}
+            </p>
+          )}
+        </div>
+        <span className="text-sm text-gray-600">
+          Stok per tanggal: {orderDate} 库存日期: {orderDate}
+        </span>
+      </div>
+      <div className="max-h-96 overflow-y-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-200 sticky top-0">
+            <tr>
+              <th className="px-4 py-2 text-left">Kode Item 物料代码</th>
+              <th className="px-4 py-2 text-left">Nama Item 物料名称</th>
+              <th className="px-4 py-2 text-left">Departemen 部门</th>
+              <th className="px-4 py-2 text-left">Jenis 类型</th>
+              <th className="px-4 py-2 text-right">Per Unit 每单位</th>
+              <th className="px-4 py-2 text-right">Butuh 需求</th>
+              <th className="px-4 py-2 text-right">Stok Tersedia 可用库存</th>
+              <th className="px-4 py-2 text-right">Status 状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            {materialNeeds.items.map((item, idx) => (
+              <tr
+                key={idx}
+                className="border-b border-gray-200 hover:bg-gray-50"
+              >
+                <td className="px-4 py-2 text-sm font-mono">{item.ItemID}</td>
+                <td className="px-4 py-2 text-sm">{item.ItemName}</td>
+                <td className="px-4 py-2 text-sm">{item.Departemen || "-"}</td>
+                <td className="px-4 py-2 text-sm">{item.NamaJenis || "-"}</td>
+                <td className="px-4 py-2 text-sm text-right">{item.Qty}</td>
+                <td className="px-4 py-2 text-sm text-right font-mono text-red-600">
+                  {item.needed.toLocaleString()}
+                </td>
+                <td className="px-4 py-2 text-sm text-right font-mono text-green-600">
+                  {item.availableStock.toLocaleString()}
+                </td>
+                <td
+                  className={`px-4 py-2 text-sm text-right font-mono font-bold ${
+                    item.shortage > 0
+                      ? "text-red-600 bg-red-50"
+                      : "text-green-600"
+                  }`}
+                >
+                  {item.shortage > 0
+                    ? `-${item.shortage.toLocaleString()}`
+                    : "Cukup 充足"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="bg-gray-100 px-4 py-2 border-t border-gray-300 text-xs text-gray-600">
+        Total: {componentsOnly.length} komponen 总组件数:{" "}
+        {componentsOnly.length} | Butuh:{" "}
+        {materialNeeds.totalNeeded.toLocaleString()} 总需求:{" "}
+        {materialNeeds.totalNeeded.toLocaleString()} | Kekurangan:{" "}
+        <span className="font-bold text-red-600">
+          {materialNeeds.totalShortage.toLocaleString()} 总短缺:{" "}
+          {materialNeeds.totalShortage.toLocaleString()}
+        </span>
+      </div>
+    </div>
+  );
+};
+
+// ==================== KOMPONEN COMMITTED PO PANEL ====================
+const CommittedPOsPanel: React.FC<{
+  committedPOs: CommittedPO[];
+  stockReservations: StockReservation[];
+  onRefresh: () => void;
+}> = ({ committedPOs, stockReservations, onRefresh }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  const activeReservations = stockReservations.filter(
+    (r) => r.status === "RESERVED"
+  );
+  const totalReservedQty = activeReservations.reduce(
+    (sum, r) => sum + r.reservedQty,
+    0
+  );
+
+  return (
+    <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 mb-6">
+      <div className="flex justify-between items-center">
+        <h3 className="font-bold text-lg text-blue-800">
+          📋 History PO yang Sudah Di-commit ({committedPOs.length})
+          已提交PO历史 ({committedPOs.length})
+        </h3>
+        <div className="flex gap-2">
+          <button
+            onClick={onRefresh}
+            className="bg-blue-500 text-white px-3 py-2 rounded-lg font-medium hover:bg-blue-600 flex items-center gap-2"
+          >
+            🔄 Refresh 刷新
+          </button>
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="bg-blue-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-600"
+          >
+            {expanded ? "Sembunyikan 隐藏" : "Tampilkan 显示"}
+          </button>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="mt-4 space-y-4">
+          {/* Summary */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-white p-3 rounded-lg border">
+              <div className="text-sm text-gray-600">Total PO 总PO数</div>
+              <div className="text-xl font-bold">{committedPOs.length}</div>
+            </div>
+            <div className="bg-white p-3 rounded-lg border">
+              <div className="text-sm text-gray-600">
+                Active Reservations 有效预留
+              </div>
+              <div className="text-xl font-bold text-green-600">
+                {activeReservations.length}
+              </div>
+            </div>
+            <div className="bg-white p-3 rounded-lg border">
+              <div className="text-sm text-gray-600">
+                Total Qty Reserved 总预留数量
+              </div>
+              <div className="text-xl font-bold text-orange-600">
+                {totalReservedQty.toLocaleString()}
+              </div>
+            </div>
+            <div className="bg-white p-3 rounded-lg border">
+              <div className="text-sm text-gray-600">
+                Items Reserved 预留物料数
+              </div>
+              <div className="text-xl font-bold text-purple-600">
+                {
+                  Array.from(new Set(activeReservations.map((r) => r.itemID)))
+                    .length
+                }
+              </div>
+            </div>
+          </div>
+
+          {/* Daftar PO */}
+          <div className="bg-white rounded-lg border border-gray-200 max-h-96 overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-100 sticky top-0">
+                <tr>
+                  <th className="px-4 py-2 text-left">Commit ID 提交ID</th>
+                  <th className="px-4 py-2 text-left">No SPK 生产订单号</th>
+                  <th className="px-4 py-2 text-left">PO 生产订单</th>
+                  <th className="px-4 py-2 text-right">Qty 数量</th>
+                  <th className="px-4 py-2 text-left">Tanggal 日期</th>
+                  <th className="px-4 py-2 text-center">Status 状态</th>
+                  <th className="px-4 py-2 text-right">Materials 物料</th>
+                </tr>
+              </thead>
+              <tbody>
+                {committedPOs.map((po) => (
+                  <tr
+                    key={po.commitID}
+                    className="border-b border-gray-200 hover:bg-gray-50"
+                  >
+                    <td className="px-4 py-2 font-mono text-xs">
+                      {po.commitID}
+                    </td>
+                    <td className="px-4 py-2 font-medium">{po.noSPK}</td>
+                    <td className="px-4 py-2">
+                      <div className="font-medium">{po.namaPO}</div>
+                      <div className="text-xs text-gray-500">
+                        {po.kodeBarang}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 text-right font-bold">
+                      {po.qty.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-2 text-sm">
+                      {new Date(po.tanggalCommit).toLocaleDateString("id-ID")}
+                    </td>
+                    <td className="px-4 py-2 text-center">
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          po.status === "COMMITTED"
+                            ? "bg-green-100 text-green-800"
+                            : "bg-gray-100 text-gray-800"
+                        }`}
+                      >
+                        {po.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <div>{po.totalMaterials} items 物料数</div>
+                      <div className="text-xs text-gray-500">
+                        {po.totalQtyReserved.toLocaleString()} qty 数量
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {committedPOs.length === 0 && (
+            <div className="text-center py-8 text-gray-500">
+              Tidak ada PO yang di-commit 没有已提交的PO
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -278,9 +691,13 @@ export default function ProductionPlanPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [exportLoading, setExportLoading] = useState(false);
-  const [committedPOs, setCommittedPOs] = useState<CommittedPO[]>([]);
-  const [adjustedStock, setAdjustedStock] = useState<AdjustedStock>({});
   const [committing, setCommitting] = useState<string | null>(null);
+
+  // State untuk data commit dari database
+  const [committedPOs, setCommittedPOs] = useState<CommittedPO[]>([]);
+  const [stockReservations, setStockReservations] = useState<
+    StockReservation[]
+  >([]);
 
   // State untuk filter tanggal
   const [dateFilter, setDateFilter] = useState({
@@ -292,24 +709,125 @@ export default function ProductionPlanPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
+  // ==================== UI REFRESH FUNCTION ====================
+  const forceRefreshUI = useCallback(() => {
+    console.log("🔄 [forceRefreshUI] Memaksa refresh tampilan UI 强制刷新UI");
+    setOrders((prev) => [...prev]);
+  }, []);
+
+  // ==================== FUNGSI SINKRONISASI COMMIT ====================
+
+  // FUNGSI: Sinkronkan status commit antara orders dan committedPOs - FIXED VERSION
+  const syncCommitStatus = useCallback(() => {
+    console.log(
+      "🔄 [syncCommitStatus] Sinkronisasi status commit 同步提交状态"
+    );
+    console.log("📋 [syncCommitStatus] CommittedPOs:", committedPOs.length);
+    console.log("📦 [syncCommitStatus] Orders:", orders.length);
+
+    setOrders((prevOrders) =>
+      prevOrders.map((order) => {
+        // Cari data commit terbaru dari database
+        const committedPO = committedPOs.find(
+          (po) => po.noSPK === order.order.No_SPK && po.status === "COMMITTED"
+        );
+
+        const shouldBeCommitted = !!committedPO;
+        const currentCommitID = order.commitID;
+        const newCommitID = committedPO?.commitID;
+
+        console.log(
+          `🔍 [syncCommitStatus] ${order.order.No_SPK}: current=${order.committed}, should=${shouldBeCommitted}, currentID=${currentCommitID}, newID=${newCommitID}`
+        );
+
+        // Jika status berbeda, update order
+        if (
+          order.committed !== shouldBeCommitted ||
+          currentCommitID !== newCommitID
+        ) {
+          console.log(
+            `🔄 [syncCommitStatus] Update ${order.order.No_SPK}: committed=${shouldBeCommitted}, commitID=${newCommitID}`
+          );
+          return {
+            ...order,
+            committed: shouldBeCommitted,
+            commitID: newCommitID,
+            selected: shouldBeCommitted ? false : order.selected, // Unselect jika di-commit
+          };
+        }
+
+        return order;
+      })
+    );
+  }, [committedPOs, orders.length]); // Tambah orders.length sebagai dependency
+
+  // FUNGSI: Load data committed PO dari database - FIXED VERSION
+  const loadCommittedPOs = async (): Promise<void> => {
+    try {
+      console.log(
+        "📋 [loadCommittedPOs] Memuat data committed PO dari database 从数据库加载已提交PO数据"
+      );
+
+      const response = await fetch("/api/ppic/committed-pos");
+      const result = await response.json();
+
+      if (result.success) {
+        const newCommittedPOs = result.data.committedPOs || [];
+        const newReservations = result.data.reservations || [];
+
+        console.log(
+          `✅ [loadCommittedPOs] Berhasil load ${newCommittedPOs.length} committed POs 成功加载 ${newCommittedPOs.length} 个已提交PO`
+        );
+
+        // Update state
+        setCommittedPOs(newCommittedPOs);
+        setStockReservations(newReservations);
+
+        // === PERBAIKAN: PASTIKAN SINKRONISASI DIPANGGIL ===
+        console.log(
+          "🔄 [loadCommittedPOs] Memanggil syncCommitStatus 调用同步提交状态"
+        );
+        syncCommitStatus();
+        forceRefreshUI();
+      } else {
+        console.error(
+          "❌ [loadCommittedPOs] Gagal load committed POs 加载已提交PO失败:",
+          result.error
+        );
+      }
+    } catch (error) {
+      console.error("❌ [loadCommittedPOs] Error 错误:", error);
+    }
+  };
+
+  // FUNGSI: Refresh semua data
+  const refreshAllData = async (): Promise<void> => {
+    console.log("🔄 [refreshAllData] Refresh semua data 刷新所有数据");
+    try {
+      setLoading(true);
+      await loadCommittedPOs(); // Load committed PO dulu
+      await fetchOrders(dateFilter.startDate, dateFilter.endDate); // Kemudian load orders
+    } catch (error) {
+      console.error("❌ [refreshAllData] Error 错误:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // ==================== FUNGSI PAGINATION ====================
 
-  // Hitung data untuk pagination
   const paginatedOrders = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
     return orders.slice(startIndex, endIndex);
   }, [orders, currentPage, itemsPerPage]);
 
-  // Hitung total halaman
   const totalPages = Math.ceil(orders.length / itemsPerPage);
 
-  // Fungsi untuk ganti halaman
   const goToPage = (page: number) => {
     setCurrentPage(Math.max(1, Math.min(page, totalPages)));
   };
 
-  // Fungsi untuk ganti items per page
   const handleItemsPerPageChange = (
     e: React.ChangeEvent<HTMLSelectElement>
   ) => {
@@ -320,17 +838,93 @@ export default function ProductionPlanPage() {
 
   // ==================== FUNGSI UTAMA ====================
 
-  // FUNGSI: Ambil stok untuk SATU item berdasarkan stored procedure
+  // FUNGSI: Gabungkan PO dengan No_SPK yang sama
+  const combineDuplicatePOs = (
+    orders: ProductionOrder[]
+  ): ProductionOrder[] => {
+    const poMap = new Map<string, ProductionOrder>();
+
+    orders.forEach((order) => {
+      const existingPO = poMap.get(order.No_SPK);
+
+      if (existingPO) {
+        if (!existingPO.combinedItems) {
+          existingPO.combinedItems = [
+            {
+              ...existingPO,
+              isCombined: false,
+            },
+          ];
+        }
+
+        existingPO.combinedItems!.push({
+          ...order,
+          isCombined: true,
+        });
+
+        existingPO.QTY += order.QTY;
+
+        if (existingPO.Nama_PO !== order.Nama_PO) {
+          existingPO.Nama_PO = `${existingPO.Nama_PO} | ${order.Nama_PO}`;
+        }
+
+        if (existingPO.Kode_Barang !== order.Kode_Barang) {
+          existingPO.Kode_Barang = `${existingPO.Kode_Barang} | ${order.Kode_Barang}`;
+        }
+
+        if (
+          new Date(order.Tanggal_Order) > new Date(existingPO.Tanggal_Order)
+        ) {
+          existingPO.Tanggal_Order = order.Tanggal_Order;
+        }
+      } else {
+        poMap.set(order.No_SPK, { ...order });
+      }
+    });
+
+    return Array.from(poMap.values());
+  };
+
+  // Statistik untuk penggabungan PO
+  const combinedStats = useMemo(() => {
+    const totalOriginalOrders = orders.reduce((total, order) => {
+      return total + (order.order.combinedItems?.length || 1);
+    }, 0);
+
+    const combinedCount = orders.filter(
+      (order) =>
+        order.order.combinedItems && order.order.combinedItems.length > 1
+    ).length;
+
+    return {
+      totalOriginalOrders,
+      combinedCount,
+      saving: totalOriginalOrders - orders.length,
+    };
+  }, [orders]);
+
+  // FUNGSI: Ambil semua kode barang dari PO gabungan
+  const getAllKodeBarang = (kodeBarang: string): string[] => {
+    if (kodeBarang.includes(" | ")) {
+      return kodeBarang.split(" | ");
+    }
+    return [kodeBarang];
+  };
+
+  // FUNGSI: Ambil stok untuk SATU item dengan memperhitungkan commit
   const fetchStockForItem = async (
     itemId: string,
     orderDate: string
   ): Promise<StockItem | null> => {
     try {
-      console.log(`🔍 [fetchStockForItem] Mengambil stok untuk: ${itemId}`);
-      console.log(`📅 [fetchStockForItem] Tanggal: ${orderDate}`);
+      console.log(
+        `🔍 [fetchStockForItem] Mengambil stok untuk 获取库存: ${itemId}`
+      );
 
       if (!itemId) {
-        console.log("⚠️ [fetchStockForItem] Item ID tidak diberikan");
+        console.log(
+          "⚠️ [fetchStockForItem] Item ID tidak diberikan 未提供物料ID"
+        );
         return null;
       }
 
@@ -338,6 +932,7 @@ export default function ProductionPlanPage() {
         orderDate = new Date().toISOString().split("T")[0];
       }
 
+      // Gunakan API yang sudah include reservation
       const apiUrl = `/api/stock/ppic?tgl1=${orderDate}&tgl2=${orderDate}&loc=%25&periodeR=201905&kategori=%25&itemid=${encodeURIComponent(
         itemId
       )}`;
@@ -354,43 +949,57 @@ export default function ProductionPlanPage() {
       if (!response.ok) {
         const errorText = await response.text();
         console.error(
-          "❌ [fetchStockForItem] Response error:",
+          "❌ [fetchStockForItem] Response error 响应错误:",
           response.status,
           errorText
         );
-        throw new Error(`Gagal mengambil data stok: ${response.status}`);
+
+        // Fallback
+        return {
+          itemid: itemId,
+          itemname: itemId,
+          stockAkhir: 0,
+        };
       }
 
       const result = await response.json();
       console.log(`📦 [fetchStockForItem] Response untuk ${itemId}:`, result);
 
       if (!result.success) {
-        throw new Error(result.error || "Gagal mengambil data stok");
+        console.warn(
+          `⚠️ [fetchStockForItem] API tidak success API不成功:`,
+          result.error
+        );
+        return {
+          itemid: itemId,
+          itemname: itemId,
+          stockAkhir: 0,
+        };
       }
 
       if (result.data && Array.isArray(result.data) && result.data.length > 0) {
-        interface StockApiItem {
-          KodeBarang: string;
-          NamaBarang?: string;
-          SaldoAkhir: string | number;
-        }
         const itemData = result.data.find(
-          (item: StockApiItem) => item.KodeBarang === itemId
+          (item: any) => item.KodeBarang === itemId
         );
+
         if (itemData) {
+          // Gunakan SaldoAkhir yang sudah dikurangi committed stock
           const stockAkhir = parseFloat(itemData.SaldoAkhir) || 0;
           console.log(
-            `✅ [fetchStockForItem] ${itemId}: SaldoAkhir = ${stockAkhir}`
+            `✅ [fetchStockForItem] ${itemId}: Stock = ${stockAkhir} 库存 = ${stockAkhir}`
           );
 
           return {
             itemid: itemData.KodeBarang,
             itemname: itemData.NamaBarang || itemData.KodeBarang,
             stockAkhir: stockAkhir,
+            physicalStock: parseFloat(itemData.SaldoAkhirFisik) || stockAkhir,
+            committedQty: parseFloat(itemData.TotalCommitted) || 0,
+            reservedQty: parseFloat(itemData.TotalReserved) || 0,
           };
         } else {
           console.warn(
-            `⚠️ [fetchStockForItem] Item ${itemId} tidak ditemukan dalam response`
+            `⚠️ [fetchStockForItem] Item ${itemId} tidak ditemukan dalam response 在响应中未找到物料`
           );
           return {
             itemid: itemId,
@@ -400,7 +1009,7 @@ export default function ProductionPlanPage() {
         }
       } else {
         console.warn(
-          `⚠️ [fetchStockForItem] Data tidak ditemukan untuk ${itemId}`
+          `⚠️ [fetchStockForItem] Data tidak ditemukan untuk ${itemId} 未找到数据`
         );
         return {
           itemid: itemId,
@@ -418,55 +1027,179 @@ export default function ProductionPlanPage() {
     }
   };
 
-  // FUNGSI: Ambil stok untuk multiple items (satu per satu)
+  // FUNGSI: Ambil stok untuk multiple items
   const fetchStockForItems = async (
     itemIds: string[],
     orderDate: string
   ): Promise<StockItem[]> => {
     console.log(
-      `🔍 [fetchStockForItems] Mengambil stok untuk ${itemIds.length} items`
+      `🔍 [fetchStockForItems] Mengambil stok untuk ${itemIds.length} items 获取 ${itemIds.length} 个物料的库存`
     );
 
     const stockData: StockItem[] = [];
+    const batchSize = 5;
+    const delay = 200;
 
-    for (const itemId of itemIds) {
-      const stockItem = await fetchStockForItem(itemId, orderDate);
-      if (stockItem) {
-        stockData.push(stockItem);
+    const uniqueItemIds = Array.from(new Set(itemIds)).filter(
+      (id) => id && id.trim() !== ""
+    );
+
+    for (let i = 0; i < uniqueItemIds.length; i += batchSize) {
+      const batch = uniqueItemIds.slice(i, i + batchSize);
+      console.log(
+        `🔄 [fetchStockForItems] Processing batch ${
+          i / batchSize + 1
+        }: 处理批次`,
+        batch
+      );
+
+      const batchPromises = batch.map((itemId) =>
+        fetchStockForItem(itemId, orderDate)
+      );
+
+      try {
+        const batchResults = await Promise.all(batchPromises);
+        const validResults = batchResults.filter(
+          (item): item is StockItem => item !== null
+        );
+        stockData.push(...validResults);
+
+        console.log(
+          `✅ [fetchStockForItems] Batch ${i / batchSize + 1} completed: ${
+            validResults.length
+          } items 批次完成`
+        );
+      } catch (batchError) {
+        console.error(
+          `❌ [fetchStockForItems] Batch ${i / batchSize + 1} error 批次错误:`,
+          batchError
+        );
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      if (i + batchSize < uniqueItemIds.length) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
     }
 
-    console.log(`✅ [fetchStockForItems] Selesai: ${stockData.length} items`);
-
-    stockData.forEach((item) => {
-      console.log(`📊 ${item.itemid}: ${item.stockAkhir}`);
-    });
-
+    console.log(
+      `✅ [fetchStockForItems] Selesai 完成: ${stockData.length} items berhasil diambil 项目成功获取`
+    );
     return stockData;
   };
 
-  // FUNGSI: Dapatkan stok yang sudah disesuaikan
-  const getAdjustedStock = (itemId: string, originalStock: number): number => {
-    const adjustment = adjustedStock[itemId] || 0;
-    return Math.max(0, originalStock - adjustment);
+  // FUNGSI: Gabungkan BOM dari multiple kode barang
+  const combineBoms = (boms: {
+    [kodeBarang: string]: { flat: BomItem[]; tree: BomItem[] };
+  }): {
+    flat: BomItem[];
+    tree: BomItem[];
+    combinedBoms: {
+      [kodeBarang: string]: { flat: BomItem[]; tree: BomItem[] };
+    };
+  } => {
+    const combinedFlat: BomItem[] = [];
+    const itemMap = new Map<string, BomItem>();
+
+    Object.values(boms).forEach((bom) => {
+      bom.flat.forEach((item) => {
+        const existingItem = itemMap.get(item.ItemID);
+        if (existingItem) {
+          existingItem.Qty += item.Qty;
+        } else {
+          const newItem = { ...item };
+          itemMap.set(item.ItemID, newItem);
+          combinedFlat.push(newItem);
+        }
+      });
+    });
+
+    // PERBAIKAN: Gabungkan tree structures juga
+    const combinedTree: BomItem[] = [];
+    Object.values(boms).forEach((bom) => {
+      if (bom.tree && bom.tree.length > 0) {
+        combinedTree.push(...bom.tree);
+      }
+    });
+
+    return {
+      flat: combinedFlat,
+      tree: combinedTree,
+      combinedBoms: boms,
+    };
   };
 
-  // FUNGSI: Commit PO dan kurangi stok
-  const commitPO = async (index: number) => {
+  // FUNGSI: Refresh stok untuk satu PO
+  const refreshStockForPlan = async (index: number) => {
+    const globalIndex = (currentPage - 1) * itemsPerPage + index;
+    const plan = orders[globalIndex];
+
+    if (plan.bom && plan.stock) {
+      try {
+        setOrders((prev) =>
+          prev.map((item, i) =>
+            i === globalIndex ? { ...item, loading: true } : item
+          )
+        );
+
+        // Ambil stok terbaru untuk semua item di BOM
+        const updatedStock = await fetchStockForItems(
+          plan.bom.flat.map((item) => item.ItemID),
+          plan.order.Tanggal_Order
+        );
+
+        setOrders((prev) =>
+          prev.map((item, i) =>
+            i === globalIndex
+              ? {
+                  ...item,
+                  stock: updatedStock,
+                  loading: false,
+                  stockLastUpdated: new Date().toISOString(),
+                }
+              : item
+          )
+        );
+
+        console.log(
+          `✅ Stok diperbarui untuk PO ${plan.order.No_SPK} 库存已更新`
+        );
+      } catch (error) {
+        console.error(`❌ Gagal refresh stok 刷新库存失败:`, error);
+        setOrders((prev) =>
+          prev.map((item, i) =>
+            i === globalIndex ? { ...item, loading: false } : item
+          )
+        );
+      }
+    }
+  };
+
+  // FUNGSI: Commit PO ke database - FIXED VERSION
+  const commitPO = async (index: number): Promise<void> => {
     const globalIndex = (currentPage - 1) * itemsPerPage + index;
     const plan = orders[globalIndex];
 
     if (!plan.bom || !plan.stock) {
-      alert("BOM belum diload untuk PO ini!");
+      alert("BOM belum diload untuk PO ini! 此PO的BOM尚未加载!");
+      return;
+    }
+
+    // Validasi: cek apakah PO sudah di-commit di database
+    const alreadyCommitted = committedPOs.find(
+      (po) => po.noSPK === plan.order.No_SPK && po.status === "COMMITTED"
+    );
+
+    if (alreadyCommitted) {
+      alert(`PO ${plan.order.No_SPK} sudah di-commit sebelumnya! 此PO已提交!`);
+      syncCommitStatus();
       return;
     }
 
     setCommitting(plan.order.No_SPK);
 
     try {
-      const materialUsage: { itemId: string; usedQty: number }[] = [];
+      // Siapkan material usage data
+      const materialUsage: MaterialUsageItem[] = [];
 
       plan.bom.flat.forEach((bomItem) => {
         if (bomItem.Level > 0) {
@@ -475,99 +1208,265 @@ export default function ProductionPlanPage() {
             plan.stock?.find((s) => s.itemid === bomItem.ItemID)?.stockAkhir ||
             0;
           const usedQty = Math.min(needed, availableStock);
+          const stockAfter = availableStock - usedQty;
 
           if (usedQty > 0) {
             materialUsage.push({
               itemId: bomItem.ItemID,
-              usedQty: usedQty,
+              itemName: bomItem.ItemName,
+              qtyPerUnit: bomItem.Qty,
+              totalNeeded: needed,
+              stockBefore: availableStock,
+              stockAfter: stockAfter,
+              qtyUsed: usedQty,
+              departemen: bomItem.Departemen,
+              level: bomItem.Level,
             });
           }
         }
       });
 
-      const committedPO: CommittedPO = {
-        noSPK: plan.order.No_SPK,
-        kodeBarang: plan.order.Kode_Barang,
-        qty: plan.order.QTY,
-        materialUsage: materialUsage,
-      };
+      console.log(
+        `🔒 [commitPO] Mengirim request commit untuk ${plan.order.No_SPK} 发送提交请求`
+      );
 
-      setCommittedPOs((prev) => [...prev, committedPO]);
-
-      const newAdjustedStock = { ...adjustedStock };
-      materialUsage.forEach((usage) => {
-        newAdjustedStock[usage.itemId] =
-          (newAdjustedStock[usage.itemId] || 0) + usage.usedQty;
+      // Panggil API commit
+      const response = await fetch("/api/ppic/commit-po", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          noSPK: plan.order.No_SPK,
+          kodeBarang: plan.order.Kode_Barang,
+          namaPO: plan.order.Nama_PO,
+          qty: plan.order.QTY,
+          userID: "current_user",
+          materialUsage: materialUsage,
+        }),
       });
-      setAdjustedStock(newAdjustedStock);
 
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      console.log(
+        `✅ [commitPO] Berhasil commit PO ${plan.order.No_SPK}, Commit ID: ${result.commitID} 提交成功`
+      );
+
+      // === PERBAIKAN: IMMEDIATE UI UPDATE ===
+      // Update state local SEBELUM load data dari database untuk feedback langsung
       setOrders((prev) =>
         prev.map((item, i) =>
-          i === globalIndex ? { ...item, committed: true } : item
+          i === globalIndex
+            ? {
+                ...item,
+                committed: true,
+                commitID: result.commitID,
+                selected: false, // Unselect setelah commit
+              }
+            : item
         )
       );
 
-      console.log(`✅ PO ${plan.order.No_SPK} berhasil di-commit`);
-      console.log(`📦 Material usage:`, materialUsage);
+      // Juga update committedPOs state untuk konsistensi
+      const newCommittedPO: CommittedPO = {
+        commitID: result.commitID,
+        noSPK: plan.order.No_SPK,
+        kodeBarang: plan.order.Kode_Barang,
+        namaPO: plan.order.Nama_PO,
+        qty: plan.order.QTY,
+        tanggalCommit: new Date().toISOString(),
+        userID: "current_user",
+        status: "COMMITTED",
+        totalMaterials: materialUsage.length,
+        totalQtyReserved: materialUsage.reduce(
+          (sum, item) => sum + item.qtyUsed,
+          0
+        ),
+      };
+
+      setCommittedPOs((prev) => [...prev, newCommittedPO]);
+      // === FORCE REFRESH UI ===
+      forceRefreshUI();
+      alert(
+        `PO berhasil di-commit!\nCommit ID: ${result.commitID}\n${materialUsage.length} material di-reserve\nPO提交成功!\n提交ID: ${result.commitID}\n${materialUsage.length} 个物料已预留`
+      );
+
+      // Refresh data committed POs dari database untuk memastikan konsistensi
+      await loadCommittedPOs();
     } catch (error) {
-      console.error(`❌ Gagal commit PO ${plan.order.No_SPK}:`, error);
-      alert("Gagal commit PO. Silakan coba lagi.");
+      console.error(
+        `❌ [commitPO] Gagal commit PO ${plan.order.No_SPK}: 提交失败`,
+        error
+      );
+
+      // === PERBAIKAN: ROLLBACK UI JIKA GAGAL ===
+      setOrders((prev) =>
+        prev.map((item, i) =>
+          i === globalIndex
+            ? {
+                ...item,
+                committed: false,
+                commitID: undefined,
+              }
+            : item
+        )
+      );
+
+      alert("Gagal commit PO. Silakan coba lagi. 提交失败，请重试");
     } finally {
       setCommitting(null);
     }
   };
 
-  // FUNGSI: Uncommit PO dan kembalikan stok
-  const uncommitPO = (index: number) => {
+  // FUNGSI: Uncommit PO dari database - FIXED VERSION
+  const uncommitPO = async (index: number): Promise<void> => {
     const globalIndex = (currentPage - 1) * itemsPerPage + index;
     const plan = orders[globalIndex];
 
-    setCommittedPOs((prev) =>
-      prev.filter((po) => po.noSPK !== plan.order.No_SPK)
-    );
-
-    const committedPO = committedPOs.find(
-      (po) => po.noSPK === plan.order.No_SPK
-    );
-    if (committedPO) {
-      const newAdjustedStock = { ...adjustedStock };
-      committedPO.materialUsage.forEach((usage) => {
-        newAdjustedStock[usage.itemId] = Math.max(
-          0,
-          (newAdjustedStock[usage.itemId] || 0) - usage.usedQty
-        );
-      });
-      setAdjustedStock(newAdjustedStock);
+    if (
+      !confirm(
+        `Apakah Anda yakin ingin uncommit PO ${plan.order.No_SPK}? Stok akan dikembalikan.\n确定要取消提交PO ${plan.order.No_SPK}吗？库存将被退回。`
+      )
+    ) {
+      return;
     }
 
-    setOrders((prev) =>
-      prev.map((item, i) =>
-        i === globalIndex ? { ...item, committed: false } : item
-      )
-    );
+    try {
+      console.log(
+        `↩️ [uncommitPO] Mengirim request uncommit untuk ${plan.order.No_SPK} 发送取消提交请求`
+      );
 
-    console.log(`↩️ PO ${plan.order.No_SPK} di-uncommit`);
+      const response = await fetch("/api/ppic/uncommit-po", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          noSPK: plan.order.No_SPK,
+          userID: "current_user",
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      console.log(
+        `✅ [uncommitPO] Berhasil uncommit PO ${plan.order.No_SPK} 取消提交成功`
+      );
+
+      // === PERBAIKAN: IMMEDIATE UI UPDATE ===
+      // Update state local SEBELUM load data dari database
+      setOrders((prev) =>
+        prev.map((item, i) =>
+          i === globalIndex
+            ? {
+                ...item,
+                committed: false,
+                commitID: undefined,
+                selected: false,
+              }
+            : item
+        )
+      );
+
+      // Juga update committedPOs state
+      setCommittedPOs((prev) =>
+        prev.filter(
+          (po) => !(po.noSPK === plan.order.No_SPK && po.status === "COMMITTED")
+        )
+      );
+
+      forceRefreshUI();
+      alert(
+        "PO berhasil di-uncommit! Stok telah dikembalikan. PO取消提交成功! 库存已退回"
+      );
+
+      // Refresh data untuk memastikan konsistensi
+      await loadCommittedPOs();
+    } catch (error) {
+      console.error(
+        `❌ [uncommitPO] Gagal uncommit PO ${plan.order.No_SPK}: 取消提交失败`,
+        error
+      );
+
+      // === PERBAIKAN: ROLLBACK UI JIKA GAGAL ===
+      setOrders((prev) =>
+        prev.map((item, i) =>
+          i === globalIndex
+            ? {
+                ...item,
+                committed: true, // Kembalikan ke status committed
+              }
+            : item
+        )
+      );
+
+      alert("Gagal uncommit PO. Silakan coba lagi. 取消提交失败，请重试");
+    }
   };
 
   // FUNGSI: Reset semua committed PO
-  const resetCommittedPOs = () => {
+  const resetCommittedPOs = async () => {
     if (
-      confirm(
-        "Apakah Anda yakin ingin mereset semua PO yang sudah di-commit? Stok akan dikembalikan ke nilai semula."
+      !confirm(
+        "Apakah Anda yakin ingin mereset SEMUA PO yang sudah di-commit? Tindakan ini akan mengembalikan semua stok yang di-reserve.\n确定要重置所有已提交的PO吗？此操作将退回所有预留库存。"
       )
     ) {
-      setCommittedPOs([]);
-      setAdjustedStock({});
+      return;
+    }
 
-      setOrders((prev) =>
-        prev.map((order) => ({ ...order, committed: false }))
+    try {
+      const committedPOsToReset = committedPOs.filter(
+        (po) => po.status === "COMMITTED"
       );
 
-      console.log("🔄 Semua PO committed telah direset");
+      for (const po of committedPOsToReset) {
+        const response = await fetch("/api/ppic/uncommit-po", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            noSPK: po.noSPK,
+            userID: "current_user",
+          }),
+        });
+
+        const result = await response.json();
+        if (!result.success) {
+          console.error(`❌ Gagal uncommit PO ${po.noSPK}:`, result.error);
+        }
+      }
+
+      // Refresh data
+      await loadCommittedPOs();
+
+      // Update semua order menjadi uncommitted
+      setOrders((prev) =>
+        prev.map((order) => ({
+          ...order,
+          committed: false,
+          commitID: undefined,
+        }))
+      );
+
+      alert(
+        `Berhasil reset ${committedPOsToReset.length} PO yang di-commit! 成功重置 ${committedPOsToReset.length} 个已提交PO!`
+      );
+    } catch (error) {
+      console.error("❌ Gagal reset committed POs 重置失败:", error);
+      alert("Gagal reset committed POs. Silakan coba lagi. 重置失败，请重试");
     }
   };
 
-  // Load BOM dan stok
+  // Load BOM dan stok untuk PO gabungan
   const loadBomWithStock = async (
     index: number,
     kodeBarang: string,
@@ -575,43 +1474,132 @@ export default function ProductionPlanPage() {
   ) => {
     try {
       setOrders((prev) =>
-        prev.map((item, i) => (i === index ? { ...item, loading: true } : item))
+        prev.map((item, i) =>
+          i === index ? { ...item, loading: true, error: undefined } : item
+        )
       );
 
-      console.log(`📦 [loadBomWithStock] Loading BOM untuk ${kodeBarang}`);
-
-      const bomResponse = await axios.get(
-        `/api/bom/ppic?itemid=${encodeURIComponent(kodeBarang)}`
+      console.log(
+        `📦 [loadBomWithStock] Loading BOM untuk ${kodeBarang} 加载BOM`
       );
 
-      console.log(`✅ [loadBomWithStock] BOM diterima:`, bomResponse.data);
+      const allKodeBarang = getAllKodeBarang(kodeBarang);
+      console.log(
+        `🎯 [loadBomWithStock] Mengambil semua kode barang: 获取所有物料代码`,
+        allKodeBarang
+      );
 
-      const itemIds = bomResponse.data.flat.map((item: BomItem) => item.ItemID);
-      console.log(`📋 [loadBomWithStock] Item IDs dari BOM:`, itemIds);
+      const combinedBoms: {
+        [kodeBarang: string]: { flat: BomItem[]; tree: BomItem[] };
+      } = {};
+      const failedBoms: string[] = [];
+      let allItemIds: string[] = [];
 
-      const stockData = await fetchStockForItems(itemIds, orderDate);
+      // Load BOM untuk setiap kode barang
+      for (const kb of allKodeBarang) {
+        try {
+          console.log(
+            `📦 [loadBomWithStock] Loading BOM untuk kode barang: ${kb}`
+          );
+          const bomResponse = await axios.get(
+            `/api/bom/ppic?itemid=${encodeURIComponent(kb)}`,
+            { timeout: 10000 }
+          );
 
-      const adjustedStockData = stockData.map((stockItem) => ({
-        ...stockItem,
-        stockAkhir: getAdjustedStock(stockItem.itemid, stockItem.stockAkhir),
-      }));
+          if (bomResponse.data && bomResponse.data.flat) {
+            // PERBAIKAN: Build tree structure dari flat BOM
+            const treeStructure = buildTreeStructure(bomResponse.data.flat);
+            combinedBoms[kb] = {
+              flat: bomResponse.data.flat,
+              tree: treeStructure,
+            };
+
+            const itemIds = bomResponse.data.flat.map(
+              (item: BomItem) => item.ItemID
+            );
+            allItemIds = [...allItemIds, ...itemIds];
+
+            console.log(
+              `✅ [loadBomWithStock] BOM berhasil untuk ${kb}: ${itemIds.length} items, ${treeStructure.length} root nodes BOM加载成功`
+            );
+          } else {
+            throw new Error("Data BOM tidak valid BOM数据无效");
+          }
+        } catch (err) {
+          console.error(
+            `❌ [loadBomWithStock] Gagal load BOM untuk ${kb}: BOM加载失败`,
+            err
+          );
+          failedBoms.push(kb);
+        }
+      }
+
+      // Jika semua BOM gagal, throw error
+      if (Object.keys(combinedBoms).length === 0) {
+        throw new Error(
+          `Gagal memuat BOM untuk semua kode barang: ${allKodeBarang.join(
+            ", "
+          )} 所有物料代码的BOM加载失败`
+        );
+      }
+
+      // Hapus duplikat item IDs
+      allItemIds = Array.from(new Set(allItemIds));
+      console.log(
+        `📋 [loadBomWithStock] Total unique Item IDs: 总唯一物料ID`,
+        allItemIds.length
+      );
+
+      // Ambil stok untuk semua item
+      let stockData: StockItem[] = [];
+      try {
+        stockData = await fetchStockForItems(allItemIds, orderDate);
+      } catch (stockError) {
+        console.error(
+          `❌ [loadBomWithStock] Gagal mengambil stok: 获取库存失败`,
+          stockError
+        );
+        stockData = allItemIds.map((id) => ({
+          itemid: id,
+          itemname: id,
+          stockAkhir: 0,
+        }));
+      }
+
+      // Gabungkan semua BOM
+      const finalBom = combineBoms(combinedBoms);
 
       setOrders((prev) =>
         prev.map((item, i) =>
           i === index
             ? {
                 ...item,
-                bom: bomResponse.data,
-                stock: adjustedStockData,
+                bom: finalBom,
+                stock: stockData,
                 loading: false,
                 expanded: true,
                 viewMode: "table",
+                stockLastUpdated: new Date().toISOString(),
+                error:
+                  failedBoms.length > 0
+                    ? `Beberapa BOM gagal dimuat: ${failedBoms.join(
+                        ", "
+                      )} 部分BOM加载失败`
+                    : undefined,
               }
             : item
         )
       );
 
-      console.log(`✅ [loadBomWithStock] Selesai untuk ${kodeBarang}`);
+      console.log(`✅ [loadBomWithStock] Selesai untuk ${kodeBarang} 完成`);
+      console.log(
+        `📊 [loadBomWithStock] Total items dalam BOM gabungan: 组合BOM总项目数`,
+        finalBom.flat.length
+      );
+      console.log(
+        `🌳 [loadBomWithStock] Total tree nodes: 总树节点数`,
+        finalBom.tree.length
+      );
     } catch (err: unknown) {
       console.error(`❌ [loadBomWithStock] Error untuk ${kodeBarang}:`, err);
       setOrders((prev) =>
@@ -622,8 +1610,8 @@ export default function ProductionPlanPage() {
                 loading: false,
                 error:
                   err instanceof Error
-                    ? `Gagal memuat data: ${err.message}`
-                    : "Gagal memuat data: Unknown error",
+                    ? `Gagal memuat data: ${err.message} 加载数据失败`
+                    : "Gagal memuat data: Unknown error 加载数据失败: 未知错误",
               }
             : item
         )
@@ -631,577 +1619,546 @@ export default function ProductionPlanPage() {
     }
   };
 
-  // Load BOM untuk PO yang dipilih (untuk export)
-  const loadBomForSelectedOrders = async (selectedOrders: ProductionPlan[]) => {
-    const ordersWithBom = [...selectedOrders];
-
-    for (let i = 0; i < ordersWithBom.length; i++) {
-      const order = ordersWithBom[i];
-      if (!order.bom && !order.loading) {
-        try {
-          console.log(
-            `📦 Loading BOM untuk export: ${order.order.Kode_Barang}`
-          );
-
-          const bomResponse = await axios.get(
-            `/api/bom/ppic?itemid=${encodeURIComponent(
-              order.order.Kode_Barang
-            )}`
-          );
-
-          const itemIds = bomResponse.data.flat.map(
-            (item: BomItem) => item.ItemID
-          );
-          const stockData = await fetchStockForItems(
-            itemIds,
-            order.order.Tanggal_Order
-          );
-
-          const adjustedStockData = stockData.map((stockItem) => ({
-            ...stockItem,
-            stockAkhir: getAdjustedStock(
-              stockItem.itemid,
-              stockItem.stockAkhir
-            ),
-          }));
-
-          ordersWithBom[i] = {
-            ...order,
-            bom: bomResponse.data,
-            stock: adjustedStockData,
-          };
-
-          await new Promise((resolve) => setTimeout(resolve, 200));
-        } catch (err) {
-          console.error(
-            `❌ Gagal load BOM untuk ${order.order.Kode_Barang}:`,
-            err
-          );
-        }
-      }
-    }
-
-    return ordersWithBom;
-  };
-
-  // Perhitungan material needs untuk single PO
-  const calculateMaterialNeeds = (
-    bom: BomItem[],
-    productionQty: number,
-    stock: StockItem[] = []
-  ) => {
-    if (!bom) return { totalNeeded: 0, totalShortage: 0, items: [] };
-
-    let totalNeeded = 0;
-    let totalShortage = 0;
-    const items = bom.map((item) => {
-      const needed = item.Qty * productionQty;
-      const availableStock =
-        stock.find((s) => s.itemid === item.ItemID)?.stockAkhir || 0;
-      const shortage = Math.max(0, needed - availableStock);
-
-      totalNeeded += needed;
-      totalShortage += shortage;
-
-      return {
-        ...item,
-        needed,
-        availableStock,
-        shortage,
-      };
-    });
-
-    return { totalNeeded, totalShortage, items };
-  };
-
-  // ==================== FUNGSI EXPORT TO EXCEL ====================
+  // ==================== FUNGSI EXPORT KE EXCEL ====================
 
   const exportToExcel = async () => {
     try {
       setExportLoading(true);
 
-      const selectedPlans = orders.filter(
-        (plan) => plan.selected && !plan.committed
-      );
+      // Data yang akan di-export
+      const exportData = {
+        stockSummary: [] as any[], // Format utama seperti gambar
+        productionOrders: [] as any[],
+        committedPOs: [] as any[],
+      };
 
-      if (selectedPlans.length === 0) {
-        alert("Pilih minimal satu PO yang belum di-commit untuk di-export!");
-        return;
-      }
+      // 1. Data Stock Summary (format seperti gambar)
+      for (const plan of orders) {
+        if (plan.bom && plan.stock) {
+          const materialNeeds = calculateMaterialNeeds(
+            plan.bom.flat,
+            plan.order.QTY,
+            plan.stock
+          );
 
-      console.log(`📊 Mengexport ${selectedPlans.length} PO ke Excel`);
+          // Ambil data stok terbaru untuk menghitung total others
+          const updatedStock = await fetchStockForItems(
+            plan.bom.flat.map((item) => item.ItemID),
+            plan.order.Tanggal_Order
+          );
 
-      const plansWithBom = await loadBomForSelectedOrders(selectedPlans);
-      const validPlans = plansWithBom.filter((plan) => plan.bom);
+          for (const item of materialNeeds.items) {
+            // Cari data stok terbaru untuk item ini
+            const stockItem = updatedStock.find(
+              (s) => s.itemid === item.ItemID
+            );
 
-      if (validPlans.length === 0) {
-        alert("Tidak ada PO yang berhasil load BOM.");
-        return;
-      }
+            // Hitung total others = committedQty + reservedQty
+            const totalOthers =
+              (stockItem?.committedQty || 0) + (stockItem?.reservedQty || 0);
+            const whStock =
+              stockItem?.physicalStock || stockItem?.stockAkhir || 0;
+            const remainingStock = whStock - item.needed - totalOthers;
 
-      // Kumpulkan informasi PO
-      const poNumbers = validPlans.map((plan) => plan.order.No_SPK).join(", ");
-      const poNames = validPlans.map((plan) => plan.order.Nama_PO).join(" | ");
-      const totalQty = validPlans.reduce(
-        (sum, plan) => sum + plan.order.QTY,
-        0
-      );
-
-      // Proses data material dengan pengelompokan per departemen
-      const materialRequirementsByDept = new Map<
-        string,
-        Map<string, MaterialRequirement>
-      >();
-
-      validPlans.forEach((plan) => {
-        if (plan.bom?.flat && plan.stock) {
-          plan.bom.flat.forEach((bomItem) => {
-            if (bomItem.Level === 0) return;
-
-            const needed = bomItem.Qty * plan.order.QTY;
-            const availableStock =
-              plan.stock?.find((s) => s.itemid === bomItem.ItemID)
-                ?.stockAkhir || 0;
-            const departemen = bomItem.Departemen || "UMUM";
-
-            // Inisialisasi map untuk departemen jika belum ada
-            if (!materialRequirementsByDept.has(departemen)) {
-              materialRequirementsByDept.set(departemen, new Map());
-            }
-
-            const deptMap = materialRequirementsByDept.get(departemen)!;
-
-            if (deptMap.has(bomItem.ItemID)) {
-              const existing = deptMap.get(bomItem.ItemID)!;
-              existing.totalNeeded += needed;
-              existing.poList.push(plan.order.No_SPK);
-              existing.poDetails.push({
-                poId: plan.order.No_SPK,
-                poName: plan.order.Nama_PO,
-                needed: needed,
-                productionQty: plan.order.QTY,
-              });
-            } else {
-              deptMap.set(bomItem.ItemID, {
-                itemId: bomItem.ItemID,
-                itemName: bomItem.ItemName,
-                totalNeeded: needed,
-                availableStock: availableStock,
-                shortage: Math.max(0, needed - availableStock),
-                status: needed > availableStock ? "KURANG" : "CUKUP",
-                level: bomItem.Level,
-                departemen: departemen,
-                poList: [plan.order.No_SPK],
-                poDetails: [
-                  {
-                    poId: plan.order.No_SPK,
-                    poName: plan.order.Nama_PO,
-                    needed: needed,
-                    productionQty: plan.order.QTY,
-                  },
-                ],
-              });
-            }
-          });
-        }
-      });
-
-      // Buat workbook
-      const workbook = XLSX.utils.book_new();
-
-      // ==================== SHEET 1: MATERIAL REQUIREMENT PER DEPARTEMEN ====================
-      const allDepartemenData: any[] = [];
-
-      materialRequirementsByDept.forEach((deptMap, departemen) => {
-        const requirementsArray = Array.from(deptMap.values());
-
-        // Header departemen
-        allDepartemenData.push({
-          Departemen: `DEPARTEMEN: ${departemen}`,
-          "Kode Item": "",
-          "Nama Item": "",
-          "Total Kebutuhan": "",
-          "Stok Tersedia": "",
-          Kekurangan: "",
-          Status: "",
-          "Jumlah PO": "",
-          "List PO": "",
-        });
-
-        // Data per departemen
-        requirementsArray.forEach((req, index) => {
-          allDepartemenData.push({
-            Departemen: "",
-            "Kode Item": req.itemId,
-            "Nama Item": req.itemName,
-            "Total Kebutuhan": req.totalNeeded,
-            "Stok Tersedia": req.availableStock,
-            Kekurangan: req.shortage,
-            Status: req.status,
-            "Jumlah PO": req.poList.length,
-            "List PO": req.poList.join(", "),
-          });
-        });
-
-        // Total per departemen
-        const totalKebutuhan = requirementsArray.reduce(
-          (sum, req) => sum + req.totalNeeded,
-          0
-        );
-        const totalKekurangan = requirementsArray.reduce(
-          (sum, req) => sum + req.shortage,
-          0
-        );
-        const itemsKurang = requirementsArray.filter(
-          (req) => req.shortage > 0
-        ).length;
-
-        allDepartemenData.push({
-          Departemen: `TOTAL ${departemen}`,
-          "Kode Item": "",
-          "Nama Item": "",
-          "Total Kebutuhan": totalKebutuhan,
-          "Stok Tersedia": "",
-          Kekurangan: totalKekurangan,
-          Status: itemsKurang > 0 ? "KURANG" : "CUKUP",
-          "Jumlah PO": "",
-          "List PO": `${itemsKurang} ITEM KURANG`,
-        });
-
-        allDepartemenData.push({}); // Baris kosong antar departemen
-      });
-
-      const departemenWorksheet = XLSX.utils.json_to_sheet(allDepartemenData);
-      const departemenColumnWidths = [
-        { wch: 20 }, // Departemen
-        { wch: 15 }, // Kode Item
-        { wch: 40 }, // Nama Item
-        { wch: 15 }, // Total Kebutuhan
-        { wch: 15 }, // Stok Tersedia
-        { wch: 12 }, // Kekurangan
-        { wch: 10 }, // Status
-        { wch: 10 }, // Jumlah PO
-        { wch: 30 }, // List PO
-      ];
-      departemenWorksheet["!cols"] = departemenColumnWidths;
-      XLSX.utils.book_append_sheet(
-        workbook,
-        departemenWorksheet,
-        "Per Departemen"
-      );
-
-      // ==================== SHEET 2: MATERIAL REQUIREMENT KESELURUHAN ====================
-      // Kumpulkan semua data untuk sheet keseluruhan
-      const allMaterialRequirements = new Map<string, MaterialRequirement>();
-
-      materialRequirementsByDept.forEach((deptMap) => {
-        deptMap.forEach((requirement, itemId) => {
-          if (allMaterialRequirements.has(itemId)) {
-            const existing = allMaterialRequirements.get(itemId)!;
-            existing.totalNeeded += requirement.totalNeeded;
-            existing.poList = [
-              ...Array.from(new Set([...existing.poList, ...requirement.poList])),
-            ];
-            existing.poDetails.push(...requirement.poDetails);
-          } else {
-            allMaterialRequirements.set(itemId, { ...requirement });
+            exportData.stockSummary.push({
+              CODE: item.ItemID,
+              "Sum of total": item.needed,
+              "Total others ( )": totalOthers,
+              "WH Stoc": whStock,
+              "Remaining sto": remainingStock,
+              "No SPK": plan.order.No_SPK,
+              "Nama PO": plan.order.Nama_PO,
+              Status: remainingStock >= 0 ? "CUKUP 充足" : "KURANG 不足",
+            });
           }
-        });
-      });
+        }
+      }
 
-      const requirementsArray = Array.from(allMaterialRequirements.values());
-      const formattedData = requirementsArray
-        .map((req) => {
-          const remainingStock = req.availableStock - req.totalNeeded;
-          return {
-            CODE: req.itemId,
-            "Sum of total": req.totalNeeded,
-            "Total others": 0,
-            "WH Stoc": req.availableStock,
-            "Remaining sto": remainingStock,
-            status: remainingStock < 0 ? "KURANG" : "CUKUP",
-            departemen: req.departemen,
-          };
-        })
-        .sort((a, b) => a.CODE.localeCompare(b.CODE));
+      // 2. Data Production Orders
+      exportData.productionOrders = orders.map((plan, index) => {
+        const isCombined =
+          plan.order.combinedItems && plan.order.combinedItems.length > 1;
+        const combinedCount = plan.order.combinedItems?.length || 1;
 
-      // Hitung total
-      const totalSum = formattedData.reduce(
-        (sum, item) => sum + item["Sum of total"],
-        0
-      );
-      const totalWHStoc = formattedData.reduce(
-        (sum, item) => sum + item["WH Stoc"],
-        0
-      );
-      const totalRemaining = formattedData.reduce(
-        (sum, item) => sum + item["Remaining sto"],
-        0
-      );
-      const itemsWithShortage = formattedData.filter(
-        (item) => item["Remaining sto"] < 0
-      ).length;
-
-      const excelData = formattedData.map((item, index) => ({
-        CODE: item.CODE,
-        "Sum of total": item["Sum of total"],
-        "Total others": item["Total others"],
-        "WH Stoc": item["WH Stoc"],
-        "Remaining sto": item["Remaining sto"],
-        Status: item.status,
-        Departemen: item.departemen,
-      }));
-
-      const worksheet = XLSX.utils.json_to_sheet([]);
-
-      // Set column widths
-      const columnWidths = [
-        { wch: 15 }, // CODE
-        { wch: 15 }, // Sum of total
-        { wch: 15 }, // Total others
-        { wch: 12 }, // WH Stoc
-        { wch: 15 }, // Remaining sto
-        { wch: 12 }, // Status
-        { wch: 15 }, // Departemen
-      ];
-      worksheet["!cols"] = columnWidths;
-
-      // Header dengan styling
-      const headerData = [
-        ["LAPORAN KEBUTUHAN MATERIAL PRODUCTION ORDER"],
-        [""],
-        [`Tanggal Generate: ${new Date().toLocaleDateString("id-ID")}`],
-        [`Jumlah PO: ${validPlans.length} PO`],
-        [`No. PO: ${poNumbers}`],
-        [`Nama PO: ${poNames}`],
-        [`Total QTY: ${totalQty.toLocaleString()} unit`],
-        [""],
-        [
-          "CODE",
-          "Sum of total",
-          "Total others",
-          "WH Stoc",
-          "Remaining sto",
-          "Status",
-          "Departemen",
-        ],
-      ];
-
-      XLSX.utils.sheet_add_aoa(worksheet, headerData, { origin: "A1" });
-
-      // Tambahkan data
-      XLSX.utils.sheet_add_json(worksheet, excelData, {
-        origin: "A10",
-        skipHeader: true,
-      });
-
-      // Hitung total
-      const dataLength = formattedData.length;
-      const footerData = [
-        [""],
-        ["TOTAL", totalSum, 0, totalWHStoc, totalRemaining, "", ""],
-        [""],
-        [
-          `Summary: ${itemsWithShortage} material kurang dari ${formattedData.length} total material`,
-        ],
-        [
-          "CATATAN: Nilai negatif pada Remaining Sto menunjukkan kekurangan stok",
-        ],
-        [""],
-        ["MANUAL STOCK CHECK"],
-        [`Untuk PO: ${poNumbers}`],
-        ["INJEKSI PLATING SPRAY"],
-      ];
-
-      XLSX.utils.sheet_add_aoa(worksheet, footerData, {
-        origin: `A${11 + dataLength}`,
-      });
-
-      // Merge cells untuk judul
-      if (!worksheet["!merges"]) worksheet["!merges"] = [];
-      worksheet["!merges"].push(
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
-        { s: { r: 2, c: 0 }, e: { r: 2, c: 2 } },
-        { s: { r: 3, c: 0 }, e: { r: 3, c: 2 } },
-        { s: { r: 4, c: 0 }, e: { r: 4, c: 2 } },
-        { s: { r: 5, c: 0 }, e: { r: 5, c: 2 } },
-        { s: { r: 6, c: 0 }, e: { r: 6, c: 2 } }
-      );
-
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Material Requirement");
-
-      // ==================== SHEET 3: DETAIL PER PO ====================
-      const detailData: any[] = [];
-
-      validPlans.forEach((plan) => {
-        // Header PO
-        detailData.push({
+        return {
+          No: index + 1,
           "No SPK": plan.order.No_SPK,
-          Tanggal: plan.order.Tanggal_Order,
+          "Tanggal Order": plan.order.Tanggal_Order,
           "Nama PO": plan.order.Nama_PO,
           "Kode Barang": plan.order.Kode_Barang,
-          "QTY PO": plan.order.QTY,
-          "Kode Item": "",
-          "Nama Item": "",
-          Departemen: "",
-          Level: "",
-          "Qty Per Unit": "",
-          Kebutuhan: "",
-          "Stok Tersedia": "",
-          Kekurangan: "",
-          Status: "",
-        });
-
-        if (plan.bom?.flat) {
-          plan.bom.flat.forEach((bomItem) => {
-            if (bomItem.Level === 0) return;
-
-            const needed = bomItem.Qty * plan.order.QTY;
-            const availableStock =
-              plan.stock?.find((s) => s.itemid === bomItem.ItemID)
-                ?.stockAkhir || 0;
-            const shortage = Math.max(0, needed - availableStock);
-
-            detailData.push({
-              "No SPK": "",
-              Tanggal: "",
-              "Nama PO": "",
-              "Kode Barang": "",
-              "QTY PO": "",
-              "Kode Item": bomItem.ItemID,
-              "Nama Item": bomItem.ItemName,
-              Departemen: bomItem.Departemen || "UMUM",
-              Level: bomItem.Level,
-              "Qty Per Unit": bomItem.Qty,
-              Kebutuhan: needed,
-              "Stok Tersedia": availableStock,
-              Kekurangan: shortage,
-              Status: shortage > 0 ? "KURANG" : "CUKUP",
-            });
-          });
-        }
-
-        detailData.push({}); // Baris kosong antar PO
+          QTY: plan.order.QTY,
+          Status: plan.committed ? "COMMITTED 已提交" : "PENDING 待处理",
+          "Commit ID": plan.commitID || "-",
+          "Tipe PO": isCombined
+            ? `Gabungan (${combinedCount} PO) 合并(${combinedCount}个PO)`
+            : "Single PO 单个PO",
+        };
       });
 
-      const detailWorksheet = XLSX.utils.json_to_sheet(detailData);
-      const detailColumnWidths = [
-        { wch: 12 }, // No SPK
-        { wch: 12 }, // Tanggal
-        { wch: 20 }, // Nama PO
-        { wch: 15 }, // Kode Barang
-        { wch: 10 }, // QTY PO
-        { wch: 15 }, // Kode Item
-        { wch: 30 }, // Nama Item
-        { wch: 15 }, // Departemen
-        { wch: 8 }, // Level
-        { wch: 12 }, // Qty Per Unit
-        { wch: 12 }, // Kebutuhan
-        { wch: 15 }, // Stok Tersedia
-        { wch: 12 }, // Kekurangan
-        { wch: 10 }, // Status
+      // 3. Data Committed POs
+      exportData.committedPOs = committedPOs.map((po) => ({
+        "Commit ID": po.commitID,
+        "No SPK": po.noSPK,
+        "Kode Barang": po.kodeBarang,
+        "Nama PO": po.namaPO,
+        QTY: po.qty,
+        "Tanggal Commit": po.tanggalCommit,
+        Status: po.status,
+        "Total Materials": po.totalMaterials,
+        "Total Qty Reserved": po.totalQtyReserved,
+      }));
+
+      // Buat workbook dan worksheet
+      const wb = XLSX.utils.book_new();
+
+      // Worksheet 1: Stock Summary (format persis seperti gambar)
+      if (exportData.stockSummary.length > 0) {
+        // Format data untuk worksheet utama
+        const mainSheetData = exportData.stockSummary.map((item) => [
+          item["CODE"],
+          item["Sum of total"],
+          item["Total others ( )"],
+          item["WH Stoc"],
+          item["Remaining sto"],
+        ]);
+
+        // Tambahkan header
+        mainSheetData.unshift([
+          "CODE 代码",
+          "Sum of total 总需求",
+          "Total others ( ) 其他总量",
+          "WH Stoc 仓库库存",
+          "Remaining sto 剩余库存",
+        ]);
+
+        // Tambahkan manual stock notes (seperti di gambar)
+        mainSheetData.push([]);
+        mainSheetData.push([
+          "MANUAL STOCK FOR LSB PO#LASV1369 LSB PO#LASV1369手动库存",
+        ]);
+        mainSheetData.push(["INJEKS! PLATING SPRAY 注塑! 电镀 喷涂"]);
+
+        const ws1 = XLSX.utils.aoa_to_sheet(mainSheetData);
+        XLSX.utils.book_append_sheet(wb, ws1, "Stock Summary 库存汇总");
+
+        // Styling untuk worksheet utama
+        if (!ws1["!cols"]) ws1["!cols"] = [];
+        ws1["!cols"] = [
+          { wch: 15 }, // CODE
+          { wch: 15 }, // Sum of total
+          { wch: 15 }, // Total others ( )
+          { wch: 10 }, // WH Stoc
+          { wch: 15 }, // Remaining sto
+        ];
+      }
+
+      // Worksheet 2: Production Orders
+      const ws2 = XLSX.utils.json_to_sheet(exportData.productionOrders);
+      XLSX.utils.book_append_sheet(wb, ws2, "Production Orders 生产订单");
+
+      // Worksheet 3: Committed POs
+      if (exportData.committedPOs.length > 0) {
+        const ws3 = XLSX.utils.json_to_sheet(exportData.committedPOs);
+        XLSX.utils.book_append_sheet(wb, ws3, "Committed POs 已提交PO");
+      }
+
+      // Worksheet 4: Detailed Stock Analysis
+      if (exportData.stockSummary.length > 0) {
+        const detailedData = exportData.stockSummary.map((item) => ({
+          CODE: item.CODE,
+          "Sum of total": item["Sum of total"],
+          "Total others ( )": item["Total others ( )"],
+          "WH Stoc": item["WH Stoc"],
+          "Remaining sto": item["Remaining sto"],
+          "No SPK": item["No SPK"],
+          "Nama PO": item["Nama PO"],
+          Status: item.Status,
+          "Committed Qty": item["Total others ( )"], // Karena total others = committed + reserved
+          Kekurangan:
+            item["Remaining sto"] < 0 ? Math.abs(item["Remaining sto"]) : 0,
+        }));
+
+        const ws4 = XLSX.utils.json_to_sheet(detailedData);
+        XLSX.utils.book_append_sheet(wb, ws4, "Detailed Analysis 详细分析");
+      }
+
+      // Tambahkan worksheet untuk summary
+      const summaryData = [
+        ["PRODUCTION STOCK SUMMARY REPORT 生产库存汇总报告"],
+        [""],
+        ["Tanggal Export 导出日期", new Date().toLocaleString("id-ID")],
+        ["Total Production Orders 总生产订单数", orders.length],
+        [
+          "Total Items dalam Summary 汇总总项目数",
+          exportData.stockSummary.length,
+        ],
+        [
+          "Items dengan Stok Cukup 库存充足项目",
+          exportData.stockSummary.filter(
+            (item: any) => item["Remaining sto"] >= 0
+          ).length,
+        ],
+        [
+          "Items dengan Stok Kurang 库存不足项目",
+          exportData.stockSummary.filter(
+            (item: any) => item["Remaining sto"] < 0
+          ).length,
+        ],
+        [
+          "PO yang Sudah di-Commit 已提交PO",
+          committedPOs.filter((po) => po.status === "COMMITTED").length,
+        ],
+        [""],
+        ["KETERANGAN KOLOM 列说明:"],
+        ["CODE 代码", "Kode Item/Bahan 物料代码"],
+        ["Sum of total 总需求", "Total kebutuhan untuk PO ini 此PO的总需求"],
+        [
+          "Total others ( ) 其他总量",
+          "Total komitmen untuk PO lain (Committed + Reserved) 其他PO的总承诺量(已提交+已预留)",
+        ],
+        ["WH Stoc 仓库库存", "Stok fisik di gudang 仓库物理库存"],
+        [
+          "Remaining sto 剩余库存",
+          "Sisa stok = WH Stoc - Sum of total - Total others 剩余库存 = 仓库库存 - 总需求 - 其他总量",
+        ],
+        [""],
+        ["RUMUS 公式:"],
+        ["Remaining sto = WH Stoc - Sum of total - Total others"],
+        [
+          "Status = 'CUKUP 充足' jika Remaining sto >= 0, 'KURANG 不足' jika < 0",
+        ],
       ];
-      detailWorksheet["!cols"] = detailColumnWidths;
-      XLSX.utils.book_append_sheet(workbook, detailWorksheet, "Detail Per PO");
 
-      // ==================== SHEET 4: REKAPITULASI PER DEPARTEMEN ====================
-      const rekapData: any[] = [];
+      const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+      XLSX.utils.book_append_sheet(wb, wsSummary, "Summary 总结");
 
-      materialRequirementsByDept.forEach((deptMap, departemen) => {
-        const requirementsArray = Array.from(deptMap.values());
-
-        const totalItems = requirementsArray.length;
-        const totalKebutuhan = requirementsArray.reduce(
-          (sum, req) => sum + req.totalNeeded,
-          0
-        );
-        const totalStok = requirementsArray.reduce(
-          (sum, req) => sum + req.availableStock,
-          0
-        );
-        const totalKekurangan = requirementsArray.reduce(
-          (sum, req) => sum + req.shortage,
-          0
-        );
-        const itemsKurang = requirementsArray.filter(
-          (req) => req.shortage > 0
-        ).length;
-        const itemsCukup = totalItems - itemsKurang;
-
-        rekapData.push({
-          Departemen: departemen,
-          "Jumlah Material": totalItems,
-          "Total Kebutuhan": totalKebutuhan,
-          "Total Stok Tersedia": totalStok,
-          "Total Kekurangan": totalKekurangan,
-          "Material Kurang": itemsKurang,
-          "Material Cukup": itemsCukup,
-          Status: itemsKurang > 0 ? "ADA KEKURANGAN" : "STOK CUKUP",
-        });
-      });
-
-      // Total keseluruhan
-      const totalAllMaterial = rekapData.reduce(
-        (sum, dept) => sum + dept["Jumlah Material"],
-        0
-      );
-      const totalAllKebutuhan = rekapData.reduce(
-        (sum, dept) => sum + dept["Total Kebutuhan"],
-        0
-      );
-      const totalAllKekurangan = rekapData.reduce(
-        (sum, dept) => sum + dept["Total Kekurangan"],
-        0
+      // Styling untuk summary
+      if (wsSummary["!merges"] === undefined) wsSummary["!merges"] = [];
+      wsSummary["!merges"].push(
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } },
+        { s: { r: 8, c: 0 }, e: { r: 8, c: 4 } },
+        { s: { r: 15, c: 0 }, e: { r: 15, c: 4 } }
       );
 
-      rekapData.push({
-        Departemen: "TOTAL KESELURUHAN",
-        "Jumlah Material": totalAllMaterial,
-        "Total Kebutuhan": totalAllKebutuhan,
-        "Total Stok Tersedia": "",
-        "Total Kekurangan": totalAllKekurangan,
-        "Material Kurang": "",
-        "Material Cukup": "",
-        Status: totalAllKekurangan > 0 ? "ADA KEKURANGAN" : "STOK CUKUP",
-      });
-
-      const rekapWorksheet = XLSX.utils.json_to_sheet(rekapData);
-      const rekapColumnWidths = [
-        { wch: 20 }, // Departemen
-        { wch: 15 }, // Jumlah Material
-        { wch: 18 }, // Total Kebutuhan
-        { wch: 18 }, // Total Stok Tersedia
-        { wch: 15 }, // Total Kekurangan
-        { wch: 15 }, // Material Kurang
-        { wch: 15 }, // Material Cukup
-        { wch: 15 }, // Status
+      // Set column widths untuk summary
+      wsSummary["!cols"] = [
+        { wch: 25 },
+        { wch: 40 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 15 },
       ];
-      rekapWorksheet["!cols"] = rekapColumnWidths;
-      XLSX.utils.book_append_sheet(workbook, rekapWorksheet, "Rekap Dept");
 
-      // Export file
-      const excelBuffer = XLSX.write(workbook, {
-        bookType: "xlsx",
-        type: "array",
-      });
-      const dataBlob = new Blob([excelBuffer], {
-        type: "application/octet-stream",
-      });
+      // Generate filename dengan timestamp
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/[:.]/g, "-")
+        .slice(0, -5);
+      const filename = `Stock_Summary_Export_${timestamp}.xlsx`;
 
-      const fileName = `Material_Requirement_${poNumbers.replace(
-        /[^a-zA-Z0-9]/g,
-        "_"
-      )}_${new Date().toISOString().split("T")[0]}.xlsx`;
-      saveAs(dataBlob, fileName);
+      // Export ke file
+      const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      const blob = new Blob([wbout], { type: "application/octet-stream" });
 
-      console.log(`✅ Export Excel berhasil`);
+      saveAs(blob, filename);
 
-      alert(
-        `Export berhasil!\n\n📊 Summary:\n- ${validPlans.length} PO: ${poNumbers}\n- ${formattedData.length} Material\n- ${itemsWithShortage} Material Kurang\n- ${materialRequirementsByDept.size} Departemen\n- File Excel telah disimpan`
+      console.log(`✅ Export berhasil 导出成功: ${filename}`);
+      console.log(`📊 Data yang di-export 导出数据:`);
+      console.log(
+        `   - Stock Summary 库存汇总: ${exportData.stockSummary.length} items`
+      );
+      console.log(
+        `   - Production Orders 生产订单: ${exportData.productionOrders.length}`
+      );
+      console.log(
+        `   - Committed POs 已提交PO: ${exportData.committedPOs.length}`
       );
     } catch (error) {
-      console.error("❌ Error dalam export Excel:", error);
-      alert("Terjadi error saat mengexport data ke Excel.");
+      console.error("❌ Error dalam export ke Excel 导出到Excel错误:", error);
+      alert(
+        "Gagal mengekspor data ke Excel. Silakan coba lagi. 导出到Excel失败，请重试"
+      );
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  // ==================== FUNGSI EXPORT SELECTED ONLY ====================
+
+  const exportSelectedToExcel = async (): Promise<void> => {
+    try {
+      setExportLoading(true);
+
+      const selectedOrders = orders.filter(
+        (order: any) => order.selected && !order.committed
+      );
+
+      if (selectedOrders.length === 0) {
+        alert("Tidak ada PO yang dipilih untuk di-export! 没有选择要导出的PO!");
+        return;
+      }
+
+      // Data yang akan di-export (hanya yang dipilih)
+      const exportData: ExportData = {
+        stockSummary: [],
+        departmentSummary: [],
+        productionOrders: [],
+      };
+
+      // Map untuk summary per departemen
+      const departmentMap = new Map<string, any>();
+
+      // 1. Data Stock Summary untuk PO yang dipilih
+      for (const plan of selectedOrders) {
+        if (plan.bom && plan.stock) {
+          const materialNeeds = calculateMaterialNeeds(
+            plan.bom.flat,
+            plan.order.QTY,
+            plan.stock
+          );
+
+          // Ambil data stok terbaru
+          const updatedStock: StockItem[] = await fetchStockForItems(
+            plan.bom.flat.map((item: BomItem) => item.ItemID),
+            plan.order.Tanggal_Order
+          );
+
+          for (const item of materialNeeds.items) {
+            const stockItem: StockItem | undefined = updatedStock.find(
+              (s: StockItem) => s.itemid === item.ItemID
+            );
+
+            // PERHITUNGAN STOCK OTHER - HANYA committedQty dari PO lain
+            const sumOfTotal: number = item.needed; // QTY PO saat ini
+            const stockOther: number = stockItem?.committedQty || 0; // HANYA komitmen PO lain
+            const stockAvailable: number = stockItem?.stockAkhir || 0; // Stok tersedia
+            const stockReal: number =
+              stockItem?.physicalStock || stockItem?.stockAkhir || 0; // Stok fisik
+            const remainingStock: number = stockAvailable - sumOfTotal; // Sisa stok
+
+            // Data untuk worksheet utama
+            exportData.stockSummary.push({
+              "Kode Item 物料代码": item.ItemID,
+              "Nama Item 物料名称": item.ItemName,
+              "Departemen 部门": item.Departemen || "-",
+              "No SPK 生产订单号": plan.order.No_SPK,
+              "Nama PO 生产订单名称": plan.order.Nama_PO,
+              "Sum of Total 总需求": sumOfTotal,
+              "Stock Other 其他库存": stockOther,
+              "Stock Available 可用库存": stockAvailable,
+              "Stock Real 实际库存": stockReal,
+              "Remaining Stock 剩余库存": remainingStock,
+              "Status 状态": remainingStock >= 0 ? "CUKUP 充足" : "KURANG 不足",
+            });
+
+            // Update summary per departemen
+            const dept: string = item.Departemen || "Lainnya 其他";
+            if (!departmentMap.has(dept)) {
+              departmentMap.set(dept, {
+                departemen: dept,
+                totalItems: 0,
+                totalNeeded: 0,
+                totalStockOther: 0,
+                itemsCukup: 0,
+                itemsKurang: 0,
+                totalKekurangan: 0,
+              });
+            }
+
+            const deptData = departmentMap.get(dept);
+            deptData.totalItems++;
+            deptData.totalNeeded += sumOfTotal;
+            deptData.totalStockOther += stockOther;
+
+            if (remainingStock >= 0) {
+              deptData.itemsCukup++;
+            } else {
+              deptData.itemsKurang++;
+              deptData.totalKekurangan += Math.abs(remainingStock);
+            }
+          }
+        }
+      }
+
+      // Konversi map ke array untuk department summary
+      exportData.departmentSummary = Array.from(departmentMap.values()).map(
+        (dept: any) => ({
+          "Departemen 部门": dept.departemen,
+          "Total Items 总项目数": dept.totalItems,
+          "Total Kebutuhan 总需求": dept.totalNeeded,
+          "Total Stock Other 其他库存总量": dept.totalStockOther,
+          "Items Stok Cukup 库存充足项目": dept.itemsCukup,
+          "Items Stok Kurang 库存不足项目": dept.itemsKurang,
+          "Total Kekurangan 总短缺": dept.totalKekurangan,
+          "Persentase Cukup 充足百分比": `${(
+            (dept.itemsCukup / dept.totalItems) *
+            100
+          ).toFixed(1)}%`,
+        })
+      );
+
+      // 2. Data Production Orders (selected only)
+      exportData.productionOrders = selectedOrders.map(
+        (plan: any, index: number) => {
+          const isCombined: boolean =
+            plan.order.combinedItems && plan.order.combinedItems.length > 1;
+          const combinedCount: number = plan.order.combinedItems?.length || 1;
+
+          return {
+            No: index + 1,
+            "No SPK 生产订单号": plan.order.No_SPK,
+            "Tanggal Order 订单日期": plan.order.Tanggal_Order,
+            "Nama PO 生产订单名称": plan.order.Nama_PO,
+            "Kode Barang 物料代码": plan.order.Kode_Barang,
+            "QTY 数量": plan.order.QTY,
+            "Status 状态": "SELECTED 已选择",
+            "Tipe PO PO类型": isCombined
+              ? `Gabungan (${combinedCount} PO) 合并(${combinedCount}个PO)`
+              : "Single PO 单个PO",
+            "BOM Loaded BOM加载": plan.bom ? "Ya 是" : "Tidak 否",
+          };
+        }
+      );
+
+      // Buat workbook dan worksheet
+      const wb = XLSX.utils.book_new();
+
+      // Worksheet 1: Simple Stock Summary
+      if (exportData.stockSummary.length > 0) {
+        const ws1 = XLSX.utils.json_to_sheet(exportData.stockSummary);
+        XLSX.utils.book_append_sheet(wb, ws1, "Stock Summary 库存汇总");
+
+        // Styling untuk worksheet simple summary
+        if (!ws1["!cols"]) ws1["!cols"] = [];
+        ws1["!cols"] = [
+          { wch: 12 }, // Kode Item
+          { wch: 25 }, // Nama Item
+          { wch: 12 }, // Departemen
+          { wch: 12 }, // No SPK
+          { wch: 25 }, // Nama PO
+          { wch: 12 }, // Sum of Total
+          { wch: 12 }, // Stock Other
+          { wch: 12 }, // Stock Available
+          { wch: 12 }, // Stock Real
+          { wch: 12 }, // Remaining Stock
+          { wch: 8 }, // Status
+        ];
+      }
+
+      // Worksheet 2: Department Summary
+      if (exportData.departmentSummary.length > 0) {
+        const ws2 = XLSX.utils.json_to_sheet(exportData.departmentSummary);
+        XLSX.utils.book_append_sheet(wb, ws2, "Department Summary 部门汇总");
+
+        // Styling untuk worksheet department summary
+        if (!ws2["!cols"]) ws2["!cols"] = [];
+        ws2["!cols"] = [
+          { wch: 15 }, // Departemen
+          { wch: 10 }, // Total Items
+          { wch: 15 }, // Total Kebutuhan
+          { wch: 15 }, // Total Stock Other
+          { wch: 15 }, // Items Stok Cukup
+          { wch: 15 }, // Items Stok Kurang
+          { wch: 15 }, // Total Kekurangan
+          { wch: 12 }, // Persentase Cukup
+        ];
+      }
+
+      // Worksheet 3: Selected Production Orders
+      const ws3 = XLSX.utils.json_to_sheet(exportData.productionOrders);
+      XLSX.utils.book_append_sheet(wb, ws3, "Selected PO 已选择PO");
+
+      // Worksheet 4: Keterangan dan Rumus - UPDATE KETERANGAN
+      const keteranganData: any[][] = [
+        ["SIMPLE STOCK SUMMARY REPORT 简单库存汇总报告"],
+        [""],
+        ["Tanggal Export 导出日期", new Date().toLocaleString("id-ID")],
+        ["Total PO Dipilih 选择的PO总数", selectedOrders.length],
+        ["Total Items 总项目数", exportData.stockSummary.length],
+        [
+          "Items dengan Stok Cukup 库存充足项目",
+          exportData.stockSummary.filter(
+            (item: any) => item["Remaining Stock"] >= 0
+          ).length,
+        ],
+        [
+          "Items dengan Stok Kurang 库存不足项目",
+          exportData.stockSummary.filter(
+            (item: any) => item["Remaining Stock"] < 0
+          ).length,
+        ],
+        [""],
+        ["KETERANGAN KOLOM 列说明:"],
+        [
+          "Sum of Total 总需求",
+          "Total kebutuhan untuk PO ini (QTY PO) 此PO的总需求(PO数量)",
+        ],
+        [
+          "Stock Other 其他库存",
+          "Total komitmen dari PO lain (Committed Qty) 其他PO的总承诺量(已提交数量)",
+        ],
+        [
+          "Stock Available 可用库存",
+          "Stok tersedia setelah dikurangi komitmen PO lain 减去其他PO承诺后的可用库存",
+        ],
+        ["Stock Real 实际库存", "Stok fisik aktual di gudang 仓库实际物理库存"],
+        [
+          "Remaining Stock 剩余库存",
+          "Sisa stok = Stock Available - Sum of Total 剩余库存 = 可用库存 - 总需求",
+        ],
+        [""],
+        ["RUMUS PERHITUNGAN 计算公式:"],
+        ["Remaining Stock = Stock Available - Sum of Total"],
+        ["Stock Available = Stock Real - Stock Other"],
+        ["Stock Other = Committed Qty dari PO lain 其他PO的已提交数量"],
+        [
+          "Status = 'CUKUP 充足' jika Remaining Stock >= 0, 'KURANG 不足' jika < 0",
+        ],
+        [""],
+        ["CATATAN 备注:"],
+        [
+          "Stock Other hanya mencakup quantity yang sudah di-commit untuk PO lain 其他库存仅包括其他PO已提交的数量",
+        ],
+        [
+          "Tidak termasuk reserved quantity atau stok lainnya 不包括预留数量或其他库存",
+        ],
+      ];
+
+      const ws4 = XLSX.utils.aoa_to_sheet(keteranganData);
+      XLSX.utils.book_append_sheet(wb, ws4, "Keterangan 说明");
+
+      // Styling untuk worksheet keterangan
+      if (ws4["!merges"] === undefined) ws4["!merges"] = [];
+      ws4["!merges"].push(
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } },
+        { s: { r: 7, c: 0 }, e: { r: 7, c: 4 } },
+        { s: { r: 13, c: 0 }, e: { r: 13, c: 4 } },
+        { s: { r: 17, c: 0 }, e: { r: 17, c: 4 } },
+        { s: { r: 21, c: 0 }, e: { r: 21, c: 4 } }
+      );
+
+      // Generate filename
+      const timestamp: string = new Date()
+        .toISOString()
+        .replace(/[:.]/g, "-")
+        .slice(0, -5);
+      const filename = `Simple_Stock_Summary_${timestamp}.xlsx`;
+
+      // Export ke file
+      const wbout: any = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      const blob = new Blob([wbout], { type: "application/octet-stream" });
+
+      saveAs(blob, filename);
+
+      console.log(`✅ Export simple berhasil 简单导出成功: ${filename}`);
+      console.log(
+        `📊 Data yang di-export 导出数据: ${selectedOrders.length} PO terpilih 选择的PO`
+      );
+    } catch (error) {
+      console.error("❌ Error dalam export simple 简单导出错误:", error);
+      alert(
+        "Gagal mengekspor data simple. Silakan coba lagi. 简单导出失败，请重试"
+      );
     } finally {
       setExportLoading(false);
     }
@@ -1224,30 +2181,63 @@ export default function ProductionPlanPage() {
         url += `?${params.toString()}`;
       }
 
-      console.log("📡 [fetchOrders] Mengambil data orders:", url);
+      console.log("📡 [fetchOrders] Mengambil data orders 获取订单数据:", url);
       const response = await axios.get<ProductionOrder[]>(url);
 
-      const productionPlans: ProductionPlan[] = response.data.map((order) => ({
-        order: { ...order, QTY: order.QTY || 0 },
-        expanded: false,
-        loading: false,
-        selected: false,
-        loadingBom: false,
-        viewMode: "table",
-        committed: false,
-      }));
+      // Gabungkan PO dengan No_SPK yang sama
+      const combinedOrders = combineDuplicatePOs(response.data);
+
+      // Buat production plans TANPA override status commit
+      const productionPlans: ProductionPlan[] = combinedOrders.map((order) => {
+        // Gunakan data dari state local jika ada, atau cek dari committedPOs
+        const existingOrder = orders.find(
+          (o) => o.order.No_SPK === order.No_SPK
+        );
+        const committedPO = committedPOs.find(
+          (po) => po.noSPK === order.No_SPK && po.status === "COMMITTED"
+        );
+
+        // Prioritaskan state local, lalu database
+        const isCommitted = existingOrder?.committed ?? !!committedPO;
+        const commitID = existingOrder?.commitID ?? committedPO?.commitID;
+
+        return {
+          order: {
+            ...order,
+            QTY: order.QTY || 0,
+            originalOrders: order.combinedItems || [order],
+          },
+          expanded: existingOrder?.expanded ?? false,
+          loading: false,
+          selected: existingOrder?.selected ?? false,
+          loadingBom: false,
+          viewMode: existingOrder?.viewMode ?? "table",
+          committed: isCommitted,
+          commitID: commitID,
+          bom: existingOrder?.bom,
+          stock: existingOrder?.stock,
+          stockLastUpdated: existingOrder?.stockLastUpdated,
+        };
+      });
 
       setOrders(productionPlans);
       setCurrentPage(1);
       console.log(
-        `✅ [fetchOrders] Data orders berhasil diambil: ${productionPlans.length} orders`
+        `✅ [fetchOrders] Data orders berhasil diambil 订单数据获取成功: ${productionPlans.length} orders`
       );
     } catch (err: unknown) {
-      console.error("❌ [fetchOrders] Error mengambil data SPK:", err);
+      console.error(
+        "❌ [fetchOrders] Error mengambil data SPK 获取SPK数据错误:",
+        err
+      );
       if (err instanceof Error) {
-        setError("Gagal mengambil data produksi: " + err.message);
+        setError(
+          "Gagal mengambil data produksi 获取生产数据失败: " + err.message
+        );
       } else {
-        setError("Gagal mengambil data produksi: Unknown error");
+        setError(
+          "Gagal mengambil data produksi 获取生产数据失败: Unknown error 未知错误"
+        );
       }
     } finally {
       setLoading(false);
@@ -1263,17 +2253,20 @@ export default function ProductionPlanPage() {
   };
 
   const applyDateFilter = () => {
-    console.log("🔍 [applyDateFilter] Menerapkan filter:", dateFilter);
+    console.log(
+      "🔍 [applyDateFilter] Menerapkan filter 应用过滤器:",
+      dateFilter
+    );
     fetchOrders(dateFilter.startDate, dateFilter.endDate);
   };
 
   const resetDateFilter = () => {
-    console.log("🔄 [resetDateFilter] Reset filter");
+    console.log("🔄 [resetDateFilter] Reset filter 重置过滤器");
     setDateFilter({ startDate: "", endDate: "" });
     fetchOrders();
   };
 
-  const toggleOrder = (
+  const toggleOrder = async (
     index: number,
     kodeBarang: string,
     orderDate: string
@@ -1289,10 +2282,17 @@ export default function ProductionPlanPage() {
       );
     } else {
       if (!order.bom && !order.loading) {
-        console.log(`▶️ [toggleOrder] Expand dan load BOM untuk ${kodeBarang}`);
-        loadBomWithStock(globalIndex, kodeBarang, orderDate);
+        console.log(`▶️ Expand dan load BOM untuk ${kodeBarang} 展开并加载BOM`);
+        await loadBomWithStock(globalIndex, kodeBarang, orderDate);
       } else {
-        console.log(`▶️ [toggleOrder] Expand existing BOM untuk ${kodeBarang}`);
+        console.log(`▶️ Expand existing BOM untuk ${kodeBarang} 展开现有BOM`);
+
+        // AUTO-REFRESH STOK SAAT BUKA DETAIL
+        if (order.bom && order.stock) {
+          console.log(`🔄 Auto-refresh stok untuk ${kodeBarang} 自动刷新库存`);
+          await refreshStockForPlan(index);
+        }
+
         setOrders((prev) =>
           prev.map((item, i) =>
             i === globalIndex ? { ...item, expanded: true } : item
@@ -1308,7 +2308,7 @@ export default function ProductionPlanPage() {
     const newSelected = !order.selected;
 
     console.log(
-      `✓ [toggleSelection] Toggle selection untuk ${order.order.Kode_Barang}: ${newSelected}`
+      `✓ [toggleSelection] Toggle selection untuk ${order.order.Kode_Barang}: ${newSelected} 切换选择`
     );
 
     if (newSelected && !order.bom && !order.loadingBom && !order.committed) {
@@ -1319,39 +2319,62 @@ export default function ProductionPlanPage() {
       );
 
       try {
-        const bomResponse = await axios.get(
-          `/api/bom/ppic?itemid=${encodeURIComponent(order.order.Kode_Barang)}`
-        );
+        const allKodeBarang = getAllKodeBarang(order.order.Kode_Barang);
+        const combinedBoms: {
+          [kodeBarang: string]: { flat: BomItem[]; tree: BomItem[] };
+        } = {};
+        let allItemIds: string[] = [];
 
-        const itemIds = bomResponse.data.flat.map(
-          (item: BomItem) => item.ItemID
-        );
+        for (const kb of allKodeBarang) {
+          try {
+            const bomResponse = await axios.get(
+              `/api/bom/ppic?itemid=${encodeURIComponent(kb)}`
+            );
+            // PERBAIKAN: Build tree structure
+            const treeStructure = buildTreeStructure(bomResponse.data.flat);
+            combinedBoms[kb] = {
+              flat: bomResponse.data.flat,
+              tree: treeStructure,
+            };
+
+            const itemIds = bomResponse.data.flat.map(
+              (item: BomItem) => item.ItemID
+            );
+            allItemIds = [...allItemIds, ...itemIds];
+          } catch (err) {
+            console.error(`❌ Gagal load BOM untuk ${kb}: BOM加载失败`, err);
+          }
+        }
+
+        allItemIds = Array.from(new Set(allItemIds));
+
         const stockData = await fetchStockForItems(
-          itemIds,
+          allItemIds,
           order.order.Tanggal_Order
         );
 
-        const adjustedStockData = stockData.map((stockItem) => ({
-          ...stockItem,
-          stockAkhir: getAdjustedStock(stockItem.itemid, stockItem.stockAkhir),
-        }));
+        const finalBom = combineBoms(combinedBoms);
 
         setOrders((prev) =>
           prev.map((item, i) =>
             i === globalIndex
               ? {
                   ...item,
-                  bom: bomResponse.data,
-                  stock: adjustedStockData,
+                  bom: finalBom,
+                  stock: stockData,
                   selected: newSelected,
                   loadingBom: false,
                   viewMode: "table",
+                  stockLastUpdated: new Date().toISOString(),
                 }
               : item
           )
         );
       } catch (err: unknown) {
-        console.error(`❌ [toggleSelection] Error loading BOM:`, err);
+        console.error(
+          `❌ [toggleSelection] Error loading BOM 加载BOM错误:`,
+          err
+        );
         setOrders((prev) =>
           prev.map((item, i) =>
             i === globalIndex
@@ -1361,8 +2384,8 @@ export default function ProductionPlanPage() {
                   loadingBom: false,
                   error:
                     err instanceof Error
-                      ? `Gagal load BOM: ${err.message}`
-                      : "Gagal load BOM: Unknown error",
+                      ? `Gagal load BOM 加载BOM失败: ${err.message}`
+                      : "Gagal load BOM 加载BOM失败: Unknown error 未知错误",
                 }
               : item
           )
@@ -1398,7 +2421,7 @@ export default function ProductionPlanPage() {
     const newSelected = !allSelected;
 
     console.log(
-      `✓ [toggleSelectAll] Select all di halaman ${currentPage}: ${newSelected}`
+      `✓ [toggleSelectAll] Select all di halaman ${currentPage}: ${newSelected} 全选当前页`
     );
 
     setOrders((prev) =>
@@ -1420,90 +2443,14 @@ export default function ProductionPlanPage() {
     );
     const newSelected = !allSelected;
 
-    console.log(`✓ [toggleSelectAllGlobal] Select all global: ${newSelected}`);
+    console.log(
+      `✓ [toggleSelectAllGlobal] Select all global: ${newSelected} 全局全选`
+    );
 
     setOrders((prev) =>
       prev.map((order) =>
         !order.committed ? { ...order, selected: newSelected } : order
       )
-    );
-  };
-
-  // ==================== KOMPONEN BOM TABLE VIEW ====================
-
-  const BomTableView: React.FC<{
-    bom: BomItem[];
-    productionQty: number;
-    stock: StockItem[];
-    orderDate: string;
-  }> = ({ bom, productionQty, stock, orderDate }) => {
-    const materialNeeds = calculateMaterialNeeds(bom, productionQty, stock);
-
-    return (
-      <div className="border border-gray-300 rounded-lg bg-white">
-        <div className="bg-gray-100 px-4 py-3 border-b border-gray-300 flex justify-between items-center">
-          <h4 className="font-bold">Daftar Bahan (Table View)</h4>
-          <span className="text-sm text-gray-600">
-            Stok per tanggal: {orderDate}
-          </span>
-        </div>
-        <div className="max-h-96 overflow-y-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-200 sticky top-0">
-              <tr>
-                <th className="px-4 py-2 text-left">Kode Item</th>
-                <th className="px-4 py-2 text-left">Nama Item</th>
-                <th className="px-4 py-2 text-left">Departemen</th>
-                <th className="px-4 py-2 text-left">Jenis</th>
-                <th className="px-4 py-2 text-right">Per Unit</th>
-                <th className="px-4 py-2 text-right">Butuh</th>
-                <th className="px-4 py-2 text-right">Stok Tersedia</th>
-                <th className="px-4 py-2 text-right">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {materialNeeds.items.map((item, idx) => (
-                <tr
-                  key={idx}
-                  className="border-b border-gray-200 hover:bg-gray-50"
-                >
-                  <td className="px-4 py-2 text-sm font-mono">{item.ItemID}</td>
-                  <td className="px-4 py-2 text-sm">{item.ItemName}</td>
-                  <td className="px-4 py-2 text-sm">
-                    {item.Departemen || "-"}
-                  </td>
-                  <td className="px-4 py-2 text-sm">{item.NamaJenis || "-"}</td>
-                  <td className="px-4 py-2 text-sm text-right">{item.Qty}</td>
-                  <td className="px-4 py-2 text-sm text-right font-mono text-red-600">
-                    {item.needed.toLocaleString()}
-                  </td>
-                  <td className="px-4 py-2 text-sm text-right font-mono text-green-600">
-                    {item.availableStock.toLocaleString()}
-                  </td>
-                  <td
-                    className={`px-4 py-2 text-sm text-right font-mono font-bold ${
-                      item.shortage > 0
-                        ? "text-red-600 bg-red-50"
-                        : "text-green-600"
-                    }`}
-                  >
-                    {item.shortage > 0
-                      ? `-${item.shortage.toLocaleString()}`
-                      : "Cukup"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="bg-gray-100 px-4 py-2 border-t border-gray-300 text-xs text-gray-600">
-          Total: {bom.length} items | Butuh:{" "}
-          {materialNeeds.totalNeeded.toLocaleString()} | Kekurangan:{" "}
-          <span className="font-bold text-red-600">
-            {materialNeeds.totalShortage.toLocaleString()}
-          </span>
-        </div>
-      </div>
     );
   };
 
@@ -1522,12 +2469,20 @@ export default function ProductionPlanPage() {
         : null;
     const hasShortage = (materialNeeds?.totalShortage ?? 0) > 0;
 
+    const isCombinedPO =
+      plan.order.combinedItems && plan.order.combinedItems.length > 1;
+    const combinedCount = plan.order.combinedItems?.length || 1;
+
+    const isStokUpdated = plan.stockLastUpdated;
+
     return (
       <>
         <tr
           className={`border-b ${
             plan.expanded ? "bg-blue-50" : "bg-white"
-          } hover:bg-gray-50 ${plan.committed ? "bg-green-50" : ""}`}
+          } hover:bg-gray-50 ${plan.committed ? "bg-green-50" : ""} ${
+            isCombinedPO ? "bg-purple-50 border-l-4 border-l-purple-500" : ""
+          } ${isStokUpdated ? "border-r-4 border-r-green-500" : ""}`}
         >
           <td className="px-4 py-3 text-center">
             <div className="flex items-center justify-center">
@@ -1556,20 +2511,82 @@ export default function ProductionPlanPage() {
               disabled={plan.loading}
               className={`w-8 h-8 rounded-full font-bold text-white ${
                 plan.expanded ? "bg-red-500" : "bg-green-500"
-              } hover:opacity-80 disabled:opacity-50`}
+              } hover:opacity-80 disabled:opacity-50 relative`}
             >
               {plan.loading ? "⋯" : plan.expanded ? "−" : "+"}
+              {isCombinedPO && (
+                <span className="absolute -top-1 -right-1 bg-purple-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                  {combinedCount}
+                </span>
+              )}
             </button>
           </td>
 
-          <td className="px-4 py-3 font-mono text-sm">{plan.order.No_SPK}</td>
+          <td className="px-4 py-3 font-mono text-sm">
+            <div className="flex items-center gap-2">
+              {plan.order.No_SPK}
+              {isCombinedPO && (
+                <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-xs font-medium">
+                  {combinedCount} PO Digabung 合并PO
+                </span>
+              )}
+              {plan.commitID && (
+                <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium">
+                  ID: {plan.commitID}
+                </span>
+              )}
+              {isStokUpdated && (
+                <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium">
+                  ✅ Stok Terbaru 最新库存
+                </span>
+              )}
+            </div>
+          </td>
+
           <td className="px-4 py-3 text-sm">{plan.order.Tanggal_Order}</td>
-          <td className="px-4 py-3 text-sm">{plan.order.Nama_PO}</td>
+
+          <td className="px-4 py-3 text-sm">
+            <div>
+              {plan.order.Nama_PO}
+              {isCombinedPO && plan.order.combinedItems && (
+                <div className="text-xs text-gray-500 mt-1">
+                  {plan.order.combinedItems.slice(0, 2).map((item, idx) => (
+                    <div key={idx}>
+                      • {item.Nama_PO} ({item.QTY})
+                    </div>
+                  ))}
+                  {plan.order.combinedItems.length > 2 && (
+                    <div>
+                      • ... dan {plan.order.combinedItems.length - 2} lainnya
+                      及其他
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </td>
+
           <td className="px-4 py-3 font-mono text-sm">
             {plan.order.Kode_Barang}
+            {isCombinedPO && plan.order.combinedItems && (
+              <div className="text-xs text-gray-500 mt-1">
+                Kode 代码:{" "}
+                {plan.order.combinedItems
+                  .map((item) => item.Kode_Barang)
+                  .join(" | ")}
+              </div>
+            )}
           </td>
+
           <td className="px-4 py-3 text-right font-bold">
-            {plan.order.QTY.toLocaleString()}
+            <div>
+              {plan.order.QTY.toLocaleString()}
+              {isCombinedPO && (
+                <div className="text-xs text-gray-500">
+                  Total dari {combinedCount} PO 来自{combinedCount}个PO的总数
+                </div>
+              )}
+            </div>
           </td>
 
           {/* Kolom Status Commit */}
@@ -1577,13 +2594,18 @@ export default function ProductionPlanPage() {
             {plan.committed ? (
               <div className="flex flex-col items-center gap-1">
                 <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-bold">
-                  ✓ Committed
+                  ✓ Committed 已提交
                 </span>
+                {plan.commitID && (
+                  <div className="text-xs text-gray-500">
+                    ID: {plan.commitID}
+                  </div>
+                )}
                 <button
                   onClick={() => uncommitPO(index)}
                   className="text-xs text-red-600 hover:text-red-800 underline"
                 >
-                  Uncommit
+                  Uncommit 取消提交
                 </button>
               </div>
             ) : (
@@ -1595,10 +2617,10 @@ export default function ProductionPlanPage() {
                 {committing === plan.order.No_SPK ? (
                   <>
                     <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Committing...
+                    Committing... 提交中...
                   </>
                 ) : (
-                  "Commit PO"
+                  "Commit PO 提交PO"
                 )}
               </button>
             )}
@@ -1610,15 +2632,24 @@ export default function ProductionPlanPage() {
             }`}
           >
             {materialNeeds ? (
-              hasShortage ? (
-                `Kurang ${materialNeeds.totalShortage.toLocaleString()}`
-              ) : (
-                "Stok Cukup"
-              )
+              <div className="flex flex-col items-center">
+                <span
+                  className={hasShortage ? "text-red-600" : "text-green-600"}
+                >
+                  {hasShortage
+                    ? `Kurang ${materialNeeds.totalShortage.toLocaleString()} 短缺`
+                    : "Stok Cukup 库存充足"}
+                </span>
+                <span className="text-xs text-gray-500 mt-1">
+                  {isStokUpdated
+                    ? "✅ Stok Terbaru 最新库存"
+                    : "🔄 Perlu Refresh 需要刷新"}
+                </span>
+              </div>
             ) : plan.bom ? (
               <span className="text-gray-500">-</span>
             ) : (
-              <span className="text-gray-400">Belum load BOM</span>
+              <span className="text-gray-400">Belum load BOM 未加载BOM</span>
             )}
           </td>
         </tr>
@@ -1633,21 +2664,55 @@ export default function ProductionPlanPage() {
                       📊 Detail BOM - {plan.order.Kode_Barang}
                       {plan.committed && (
                         <span className="ml-2 bg-green-100 text-green-800 px-2 py-1 rounded-full text-sm">
-                          ✓ Committed
+                          ✓ Committed 已提交{" "}
+                          {plan.commitID && `(ID: ${plan.commitID})`}
+                        </span>
+                      )}
+                      {isCombinedPO && (
+                        <span className="ml-2 bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-sm">
+                          {combinedCount} PO Digabung 合并PO
+                        </span>
+                      )}
+                      {plan.stockLastUpdated && (
+                        <span className="ml-2 bg-green-100 text-green-800 px-2 py-1 rounded-full text-sm">
+                          ✅ Stok Terbaru 最新库存
                         </span>
                       )}
                     </h4>
                     <p className="text-sm text-gray-600">
                       SPK: {plan.order.No_SPK} | PO: {plan.order.Nama_PO} | Qty:{" "}
-                      {plan.order.QTY.toLocaleString()} unit | Stok per:{" "}
-                      {plan.order.Tanggal_Order}
-                      {Object.keys(adjustedStock).length > 0 && (
-                        <span className="text-orange-600 font-medium">
+                      {plan.order.QTY.toLocaleString()} unit 单位 | Stok per
+                      库存日期: {plan.order.Tanggal_Order}
+                      {isCombinedPO && (
+                        <span className="text-purple-600 font-medium">
                           {" "}
-                          | Stok sudah disesuaikan dengan PO committed
+                          | PO Gabungan dari {combinedCount} data 来自
+                          {combinedCount}个数据的合并PO
+                        </span>
+                      )}
+                      {plan.stockLastUpdated && (
+                        <span className="text-green-600 font-medium">
+                          {" "}
+                          | Stok diperbarui 库存更新:{" "}
+                          {new Date(plan.stockLastUpdated).toLocaleString(
+                            "id-ID"
+                          )}
                         </span>
                       )}
                     </p>
+
+                    {/* Info stok dengan commit */}
+                    <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
+                      <p className="text-xs text-blue-700">
+                        <strong>Info Stok Real-time 实时库存信息:</strong> Stok
+                        yang ditampilkan adalah data terbaru. Perubahan stok
+                        karena produksi atau pembelian akan langsung terlihat
+                        saat refresh.
+                        <br />
+                        显示的库存是最新数据。由于生产或采购引起的库存变化在刷新时会立即显示。
+                      </p>
+                    </div>
+
                     {plan.error && (
                       <p className="text-sm text-red-600 mt-1">
                         ⚠️ {plan.error}
@@ -1655,6 +2720,22 @@ export default function ProductionPlanPage() {
                     )}
                   </div>
                   <div className="flex gap-2">
+                    {/* TOMBOL REFRESH STOK */}
+                    <button
+                      onClick={() => refreshStockForPlan(index)}
+                      disabled={plan.loading}
+                      className="bg-blue-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-600 disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {plan.loading ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          Loading... 加载中...
+                        </>
+                      ) : (
+                        "🔄 Refresh Stok 刷新库存"
+                      )}
+                    </button>
+
                     {!plan.committed && (
                       <button
                         onClick={() => commitPO(index)}
@@ -1664,10 +2745,10 @@ export default function ProductionPlanPage() {
                         {committing === plan.order.No_SPK ? (
                           <>
                             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                            Committing...
+                            Committing... 提交中...
                           </>
                         ) : (
-                          "🔒 Commit PO"
+                          "🔒 Commit PO 提交PO"
                         )}
                       </button>
                     )}
@@ -1679,7 +2760,7 @@ export default function ProductionPlanPage() {
                           : "bg-gray-200 text-gray-700"
                       }`}
                     >
-                      Table View
+                      Table View 表格视图
                     </button>
                     <button
                       onClick={() => toggleViewMode(index)}
@@ -1689,42 +2770,24 @@ export default function ProductionPlanPage() {
                           : "bg-gray-200 text-gray-700"
                       }`}
                     >
-                      Tree View
+                      Tree View 树状视图
                     </button>
                   </div>
                 </div>
 
-                {/* Tambahkan info committed PO */}
-                {committedPOs.length > 0 && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                    <h5 className="font-bold text-yellow-800 mb-2">
-                      📋 PO yang Sudah Di-commit ({committedPOs.length})
-                    </h5>
-                    <div className="text-sm text-yellow-700">
-                      <p>Stok sudah dikurangi untuk PO berikut:</p>
-                      <div className="mt-1 grid grid-cols-2 md:grid-cols-3 gap-2">
-                        {committedPOs.map((po) => (
-                          <span
-                            key={po.noSPK}
-                            className="bg-yellow-100 px-2 py-1 rounded text-xs"
-                          >
-                            {po.noSPK} ({po.materialUsage.length} material)
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
-                    <div className="font-bold text-blue-600">Total Item</div>
+                    <div className="font-bold text-blue-600">
+                      Total Item 总项目数
+                    </div>
                     <div className="text-2xl font-bold">
                       {plan.bom.flat.length}
                     </div>
                   </div>
                   <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
-                    <div className="font-bold text-green-600">Stok Cukup</div>
+                    <div className="font-bold text-green-600">
+                      Stok Cukup 库存充足
+                    </div>
                     <div className="text-2xl font-bold">
                       {
                         materialNeeds?.items.filter((i) => i.shortage === 0)
@@ -1733,7 +2796,9 @@ export default function ProductionPlanPage() {
                     </div>
                   </div>
                   <div className="text-center p-3 bg-red-50 rounded-lg border border-red-200">
-                    <div className="font-bold text-red-600">Stok Kurang</div>
+                    <div className="font-bold text-red-600">
+                      Stok Kurang 库存不足
+                    </div>
                     <div className="text-2xl font-bold">
                       {
                         materialNeeds?.items.filter((i) => i.shortage > 0)
@@ -1743,7 +2808,7 @@ export default function ProductionPlanPage() {
                   </div>
                   <div className="text-center p-3 bg-yellow-50 rounded-lg border border-yellow-200">
                     <div className="font-bold text-yellow-600">
-                      Total Kekurangan
+                      Total Kekurangan 总短缺
                     </div>
                     <div className="text-2xl font-bold text-red-600">
                       {materialNeeds?.totalShortage.toLocaleString()}
@@ -1757,6 +2822,7 @@ export default function ProductionPlanPage() {
                     productionQty={plan.order.QTY}
                     stock={plan.stock}
                     orderDate={plan.order.Tanggal_Order}
+                    stockLastUpdated={plan.stockLastUpdated}
                   />
                 ) : (
                   <SimpleBomTree
@@ -1780,7 +2846,6 @@ export default function ProductionPlanPage() {
     const startIndex = (currentPage - 1) * itemsPerPage + 1;
     const endIndex = Math.min(currentPage * itemsPerPage, orders.length);
 
-    // Generate page numbers to show
     const getPageNumbers = () => {
       const pages = [];
       const maxVisiblePages = 5;
@@ -1791,7 +2856,6 @@ export default function ProductionPlanPage() {
       );
       const endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
 
-      // Adjust start page if we're near the end
       if (endPage - startPage + 1 < maxVisiblePages) {
         startPage = Math.max(1, endPage - maxVisiblePages + 1);
       }
@@ -1806,13 +2870,15 @@ export default function ProductionPlanPage() {
     return (
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
         <div className="text-sm text-gray-600">
-          Menampilkan {startIndex}-{endIndex} dari {orders.length} data
+          Menampilkan {startIndex}-{endIndex} dari {orders.length} data 显示{" "}
+          {startIndex}-{endIndex} 条，共 {orders.length} 条数据
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Items per page selector */}
           <div className="flex items-center gap-2 mr-4">
-            <span className="text-sm text-gray-600">Items per page:</span>
+            <span className="text-sm text-gray-600">
+              Items per page 每页项目数:
+            </span>
             <select
               value={itemsPerPage}
               onChange={handleItemsPerPageChange}
@@ -1825,16 +2891,14 @@ export default function ProductionPlanPage() {
             </select>
           </div>
 
-          {/* Previous button */}
           <button
             onClick={() => goToPage(currentPage - 1)}
             disabled={currentPage === 1}
             className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
           >
-            Previous
+            Previous 上一页
           </button>
 
-          {/* Page numbers */}
           <div className="flex gap-1">
             {getPageNumbers().map((page) => (
               <button
@@ -1851,13 +2915,12 @@ export default function ProductionPlanPage() {
             ))}
           </div>
 
-          {/* Next button */}
           <button
             onClick={() => goToPage(currentPage + 1)}
             disabled={currentPage === totalPages}
             className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
           >
-            Next
+            Next 下一页
           </button>
         </div>
       </div>
@@ -1867,8 +2930,13 @@ export default function ProductionPlanPage() {
   // ==================== USE EFFECT ====================
 
   useEffect(() => {
-    fetchOrders();
+    refreshAllData();
   }, []);
+
+  // Sinkronkan setiap kali committedPOs berubah
+  useEffect(() => {
+    syncCommitStatus();
+  }, [committedPOs, syncCommitStatus]);
 
   // ==================== RENDER COMPONENT ====================
 
@@ -1879,68 +2947,108 @@ export default function ProductionPlanPage() {
           <div className="flex justify-between items-center mb-6">
             <div>
               <h1 className="text-2xl font-bold text-gray-800">
-                🏭 Production Planning
+                🏭 Production Planning 生产计划
               </h1>
               <p className="text-gray-600">
-                Kelola rencana produksi dan kebutuhan material dengan BOM Tree
-                View
+                Kelola rencana produksi 管理生产计划
               </p>
             </div>
             <div className="flex gap-4">
               <button
-                onClick={() => fetchOrders()}
+                onClick={refreshAllData}
                 disabled={loading}
                 className="bg-blue-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-600 disabled:opacity-50"
               >
-                {loading ? "Memuat..." : "📋 Refresh Data"}
+                {loading
+                  ? "Memuat... 加载中..."
+                  : "🔄 Refresh Semua Data 刷新所有数据"}
               </button>
-              <button
-                onClick={exportToExcel}
-                disabled={
-                  exportLoading ||
-                  orders.filter((p) => p.selected && !p.committed).length === 0
-                }
-                className="bg-green-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-600 disabled:opacity-50 flex items-center gap-2"
-              >
-                {exportLoading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Exporting...
-                  </>
-                ) : (
-                  "📊 Export to Excel"
-                )}
-              </button>
+
+              {/* Tombol Export */}
+              <div className="flex gap-2">
+                <button
+                  onClick={exportToExcel}
+                  disabled={exportLoading || orders.length === 0}
+                  className="bg-green-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-600 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {exportLoading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Exporting... 导出中...
+                    </>
+                  ) : (
+                    "📊 Export All to Excel 导出全部到Excel"
+                  )}
+                </button>
+
+                <button
+                  onClick={exportSelectedToExcel}
+                  disabled={
+                    exportLoading ||
+                    orders.filter((p) => p.selected && !p.committed).length ===
+                      0
+                  }
+                  className="bg-purple-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-purple-600 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {exportLoading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Exporting... 导出中...
+                    </>
+                  ) : (
+                    "✅ Export Selected to Excel 导出选择项到Excel"
+                  )}
+                </button>
+              </div>
             </div>
           </div>
+
+          {/* Panel Committed POs */}
+          <CommittedPOsPanel
+            committedPOs={committedPOs}
+            stockReservations={stockReservations}
+            onRefresh={loadCommittedPOs}
+          />
 
           {/* Kontrol Commit PO */}
           <div className="bg-orange-50 p-4 rounded-lg border border-orange-200 mb-6">
             <div className="flex justify-between items-center">
               <div>
                 <h3 className="font-bold text-lg text-orange-800">
-                  🔒 Kontrol Commit PO
+                  🔒 Kontrol Commit PO (Database) PO提交控制(数据库)
                 </h3>
                 <p className="text-orange-700 text-sm">
-                  • Commit PO untuk mengurangi stok yang tersedia untuk PO
-                  berikutnya
+                  • Commit PO akan menyimpan data ke database dan reserve stok
+                  提交PO将保存数据到数据库并预留库存
                   <br />
-                  • Stok akan otomatis disesuaikan setelah PO di-commit
+                  • Stok yang di-reserve tidak bisa digunakan oleh PO lain
+                  预留库存不能被其他PO使用
                   <br />
-                  • PO yang sudah di-commit tidak bisa dipilih untuk export
-                  <br />• Gunakan Uncommit untuk mengembalikan stok
+                  • Data commit tersimpan permanen dan bisa dilacak
+                  提交数据永久保存并可追踪
+                  <br />• Uncommit akan mengembalikan stok yang di-reserve
+                  取消提交将退回预留库存
                 </p>
               </div>
               <div className="flex gap-4 items-center">
                 <div className="text-sm text-orange-800">
-                  <strong>{committedPOs.length}</strong> PO sudah di-commit
+                  <strong>
+                    {
+                      committedPOs.filter((po) => po.status === "COMMITTED")
+                        .length
+                    }
+                  </strong>{" "}
+                  PO aktif di-commit 活跃提交PO
                 </div>
                 <button
                   onClick={resetCommittedPOs}
-                  disabled={committedPOs.length === 0}
+                  disabled={
+                    committedPOs.filter((po) => po.status === "COMMITTED")
+                      .length === 0
+                  }
                   className="bg-red-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-red-600 disabled:opacity-50"
                 >
-                  Reset All Commit
+                  Reset All Commit 重置所有提交
                 </button>
               </div>
             </div>
@@ -1950,12 +3058,16 @@ export default function ProductionPlanPage() {
             <div className="flex justify-between items-center">
               <div>
                 <h3 className="font-bold text-lg text-yellow-800">
-                  🎯 Kontrol Selection
+                  🎯 Kontrol Selection & Refresh Stok 选择控制和库存刷新
                 </h3>
                 <p className="text-yellow-700 text-sm">
-                  Centang PO yang ingin diexport. Export akan mencakup SEMUA PO
-                  yang dicentang dari SEMUA halaman. Gunakan tombol Tree/Table
-                  View untuk beralih tampilan BOM.
+                  • Centang PO yang ingin dilihat detail BOM-nya
+                  勾选要查看BOM详情的PO
+                  <br />
+                  • Stok diperbarui otomatis saat buka detail atau manual
+                  refresh 打开详情或手动刷新时自动更新库存
+                  <br />• Data stok real-time dari database tanpa API tambahan
+                  来自数据库的实时库存数据，无需额外API
                 </p>
               </div>
               <div className="flex gap-4 items-center">
@@ -1964,29 +3076,55 @@ export default function ProductionPlanPage() {
                     onClick={toggleSelectAll}
                     className="bg-yellow-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-yellow-600"
                   >
-                    Select Page
+                    Select Page 选择当前页
                   </button>
                   <button
                     onClick={toggleSelectAllGlobal}
                     className="bg-orange-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-orange-600"
                   >
-                    Select All
+                    Select All 全选
                   </button>
                 </div>
                 <div className="text-sm text-yellow-800">
                   <strong>
                     {orders.filter((p) => p.selected && !p.committed).length}
                   </strong>{" "}
-                  dari{" "}
+                  dari 来自{" "}
                   <strong>{orders.filter((p) => !p.committed).length}</strong>{" "}
-                  PO terpilih
-                  {orders.filter((p) => p.selected && p.bom).length > 0 && (
-                    <span>
-                      {" "}
-                      ({orders.filter((p) => p.selected && p.bom).length} sudah
-                      load BOM)
-                    </span>
-                  )}
+                  PO terpilih 选择的PO
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Info Penggabungan PO */}
+          <div className="bg-purple-50 p-4 rounded-lg border border-purple-200 mb-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-lg text-purple-800">
+                  🔄 Penggabungan PO Otomatis PO自动合并
+                </h3>
+                <p className="text-purple-700 text-sm">
+                  • PO dengan No SPK yang sama akan digabungkan secara otomatis
+                  相同SPK号的PO将自动合并
+                  <br />
+                  • QTY akan dijumlahkan, nama dan kode barang akan digabungkan
+                  数量将累加，名称和物料代码将合并
+                  <br />• Sistem commit berlaku untuk PO gabungan
+                  提交系统适用于合并PO
+                </p>
+              </div>
+              <div className="text-sm text-purple-800">
+                <div>
+                  <strong>{combinedStats.combinedCount}</strong> PO Digabung
+                  合并PO
+                </div>
+                <div>
+                  <strong>{combinedStats.saving}</strong> data dihemat 节省数据
+                </div>
+                <div>
+                  <strong>{combinedStats.totalOriginalOrders}</strong> →{" "}
+                  <strong>{orders.length}</strong> data 数据
                 </div>
               </div>
             </div>
@@ -1994,12 +3132,12 @@ export default function ProductionPlanPage() {
 
           <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-6">
             <h3 className="font-bold text-lg mb-4">
-              🔍 Filter Berdasarkan Tanggal
+              🔍 Filter Berdasarkan Tanggal 基于日期筛选
             </h3>
             <div className="flex gap-4 items-end flex-wrap">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Tanggal Mulai
+                  Tanggal Mulai 开始日期
                 </label>
                 <input
                   type="date"
@@ -2011,7 +3149,7 @@ export default function ProductionPlanPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Tanggal Akhir
+                  Tanggal Akhir 结束日期
                 </label>
                 <input
                   type="date"
@@ -2027,53 +3165,76 @@ export default function ProductionPlanPage() {
                   disabled={loading}
                   className="bg-blue-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-600 disabled:opacity-50"
                 >
-                  {loading ? "Memuat..." : "Terapkan Filter"}
+                  {loading ? "Memuat... 加载中..." : "Terapkan Filter 应用筛选"}
                 </button>
                 <button
                   onClick={resetDateFilter}
                   className="bg-gray-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-600"
                 >
-                  Reset Filter
+                  Reset Filter 重置筛选
                 </button>
               </div>
               <div className="text-sm text-gray-600">
-                Menampilkan: {orders.length} PO
-                {dateFilter.startDate && ` dari ${dateFilter.startDate}`}
-                {dateFilter.endDate && ` sampai ${dateFilter.endDate}`}
+                Menampilkan 显示: {orders.length} PO
+                {dateFilter.startDate && ` dari ${dateFilter.startDate} 从`}
+                {dateFilter.endDate && ` sampai ${dateFilter.endDate} 到`}
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
             <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-              <div className="text-blue-600 font-bold">Total Order</div>
+              <div className="text-blue-600 font-bold">Total Order 总订单</div>
               <div className="text-2xl font-bold">{orders.length}</div>
             </div>
             <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-              <div className="text-green-600 font-bold">Terpilih</div>
+              <div className="text-green-600 font-bold">Terpilih 已选择</div>
               <div className="text-2xl font-bold">
                 {orders.filter((p) => p.selected && !p.committed).length}
               </div>
             </div>
             <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-              <div className="text-yellow-600 font-bold">Sudah Load BOM</div>
+              <div className="text-yellow-600 font-bold">
+                Sudah Load BOM 已加载BOM
+              </div>
               <div className="text-2xl font-bold">
                 {orders.filter((p) => p.bom).length}
               </div>
             </div>
             <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
-              <div className="text-orange-600 font-bold">Committed</div>
+              <div className="text-orange-600 font-bold">Committed 已提交</div>
               <div className="text-2xl font-bold">
                 {orders.filter((p) => p.committed).length}
               </div>
             </div>
             <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-              <div className="text-red-600 font-bold">Siap Export</div>
+              <div className="text-red-600 font-bold">
+                Bisa Di-commit 可提交
+              </div>
               <div className="text-2xl font-bold">
-                {
-                  orders.filter((p) => p.selected && p.bom && !p.committed)
-                    .length
-                }
+                {orders.filter((p) => p.bom && !p.committed).length}
+              </div>
+            </div>
+            <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+              <div className="text-purple-600 font-bold">
+                PO Digabung 合并PO
+              </div>
+              <div className="text-2xl font-bold">
+                {combinedStats.combinedCount}
+              </div>
+              <div className="text-xs text-purple-600">
+                {combinedStats.saving} data dihemat 节省数据
+              </div>
+            </div>
+            <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+              <div className="text-green-600 font-bold">
+                Stok Real-time 实时库存
+              </div>
+              <div className="text-2xl font-bold">
+                {orders.filter((p) => p.stockLastUpdated).length}
+              </div>
+              <div className="text-xs text-green-600">
+                PO dengan stok terbaru 有最新库存的PO
               </div>
             </div>
           </div>
@@ -2088,9 +3249,9 @@ export default function ProductionPlanPage() {
         {loading && (
           <div className="bg-white rounded-lg shadow-sm p-8 text-center">
             <div className="text-lg font-bold mb-2">
-              Memuat data produksi...
+              Memuat data produksi... 加载生产数据中...
             </div>
-            <div className="text-gray-600">Harap tunggu sebentar</div>
+            <div className="text-gray-600">Harap tunggu sebentar 请稍候</div>
           </div>
         )}
 
@@ -2100,15 +3261,21 @@ export default function ProductionPlanPage() {
               <table className="w-full">
                 <thead className="bg-gray-800 text-white">
                   <tr>
-                    <th className="px-4 py-3 text-center w-12">Pilih</th>
+                    <th className="px-4 py-3 text-center w-12">Pilih 选择</th>
                     <th className="px-4 py-3 text-center w-12">#</th>
-                    <th className="px-4 py-3 text-left">No SPK</th>
-                    <th className="px-4 py-3 text-left">Tanggal</th>
-                    <th className="px-4 py-3 text-left">Nama PO</th>
-                    <th className="px-4 py-3 text-left">Kode Barang</th>
-                    <th className="px-4 py-3 text-right">QTY</th>
-                    <th className="px-4 py-3 text-center">Commit</th>
-                    <th className="px-4 py-3 text-center">Status Stok</th>
+                    <th className="px-4 py-3 text-left">No SPK 生产订单号</th>
+                    <th className="px-4 py-3 text-left">Tanggal 日期</th>
+                    <th className="px-4 py-3 text-left">
+                      Nama PO 生产订单名称
+                    </th>
+                    <th className="px-4 py-3 text-left">
+                      Kode Barang 物料代码
+                    </th>
+                    <th className="px-4 py-3 text-right">QTY 数量</th>
+                    <th className="px-4 py-3 text-center">Commit 提交</th>
+                    <th className="px-4 py-3 text-center">
+                      Status Stok 库存状态
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2119,7 +3286,6 @@ export default function ProductionPlanPage() {
               </table>
             </div>
 
-            {/* Pagination Component */}
             <Pagination />
           </>
         )}
@@ -2128,12 +3294,12 @@ export default function ProductionPlanPage() {
           <div className="bg-white rounded-lg shadow-sm p-12 text-center">
             <div className="text-4xl mb-4">📭</div>
             <h3 className="text-lg font-bold text-gray-700 mb-2">
-              Tidak ada data produksi
+              Tidak ada data produksi 没有生产数据
             </h3>
             <p className="text-gray-500">
               {dateFilter.startDate || dateFilter.endDate
-                ? "Tidak ada data sesuai filter tanggal yang dipilih"
-                : "Data order produksi tidak ditemukan"}
+                ? "Tidak ada data sesuai filter tanggal yang dipilih 没有符合所选日期筛选条件的数据"
+                : "Data order produksi tidak ditemukan 未找到生产订单数据"}
             </p>
           </div>
         )}

@@ -482,3 +482,85 @@ export interface saldoType {
   Tahun: number;
   Saldo: number;
 }
+
+// types/commit.ts
+export interface MaterialUsageItem {
+  itemId: string;
+  itemName: string;
+  qtyPerUnit: number;
+  totalNeeded: number;
+  stockBefore: number;
+  stockAfter: number;
+  qtyUsed: number;
+  departemen?: string;
+  level: number;
+}
+
+export interface CommitPORequest {
+  noSPK: string;
+  kodeBarang: string;
+  namaPO: string;
+  qty: number;
+  userID: string;
+  materialUsage: MaterialUsageItem[];
+}
+
+export interface UncommitPORequest {
+  noSPK: string;
+  userID: string;
+}
+
+export interface ResetCommittedPOsRequest {
+  userID: string;
+}
+
+export interface CommittedPO {
+  commitID: number;
+  noSPK: string;
+  kodeBarang: string;
+  namaPO: string;
+  qty: number;
+  tanggalCommit: string;
+  userID: string;
+  status: string;
+  totalMaterials: number;
+  totalQtyReserved: number;
+}
+
+export interface StockReservation {
+  reservationID: number;
+  commitID: number;
+  itemID: string;
+  itemName: string;
+  reservedQty: number;
+  reservationDate: string;
+  status: string;
+  expiryDate: string;
+  noSPK: string;
+}
+
+export interface CommittedPOsResponse {
+  success: boolean;
+  data: {
+    committedPOs: CommittedPO[];
+    reservations: StockReservation[];
+  };
+  error?: string;
+}
+
+export interface CommitPOResponse {
+  success: boolean;
+  commitID?: number;
+  totalMaterials?: number;
+  totalQtyReserved?: number;
+  message?: string;
+  error?: string;
+}
+
+export interface UncommitPOResponse {
+  success: boolean;
+  message?: string;
+  releasedMaterials?: number;
+  releasedQty?: number;
+  error?: string;
+}

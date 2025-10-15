@@ -1,3 +1,4 @@
+// /api/ppic
 import { NextResponse } from "next/server";
 import sql from "mssql";
 import { Spktype } from "@/lib/types";
