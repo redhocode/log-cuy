@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // app/production-plan/page.tsx
 "use client";
@@ -106,35 +107,25 @@ interface ExportData {
   productionOrders: any[];
 }
 
-// interface MaterialItem {
-//   ItemID: string;
-//   ItemName: string;
-//   Departemen?: string;
-//   needed: number;
-// }
-
 // ==================== FUNGSI BANTU ====================
 
 // FUNGSI: Filter hanya komponen (bukan barang jadinya)
 const filterOnlyComponents = (bomItems: BomItem[]): BomItem[] => {
-  return bomItems.filter((item) => item.Level > 0); // Hanya tampilkan level > 0 (bukan produk akhir)
+  return bomItems.filter((item) => item.Level > 0);
 };
 
 // FUNGSI: Build tree structure dari flat BOM
 const buildTreeStructure = (flatBom: BomItem[]): BomItem[] => {
   if (!flatBom || flatBom.length === 0) return [];
 
-  // Buat map untuk akses cepat
   const itemMap = new Map<string, BomItem>();
   const rootItems: BomItem[] = [];
 
-  // Pertama, salin semua item ke map
   flatBom.forEach((item) => {
     const treeItem = { ...item, children: [] as BomItem[] };
     itemMap.set(item.ItemID, treeItem);
   });
 
-  // Kemudian, bangun struktur tree
   flatBom.forEach((item) => {
     const treeItem = itemMap.get(item.ItemID)!;
 
@@ -143,10 +134,8 @@ const buildTreeStructure = (flatBom: BomItem[]): BomItem[] => {
       item.ParentItemID === item.ItemID ||
       !itemMap.has(item.ParentItemID)
     ) {
-      // Ini adalah root item (produk akhir)
       rootItems.push(treeItem);
     } else {
-      // Ini adalah child item, tambahkan ke parent
       const parent = itemMap.get(item.ParentItemID);
       if (parent && parent.children) {
         parent.children.push(treeItem);
@@ -154,9 +143,6 @@ const buildTreeStructure = (flatBom: BomItem[]): BomItem[] => {
     }
   });
 
-  console.log(
-    `🌳 [buildTreeStructure] Built tree with ${rootItems.length} root nodes`
-  );
   return rootItems;
 };
 
@@ -170,7 +156,6 @@ const calculateMaterialNeeds = (
 ) => {
   if (!bom) return { totalNeeded: 0, totalShortage: 0, items: [] };
 
-  // PERBAIKAN: Filter hanya komponen (level > 0)
   const componentsOnly = filterOnlyComponents(bom);
 
   let totalNeeded = 0;
@@ -195,16 +180,94 @@ const calculateMaterialNeeds = (
   return { totalNeeded, totalShortage, items };
 };
 
-// ==================== KOMPONEN BOM TREE ====================
+// FUNGSI: Perhitungan material needs untuk PO gabungan - FIXED VERSION
+const calculateMaterialNeedsForCombinedPO = (
+  bom: { flat: BomItem[]; tree: BomItem[]; combinedBoms?: any },
+  productionOrders: ProductionOrder[],
+  stock: StockItem[] = []
+) => {
+  if (!bom || !productionOrders || productionOrders.length === 0) {
+    return { totalNeeded: 0, totalShortage: 0, items: [] };
+  }
+
+  const materialMap = new Map<
+    string,
+    {
+      item: BomItem;
+      totalNeeded: number;
+    }
+  >();
+
+  // Hitung kebutuhan untuk setiap PO dalam gabungan
+  productionOrders.forEach((po) => {
+    // PERBAIKAN: Ambil BOM yang sesuai untuk item ini
+    let bomForThisItem: BomItem[] = [];
+
+    if (bom.combinedBoms && bom.combinedBoms[po.Kode_Barang]) {
+      bomForThisItem = bom.combinedBoms[po.Kode_Barang].flat;
+    } else {
+      bomForThisItem = bom.flat;
+    }
+
+    const componentsOnly = filterOnlyComponents(bomForThisItem);
+
+    componentsOnly.forEach((item) => {
+      // PERBAIKAN: Gunakan QTY dari PO individual, bukan QTY gabungan
+      const neededForThisPO = item.Qty * po.QTY;
+      const existing = materialMap.get(item.ItemID);
+
+      if (existing) {
+        existing.totalNeeded += neededForThisPO;
+      } else {
+        materialMap.set(item.ItemID, {
+          item: item,
+          totalNeeded: neededForThisPO,
+        });
+      }
+    });
+  });
+
+  let totalNeeded = 0;
+  let totalShortage = 0;
+  const items = Array.from(materialMap.values()).map((material) => {
+    const availableStock =
+      stock.find((s) => s.itemid === material.item.ItemID)?.stockAkhir || 0;
+    const shortage = Math.max(0, material.totalNeeded - availableStock);
+
+    totalNeeded += material.totalNeeded;
+    totalShortage += shortage;
+
+    return {
+      ...material.item,
+      needed: material.totalNeeded,
+      availableStock,
+      shortage,
+    };
+  });
+
+  return { totalNeeded, totalShortage, items };
+};
+
+// ==================== KOMPONEN BOM TREE YANG DIPERBAIKI ====================
 const SimpleBomTree: React.FC<{
   treeData: BomItem[];
   productionQty: number;
   stock: StockItem[];
   orderDate: string;
-}> = ({ treeData, productionQty, stock, orderDate }) => {
+  isCombinedPO?: boolean;
+  combinedItems?: ProductionOrder[];
+  combinedBoms?: { [kodeBarang: string]: { flat: BomItem[]; tree: BomItem[] } };
+}> = ({
+  treeData,
+  productionQty,
+  stock,
+  orderDate,
+  isCombinedPO,
+  combinedItems,
+  combinedBoms,
+}) => {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
-  // Jika treeData kosong, tampilkan pesan
   if (!treeData || treeData.length === 0) {
     return (
       <div className="border border-gray-300 rounded-lg bg-white">
@@ -257,12 +320,274 @@ const SimpleBomTree: React.FC<{
     return stockItem ? stockItem.stockAkhir : 0;
   };
 
+  // PERBAIKAN: Untuk PO gabungan, gunakan combinedBoms untuk menampilkan BOM yang spesifik per item
+  if (isCombinedPO && combinedItems && combinedItems.length > 0 && combinedBoms) {
+    return (
+      <div className="border border-gray-300 rounded-lg bg-white">
+        <div className="bg-gray-800 text-white px-4 py-3 rounded-t-lg">
+          <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center">
+              <div className="w-8 flex-shrink-0"></div>
+              <div className="flex-1 font-bold">
+                Struktur BOM (Tree View) - PO Gabungan BOM结构(树状视图) - 合并PO
+              </div>
+            </div>
+            <div className="text-xs text-gray-300">
+              Stok per tanggal: {orderDate} 库存日期: {orderDate}
+            </div>
+          </div>
+          <div className="flex items-center text-sm mt-2">
+            <div className="w-8 flex-shrink-0"></div>
+            <div className="flex-1 font-bold"></div>
+            <div className="flex items-center gap-4 mr-4">
+              <div className="text-right font-bold">Per Unit 每单位</div>
+              <div className="text-right font-bold">Butuh 需求</div>
+              <div className="text-right font-bold">Stok 库存</div>
+              <div className="text-right font-bold">Status 状态</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-h-96 overflow-y-auto">
+          {combinedItems.map((combinedItem, itemIndex) => {
+            // PERBAIKAN PENTING: Gunakan BOM spesifik untuk item ini
+            const itemBom = combinedBoms[combinedItem.Kode_Barang];
+            
+            if (!itemBom || !itemBom.tree || itemBom.tree.length === 0) {
+              return (
+                <div key={`${combinedItem.Kode_Barang}-${itemIndex}`} className="border-t border-purple-300 first:border-t-0">
+                  <div className="bg-purple-100 px-4 py-2 border-b border-purple-200">
+                    <div className="font-bold text-purple-800">
+                      📦 {combinedItem.Kode_Barang} - {combinedItem.Nama_PO}
+                    </div>
+                    <div className="text-sm text-purple-600">
+                      QTY: {combinedItem.QTY} unit 单位
+                    </div>
+                  </div>
+                  <div className="p-4 text-center text-gray-500">
+                    BOM tidak tersedia untuk item ini 此项目无BOM
+                  </div>
+                </div>
+              );
+            }
+
+            const TreeNode: React.FC<{ 
+              node: BomItem; 
+              depth: number; 
+              itemQty: number;
+              parentItemId?: string;
+            }> = ({
+              node,
+              depth,
+              itemQty,
+              parentItemId
+            }) => {
+              const hasChildren = node.children && node.children.length > 0;
+              const isExpanded = expandedNodes.has(
+                `${node.ItemID}-${combinedItem.Kode_Barang}-${itemIndex}${parentItemId ? `-${parentItemId}` : ''}`
+              );
+
+              // PERBAIKAN PENTING: Gunakan QTY dari item individual, bukan dari PO utama
+              const needed = node.Qty * itemQty;
+              const availableStock = getStock(node.ItemID);
+              const shortage = Math.max(0, needed - availableStock);
+
+              // Hanya tampilkan info PO untuk item utama (Level 0)
+              const isMainItem = depth === 0;
+
+              return (
+                <div>
+                  <div
+                    className="flex items-center border-b border-gray-200 hover:bg-gray-50 py-2"
+                    style={{
+                      paddingLeft: `${depth * 20 + 12}px`,
+                      backgroundColor: isMainItem ? "#f0f9ff" : "white",
+                    }}
+                  >
+                    <div className="w-8 flex-shrink-0">
+                      {hasChildren ? (
+                        <button
+                          onClick={() =>
+                            toggleNode(`${node.ItemID}-${combinedItem.Kode_Barang}-${itemIndex}${parentItemId ? `-${parentItemId}` : ''}`)
+                          }
+                          className="w-6 h-6 rounded bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-sm"
+                        >
+                          {isExpanded ? "−" : "+"}
+                        </button>
+                      ) : (
+                        <div className="w-6 h-6 flex items-center justify-center text-gray-400">
+                          •
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex-1">
+                      <div className="flex items-center">
+                        <div className="flex-1">
+                          <div className="flex items-center">
+                            <span className="font-mono text-sm font-bold text-blue-600 mr-3">
+                              {node.ItemID}
+                            </span>
+                            <span className="text-sm flex-1">{node.ItemName}</span>
+                          </div>
+                          <div className="flex items-center mt-1 text-xs text-gray-500">
+                            {node.Departemen && (
+                              <span className="mr-3">
+                                Dept: {node.Departemen} 部门: {node.Departemen}
+                              </span>
+                            )}
+                            {node.NamaJenis && (
+                              <span className="mr-3">
+                                Jenis: {node.NamaJenis} 类型: {node.NamaJenis}
+                              </span>
+                            )}
+                            <span>
+                              Level: {node.Level} 层级: {node.Level}
+                            </span>
+                          </div>
+
+                          {/* Info PO Individual - hanya tampilkan untuk item utama */}
+                          {isMainItem && (
+                            <div className="mt-2 p-2 bg-purple-50 rounded border border-purple-200">
+                              <div className="text-xs text-purple-700 font-medium">
+                                PO: {combinedItem.Kode_Barang} - {combinedItem.Nama_PO}
+                              </div>
+                              <div className="text-xs text-purple-600">
+                                QTY: {combinedItem.QTY} unit | Butuh: {node.Qty} × {combinedItem.QTY} = {needed}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-4 mr-4">
+                          <div className="text-right">
+                            <div className="text-xs text-gray-500">Per Unit 每单位</div>
+                            <div className="font-mono text-sm font-bold">{node.Qty}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xs text-gray-500">Butuh 需求</div>
+                            <div className="font-mono text-sm font-bold text-red-600">
+                              {needed.toLocaleString()}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xs text-gray-500">Stok 库存</div>
+                            <div className="font-mono text-sm font-bold text-green-600">
+                              {availableStock.toLocaleString()}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xs text-gray-500">Status 状态</div>
+                            <div
+                              className={`font-mono text-sm font-bold ${
+                                shortage > 0 ? "text-red-600" : "text-green-600"
+                              }`}
+                            >
+                              {shortage > 0 ? `-${shortage.toLocaleString()}` : "✓"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {isExpanded && hasChildren && (
+                    <div>
+                      {node.children!.map((child, index) => (
+                        <TreeNode
+                          key={`${child.ItemID}-${combinedItem.Kode_Barang}-${itemIndex}-${index}`}
+                          node={child}
+                          depth={depth + 1}
+                          itemQty={itemQty}
+                          parentItemId={node.ItemID}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            };
+
+            return (
+              <div
+                key={`${combinedItem.Kode_Barang}-${itemIndex}`}
+                className="border-t border-purple-300 first:border-t-0"
+              >
+                <div className="bg-purple-100 px-4 py-2 border-b border-purple-200">
+                  <div className="font-bold text-purple-800">
+                    📦 {combinedItem.Kode_Barang} - {combinedItem.Nama_PO}
+                  </div>
+                  <div className="text-sm text-purple-600">
+                    QTY: {combinedItem.QTY} unit 单位
+                  </div>
+                </div>
+                {itemBom.tree.map((node, index) => (
+                  <TreeNode
+                    key={`${node.ItemID}-${combinedItem.Kode_Barang}-${itemIndex}-${index}`}
+                    node={node}
+                    depth={0}
+                    itemQty={combinedItem.QTY}
+                  />
+                ))}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="bg-gray-100 px-4 py-2 rounded-b-lg border-t border-gray-300">
+          <div className="flex justify-between items-center text-xs text-gray-600">
+            <span>
+              Total PO: {combinedItems.length} 总PO数: {combinedItems.length}
+            </span>
+            <span>
+              Expanded: {expandedNodes.size} nodes 展开: {expandedNodes.size} 节点
+            </span>
+            <div className="flex gap-4">
+              <button
+                onClick={() => {
+                  const allNodeIds = new Set<string>();
+                  combinedItems.forEach((item, itemIndex) => {
+                    const itemBom = combinedBoms[item.Kode_Barang];
+                    if (itemBom && itemBom.tree) {
+                      const collectAllIds = (nodes: BomItem[], currentDepth: number, parentId?: string) => {
+                        nodes.forEach((node) => {
+                          const nodeId = `${node.ItemID}-${item.Kode_Barang}-${itemIndex}${parentId ? `-${parentId}` : ''}`;
+                          allNodeIds.add(nodeId);
+                          if (node.children && node.children.length > 0) {
+                            collectAllIds(node.children, currentDepth + 1, node.ItemID);
+                          }
+                        });
+                      };
+                      collectAllIds(itemBom.tree, 0);
+                    }
+                  });
+                  setExpandedNodes(allNodeIds);
+                }}
+                className="text-blue-600 hover:text-blue-800 font-medium"
+              >
+                Expand All 全部展开
+              </button>
+              <button
+                onClick={() => setExpandedNodes(new Set())}
+                className="text-blue-600 hover:text-blue-800 font-medium"
+              >
+                Collapse All 全部折叠
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // TAMPILAN NORMAL (NON-COMBINED PO)
   const TreeNode: React.FC<{ node: BomItem; depth: number }> = ({
     node,
     depth,
   }) => {
     const hasChildren = node.children && node.children.length > 0;
     const isExpanded = expandedNodes.has(node.ItemID);
+
     const needed = node.Qty * productionQty;
     const availableStock = getStock(node.ItemID);
     const shortage = Math.max(0, needed - availableStock);
@@ -434,24 +759,91 @@ const SimpleBomTree: React.FC<{
   );
 };
 
-// ==================== KOMPONEN BOM TABLE VIEW ====================
+// ==================== KOMPONEN BOM TABLE VIEW YANG DIPERBAIKI ====================
 const BomTableView: React.FC<{
   bom: BomItem[];
   productionQty: number;
   stock: StockItem[];
   orderDate: string;
   stockLastUpdated?: string;
-}> = ({ bom, productionQty, stock, orderDate, stockLastUpdated }) => {
-  // FILTER: Hanya tampilkan komponen (level > 0), bukan barang jadinya (level 0)
-  const componentsOnly = useMemo(() => {
-    return filterOnlyComponents(bom);
-  }, [bom]);
+  isCombinedPO?: boolean;
+  combinedItems?: ProductionOrder[];
+  combinedBoms?: { [kodeBarang: string]: { flat: BomItem[]; tree: BomItem[] } };
+}> = ({
+  bom,
+  productionQty,
+  stock,
+  orderDate,
+  stockLastUpdated,
+  isCombinedPO,
+  combinedItems,
+  combinedBoms,
+}) => {
+  // PERBAIKAN: Untuk PO gabungan, gabungkan material needs dari semua item
+  const materialNeeds = useMemo(() => {
+    if (isCombinedPO && combinedItems && combinedBoms) {
+      // Hitung kebutuhan material untuk setiap item PO gabungan
+      const allMaterialNeeds: any[] = [];
 
-  const materialNeeds = calculateMaterialNeeds(
-    componentsOnly,
-    productionQty,
-    stock
-  );
+      combinedItems.forEach((combinedItem) => {
+        const itemBom = combinedBoms[combinedItem.Kode_Barang];
+        if (itemBom && itemBom.flat) {
+          const componentsOnly = filterOnlyComponents(itemBom.flat);
+          const itemNeeds = calculateMaterialNeeds(
+            componentsOnly,
+            combinedItem.QTY, // Gunakan QTY individual
+            stock
+          );
+          
+          // Tambahkan informasi PO ke setiap item
+          itemNeeds.items.forEach((item: any) => {
+            allMaterialNeeds.push({
+              ...item,
+              sourcePO: combinedItem.Kode_Barang,
+              sourcePOName: combinedItem.Nama_PO,
+              sourceQTY: combinedItem.QTY
+            });
+          });
+        }
+      });
+
+      // Gabungkan item yang sama dari berbagai PO
+      const materialMap = new Map();
+      allMaterialNeeds.forEach((item) => {
+        const existing = materialMap.get(item.ItemID);
+        if (existing) {
+          existing.needed += item.needed;
+          existing.shortage = Math.max(0, existing.needed - item.availableStock);
+          existing.sourcePOs = [...(existing.sourcePOs || []), {
+            po: item.sourcePO,
+            name: item.sourcePOName,
+            qty: item.sourceQTY,
+            needed: item.needed
+          }];
+        } else {
+          materialMap.set(item.ItemID, {
+            ...item,
+            sourcePOs: [{
+              po: item.sourcePO,
+              name: item.sourcePOName,
+              qty: item.sourceQTY,
+              needed: item.needed
+            }]
+          });
+        }
+      });
+
+      const items = Array.from(materialMap.values());
+      const totalNeeded = items.reduce((sum, item) => sum + item.needed, 0);
+      const totalShortage = items.reduce((sum, item) => sum + item.shortage, 0);
+
+      return { totalNeeded, totalShortage, items };
+    } else {
+      // Untuk PO biasa
+      const componentsOnly = filterOnlyComponents(bom);
+      return calculateMaterialNeeds(componentsOnly, productionQty, stock);
+    }
+  }, [bom, productionQty, stock, isCombinedPO, combinedItems, combinedBoms]);
 
   return (
     <div className="border border-gray-300 rounded-lg bg-white">
@@ -461,15 +853,21 @@ const BomTableView: React.FC<{
             Daftar Komponen (Table View) 组件列表(表格视图)
           </h4>
           <p className="text-xs text-gray-600 mt-1">
-            *Hanya menampilkan komponen (Level 1+), tidak termasuk barang
-            jadinya (Level 0)
+            *Hanya menampilkan komponen (Level 1+), tidak termasuk barang jadinya (Level 0)
             <br />
             *仅显示组件(级别1+)，不包括成品(级别0)
+            {isCombinedPO && (
+              <>
+                <br />
+                *PO Gabungan: QTY per item sesuai dengan PO aslinya
+                <br />
+                *合并PO: 每个项目的数量符合原始PO
+              </>
+            )}
           </p>
           {stockLastUpdated && (
             <p className="text-xs text-green-600 mt-1">
-              Stok diperbarui:{" "}
-              {new Date(stockLastUpdated).toLocaleString("id-ID")}
+              Stok diperbarui: {new Date(stockLastUpdated).toLocaleString("id-ID")}
               <br />
               库存更新: {new Date(stockLastUpdated).toLocaleString("zh-CN")}
             </p>
@@ -487,6 +885,9 @@ const BomTableView: React.FC<{
               <th className="px-4 py-2 text-left">Nama Item 物料名称</th>
               <th className="px-4 py-2 text-left">Departemen 部门</th>
               <th className="px-4 py-2 text-left">Jenis 类型</th>
+              {isCombinedPO && (
+                <th className="px-4 py-2 text-left">Sumber PO PO来源</th>
+              )}
               <th className="px-4 py-2 text-right">Per Unit 每单位</th>
               <th className="px-4 py-2 text-right">Butuh 需求</th>
               <th className="px-4 py-2 text-right">Stok Tersedia 可用库存</th>
@@ -494,7 +895,7 @@ const BomTableView: React.FC<{
             </tr>
           </thead>
           <tbody>
-            {materialNeeds.items.map((item, idx) => (
+            {materialNeeds.items.map((item: any, idx: number) => (
               <tr
                 key={idx}
                 className="border-b border-gray-200 hover:bg-gray-50"
@@ -503,6 +904,29 @@ const BomTableView: React.FC<{
                 <td className="px-4 py-2 text-sm">{item.ItemName}</td>
                 <td className="px-4 py-2 text-sm">{item.Departemen || "-"}</td>
                 <td className="px-4 py-2 text-sm">{item.NamaJenis || "-"}</td>
+                
+                {/* Kolom tambahan untuk PO Gabungan */}
+                {isCombinedPO && (
+                  <td className="px-4 py-2 text-sm">
+                    {item.sourcePOs ? (
+                      <div className="space-y-1">
+                        {item.sourcePOs.map((source: any, index: number) => (
+                          <div key={index} className="text-xs bg-purple-50 p-1 rounded">
+                            <div className="font-medium text-purple-700">
+                              {source.po}
+                            </div>
+                            <div className="text-purple-600">
+                              QTY: {source.qty} → Butuh: {source.needed}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+                )}
+                
                 <td className="px-4 py-2 text-sm text-right">{item.Qty}</td>
                 <td className="px-4 py-2 text-sm text-right font-mono text-red-600">
                   {item.needed.toLocaleString()}
@@ -527,14 +951,17 @@ const BomTableView: React.FC<{
         </table>
       </div>
       <div className="bg-gray-100 px-4 py-2 border-t border-gray-300 text-xs text-gray-600">
-        Total: {componentsOnly.length} komponen 总组件数:{" "}
-        {componentsOnly.length} | Butuh:{" "}
-        {materialNeeds.totalNeeded.toLocaleString()} 总需求:{" "}
-        {materialNeeds.totalNeeded.toLocaleString()} | Kekurangan:{" "}
+        Total: {materialNeeds.items.length} komponen 总组件数: {materialNeeds.items.length} | 
+        Butuh: {materialNeeds.totalNeeded.toLocaleString()} 总需求: {materialNeeds.totalNeeded.toLocaleString()} | 
+        Kekurangan:{" "}
         <span className="font-bold text-red-600">
-          {materialNeeds.totalShortage.toLocaleString()} 总短缺:{" "}
-          {materialNeeds.totalShortage.toLocaleString()}
+          {materialNeeds.totalShortage.toLocaleString()} 总短缺: {materialNeeds.totalShortage.toLocaleString()}
         </span>
+        {isCombinedPO && (
+          <span className="ml-4 text-purple-600">
+            | PO Gabungan: {combinedItems?.length || 0} items 合并PO项目
+          </span>
+        )}
       </div>
     </div>
   );
@@ -560,7 +987,7 @@ const CommittedPOsPanel: React.FC<{
     <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 mb-6">
       <div className="flex justify-between items-center">
         <h3 className="font-bold text-lg text-blue-800">
-          📋 History PO yang Sudah Di-commit 
+          📋 History PO yang Sudah Di-commit
         </h3>
         <div className="flex gap-2">
           <button
@@ -580,7 +1007,6 @@ const CommittedPOsPanel: React.FC<{
 
       {expanded && (
         <div className="mt-4 space-y-4">
-          {/* Summary */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="bg-white p-3 rounded-lg border">
               <div className="text-sm text-gray-600">Total PO 总PO数</div>
@@ -615,7 +1041,6 @@ const CommittedPOsPanel: React.FC<{
             </div>
           </div>
 
-          {/* Daftar PO */}
           <div className="bg-white rounded-lg border border-gray-200 max-h-96 overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-100 sticky top-0">
@@ -692,34 +1117,33 @@ export default function ProductionPlanPage() {
   const [exportLoading, setExportLoading] = useState(false);
   const [committing, setCommitting] = useState<string | null>(null);
 
-  // State untuk data commit dari database
   const [committedPOs, setCommittedPOs] = useState<CommittedPO[]>([]);
   const [stockReservations, setStockReservations] = useState<
     StockReservation[]
   >([]);
 
-  // State untuk filter tanggal
   const [dateFilter, setDateFilter] = useState({
     startDate: "",
     endDate: "",
   });
 
-  // State untuk pencarian
   const [searchQuery, setSearchQuery] = useState("");
-
-  // State untuk pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  // ==================== UI REFRESH FUNCTION ====================
+  const [exportProgress, setExportProgress] = useState({
+    visible: false,
+    current: 0,
+    total: 0,
+    message: "",
+  });
+
+  // ==================== FUNGSI BANTU ====================
+
   const forceRefreshUI = useCallback(() => {
-    console.log("🔄 [forceRefreshUI] Memaksa refresh tampilan UI 强制刷新UI");
     setOrders((prev) => [...prev]);
   }, []);
 
-  // ==================== FUNGSI PENCARIAN ====================
-
-  // FUNGSI PENCARIAN - FIXED VERSION
   const filteredOrders = useMemo(() => {
     if (!searchQuery.trim()) {
       return orders;
@@ -727,18 +1151,15 @@ export default function ProductionPlanPage() {
 
     const query = searchQuery.toLowerCase().trim();
     return orders.filter((order) => {
-      // Safe handling for null/undefined values
       const noSPK = order.order.No_SPK || "";
       const namaPO = order.order.Nama_PO || "";
       const kodeBarang = order.order.Kode_Barang || "";
 
-      // Check main order fields
       const mainMatch =
         noSPK.toLowerCase().includes(query) ||
         namaPO.toLowerCase().includes(query) ||
         kodeBarang.toLowerCase().includes(query);
 
-      // Check combined items if they exist
       const combinedMatch =
         order.order.combinedItems &&
         order.order.combinedItems.some((item) => {
@@ -754,203 +1175,10 @@ export default function ProductionPlanPage() {
     });
   }, [orders, searchQuery]);
 
-  // Reset pencarian
   const clearSearch = () => {
     setSearchQuery("");
     setCurrentPage(1);
   };
-
-  // ==================== FUNGSI SINKRONISASI COMMIT ====================
-
-  // FUNGSI: Sinkronkan status commit antara orders dan committedPOs - FIXED VERSION
-  const syncCommitStatus = useCallback(() => {
-    console.log(
-      "🔄 [syncCommitStatus] Sinkronisasi status commit 同步提交状态"
-    );
-    console.log("📋 [syncCommitStatus] CommittedPOs:", committedPOs.length);
-    console.log("📦 [syncCommitStatus] Orders:", orders.length);
-
-    setOrders((prevOrders) =>
-      prevOrders.map((order) => {
-        // Cari data commit terbaru dari database
-        const committedPO = committedPOs.find(
-          (po) => po.noSPK === order.order.No_SPK && po.status === "COMMITTED"
-        );
-
-        const shouldBeCommitted = !!committedPO;
-        const currentCommitID = order.commitID;
-        const newCommitID = committedPO?.commitID;
-
-        console.log(
-          `🔍 [syncCommitStatus] ${order.order.No_SPK}: current=${order.committed}, should=${shouldBeCommitted}, currentID=${currentCommitID}, newID=${newCommitID}`
-        );
-
-        // Jika status berbeda, update order
-        if (
-          order.committed !== shouldBeCommitted ||
-          currentCommitID !== newCommitID
-        ) {
-          console.log(
-            `🔄 [syncCommitStatus] Update ${order.order.No_SPK}: committed=${shouldBeCommitted}, commitID=${newCommitID}`
-          );
-          return {
-            ...order,
-            committed: shouldBeCommitted,
-            commitID: newCommitID,
-            selected: shouldBeCommitted ? false : order.selected, // Unselect jika di-commit
-          };
-        }
-
-        return order;
-      })
-    );
-  }, [committedPOs, orders.length]); // Tambah orders.length sebagai dependency
-
-  // FUNGSI: Load data committed PO dari database - IMPROVED VERSION
-  const loadCommittedPOs = async (): Promise<void> => {
-    try {
-      console.log(
-        "📋 [loadCommittedPOs] Memuat data committed PO dari database 从数据库加载已提交PO数据"
-      );
-
-      const response = await fetch("/api/ppic/committed-pos");
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-
-      if (result.success) {
-        const newCommittedPOs = result.data.committedPOs || [];
-        const newReservations = result.data.reservations || [];
-
-        console.log(
-          `✅ [loadCommittedPOs] Berhasil load ${newCommittedPOs.length} committed POs 成功加载 ${newCommittedPOs.length} 个已提交PO`
-        );
-
-        // Update state
-        setCommittedPOs(newCommittedPOs);
-        setStockReservations(newReservations);
-
-        // === PERBAIKAN: PASTIKAN SINKRONISASI DIPANGGIL SETELAH STATE UPDATE ===
-        setTimeout(() => {
-          syncCommitStatus();
-          forceRefreshUI();
-        }, 100);
-      } else {
-        console.error(
-          "❌ [loadCommittedPOs] Gagal load committed POs 加载已提交PO失败:",
-          result.error
-        );
-      }
-    } catch (error) {
-      console.error("❌ [loadCommittedPOs] Error 错误:", error);
-    }
-  };
-
-  // FUNGSI: Refresh semua data
-  const refreshAllData = async (): Promise<void> => {
-    console.log("🔄 [refreshAllData] Refresh semua data 刷新所有数据");
-    try {
-      setLoading(true);
-      await loadCommittedPOs(); // Load committed PO dulu
-      await fetchOrders(dateFilter.startDate, dateFilter.endDate); // Kemudian load orders
-    } catch (error) {
-      console.error("❌ [refreshAllData] Error 错误:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ==================== FUNGSI PAGINATION ====================
-
-  const paginatedOrders = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    return filteredOrders.slice(startIndex, endIndex);
-  }, [filteredOrders, currentPage, itemsPerPage]);
-
-  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
-
-  const goToPage = (page: number) => {
-    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
-  };
-
-  const handleItemsPerPageChange = (
-    e: React.ChangeEvent<HTMLSelectElement>
-  ) => {
-    const newItemsPerPage = parseInt(e.target.value);
-    setItemsPerPage(newItemsPerPage);
-    setCurrentPage(1);
-  };
-
-  // ==================== FUNGSI UTAMA ====================
-
-  // FUNGSI: Gabungkan PO dengan No_SPK yang sama
-  const combineDuplicatePOs = (
-    orders: ProductionOrder[]
-  ): ProductionOrder[] => {
-    const poMap = new Map<string, ProductionOrder>();
-
-    orders.forEach((order) => {
-      const existingPO = poMap.get(order.No_SPK);
-
-      if (existingPO) {
-        if (!existingPO.combinedItems) {
-          existingPO.combinedItems = [
-            {
-              ...existingPO,
-              isCombined: false,
-            },
-          ];
-        }
-
-        existingPO.combinedItems!.push({
-          ...order,
-          isCombined: true,
-        });
-
-        existingPO.QTY += order.QTY;
-
-        if (existingPO.Nama_PO !== order.Nama_PO) {
-          existingPO.Nama_PO = `${existingPO.Nama_PO} | ${order.Nama_PO}`;
-        }
-
-        if (existingPO.Kode_Barang !== order.Kode_Barang) {
-          existingPO.Kode_Barang = `${existingPO.Kode_Barang} | ${order.Kode_Barang}`;
-        }
-
-        if (
-          new Date(order.Tanggal_Order) > new Date(existingPO.Tanggal_Order)
-        ) {
-          existingPO.Tanggal_Order = order.Tanggal_Order;
-        }
-      } else {
-        poMap.set(order.No_SPK, { ...order });
-      }
-    });
-
-    return Array.from(poMap.values());
-  };
-
-  // Statistik untuk penggabungan PO
-  const combinedStats = useMemo(() => {
-    const totalOriginalOrders = filteredOrders.reduce((total, order) => {
-      return total + (order.order.combinedItems?.length || 1);
-    }, 0);
-
-    const combinedCount = filteredOrders.filter(
-      (order) =>
-        order.order.combinedItems && order.order.combinedItems.length > 1
-    ).length;
-
-    return {
-      totalOriginalOrders,
-      combinedCount,
-      saving: totalOriginalOrders - filteredOrders.length,
-    };
-  }, [filteredOrders]);
 
   // FUNGSI: Ambil semua kode barang dari PO gabungan
   const getAllKodeBarang = (kodeBarang: string): string[] => {
@@ -960,33 +1188,84 @@ export default function ProductionPlanPage() {
     return [kodeBarang];
   };
 
-  // FUNGSI: Ambil stok untuk SATU item dengan memperhitungkan commit
+  // ==================== FUNGSI UTAMA YANG DIPERBAIKI ====================
+
+  // FUNGSI: Gabungkan PO dengan No_SPK yang sama - FIXED VERSION
+  const combineDuplicatePOs = (
+    orders: ProductionOrder[]
+  ): ProductionOrder[] => {
+    const poMap = new Map<string, ProductionOrder>();
+
+    orders.forEach((order) => {
+      const existingPO = poMap.get(order.No_SPK);
+
+      if (existingPO) {
+        // Jika PO sudah ada, tambahkan ke combinedItems
+        if (!existingPO.combinedItems) {
+          existingPO.combinedItems = [
+            {
+              ...existingPO,
+              isCombined: false,
+            },
+          ];
+        }
+
+        // Tambahkan PO baru ke combinedItems
+        existingPO.combinedItems.push({
+          ...order,
+          isCombined: true,
+        });
+
+        // PERBAIKAN: Jangan ubah QTY utama, biarkan sesuai dengan item pertama
+        existingPO.QTY = existingPO.QTY; // Tetap pertahankan QTY asli item pertama
+
+        // Gabungkan nama PO dan kode barang
+        if (existingPO.Nama_PO !== order.Nama_PO) {
+          existingPO.Nama_PO = `${existingPO.Nama_PO} | ${order.Nama_PO}`;
+        }
+
+        if (existingPO.Kode_Barang !== order.Kode_Barang) {
+          existingPO.Kode_Barang = `${existingPO.Kode_Barang} | ${order.Kode_Barang}`;
+        }
+
+        // Gunakan tanggal terbaru
+        if (
+          new Date(order.Tanggal_Order) > new Date(existingPO.Tanggal_Order)
+        ) {
+          existingPO.Tanggal_Order = order.Tanggal_Order;
+        }
+      } else {
+        // PO baru, inisialisasi dengan combinedItems
+        poMap.set(order.No_SPK, {
+          ...order,
+          combinedItems: [
+            {
+              ...order,
+              isCombined: false,
+            },
+          ],
+        });
+      }
+    });
+
+    return Array.from(poMap.values());
+  };
+
+  // FUNGSI: Ambil stok untuk SATU item
   const fetchStockForItem = async (
     itemId: string,
     orderDate: string
   ): Promise<StockItem | null> => {
     try {
-      console.log(
-        `🔍 [fetchStockForItem] Mengambil stok untuk 获取库存: ${itemId}`
-      );
-
-      if (!itemId) {
-        console.log(
-          "⚠️ [fetchStockForItem] Item ID tidak diberikan 未提供物料ID"
-        );
-        return null;
-      }
+      if (!itemId) return null;
 
       if (!orderDate) {
         orderDate = new Date().toISOString().split("T")[0];
       }
 
-      // Gunakan API yang sudah include reservation
       const apiUrl = `/api/stock/ppic?tgl1=${orderDate}&tgl2=${orderDate}&loc=%25&periodeR=201905&kategori=%25&itemid=${encodeURIComponent(
         itemId
       )}`;
-
-      console.log("📡 [fetchStockForItem] API URL:", apiUrl);
 
       const response = await fetch(apiUrl, {
         method: "GET",
@@ -996,14 +1275,6 @@ export default function ProductionPlanPage() {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error(
-          "❌ [fetchStockForItem] Response error 响应错误:",
-          response.status,
-          errorText
-        );
-
-        // Fallback
         return {
           itemid: itemId,
           itemname: itemId,
@@ -1012,13 +1283,8 @@ export default function ProductionPlanPage() {
       }
 
       const result = await response.json();
-      console.log(`📦 [fetchStockForItem] Response untuk ${itemId}:`, result);
 
       if (!result.success) {
-        console.warn(
-          `⚠️ [fetchStockForItem] API tidak success API不成功:`,
-          result.error
-        );
         return {
           itemid: itemId,
           itemname: itemId,
@@ -1032,12 +1298,7 @@ export default function ProductionPlanPage() {
         );
 
         if (itemData) {
-          // Gunakan SaldoAkhir yang sudah dikurangi committed stock
           const stockAkhir = parseFloat(itemData.SaldoAkhir) || 0;
-          console.log(
-            `✅ [fetchStockForItem] ${itemId}: Stock = ${stockAkhir} 库存 = ${stockAkhir}`
-          );
-
           return {
             itemid: itemData.KodeBarang,
             itemname: itemData.NamaBarang || itemData.KodeBarang,
@@ -1046,28 +1307,15 @@ export default function ProductionPlanPage() {
             committedQty: parseFloat(itemData.TotalCommitted) || 0,
             reservedQty: parseFloat(itemData.TotalReserved) || 0,
           };
-        } else {
-          console.warn(
-            `⚠️ [fetchStockForItem] Item ${itemId} tidak ditemukan dalam response 在响应中未找到物料`
-          );
-          return {
-            itemid: itemId,
-            itemname: itemId,
-            stockAkhir: 0,
-          };
         }
-      } else {
-        console.warn(
-          `⚠️ [fetchStockForItem] Data tidak ditemukan untuk ${itemId} 未找到数据`
-        );
-        return {
-          itemid: itemId,
-          itemname: itemId,
-          stockAkhir: 0,
-        };
       }
+
+      return {
+        itemid: itemId,
+        itemname: itemId,
+        stockAkhir: 0,
+      };
     } catch (err: unknown) {
-      console.error(`❌ [fetchStockForItem] Error untuk ${itemId}:`, err);
       return {
         itemid: itemId,
         itemname: itemId,
@@ -1081,10 +1329,6 @@ export default function ProductionPlanPage() {
     itemIds: string[],
     orderDate: string
   ): Promise<StockItem[]> => {
-    console.log(
-      `🔍 [fetchStockForItems] Mengambil stok untuk ${itemIds.length} items 获取 ${itemIds.length} 个物料的库存`
-    );
-
     const stockData: StockItem[] = [];
     const batchSize = 5;
     const delay = 200;
@@ -1095,13 +1339,6 @@ export default function ProductionPlanPage() {
 
     for (let i = 0; i < uniqueItemIds.length; i += batchSize) {
       const batch = uniqueItemIds.slice(i, i + batchSize);
-      console.log(
-        `🔄 [fetchStockForItems] Processing batch ${
-          i / batchSize + 1
-        }: 处理批次`,
-        batch
-      );
-
       const batchPromises = batch.map((itemId) =>
         fetchStockForItem(itemId, orderDate)
       );
@@ -1112,17 +1349,8 @@ export default function ProductionPlanPage() {
           (item): item is StockItem => item !== null
         );
         stockData.push(...validResults);
-
-        console.log(
-          `✅ [fetchStockForItems] Batch ${i / batchSize + 1} completed: ${
-            validResults.length
-          } items 批次完成`
-        );
       } catch (batchError) {
-        console.error(
-          `❌ [fetchStockForItems] Batch ${i / batchSize + 1} error 批次错误:`,
-          batchError
-        );
+        console.error(`Batch error:`, batchError);
       }
 
       if (i + batchSize < uniqueItemIds.length) {
@@ -1130,9 +1358,6 @@ export default function ProductionPlanPage() {
       }
     }
 
-    console.log(
-      `✅ [fetchStockForItems] Selesai 完成: ${stockData.length} items berhasil diambil 项目成功获取`
-    );
     return stockData;
   };
 
@@ -1162,7 +1387,6 @@ export default function ProductionPlanPage() {
       });
     });
 
-    // PERBAIKAN: Gabungkan tree structures juga
     const combinedTree: BomItem[] = [];
     Object.values(boms).forEach((bom) => {
       if (bom.tree && bom.tree.length > 0) {
@@ -1175,6 +1399,186 @@ export default function ProductionPlanPage() {
       tree: combinedTree,
       combinedBoms: boms,
     };
+  };
+
+  // ==================== FUNGSI SINKRONISASI COMMIT ====================
+
+  const syncCommitStatus = useCallback(() => {
+    setOrders((prevOrders) =>
+      prevOrders.map((order) => {
+        const committedPO = committedPOs.find(
+          (po) => po.noSPK === order.order.No_SPK && po.status === "COMMITTED"
+        );
+
+        const shouldBeCommitted = !!committedPO;
+        const currentCommitID = order.commitID;
+        const newCommitID = committedPO?.commitID;
+
+        if (
+          order.committed !== shouldBeCommitted ||
+          currentCommitID !== newCommitID
+        ) {
+          return {
+            ...order,
+            committed: shouldBeCommitted,
+            commitID: newCommitID,
+            selected: shouldBeCommitted ? false : order.selected,
+          };
+        }
+
+        return order;
+      })
+    );
+  }, [committedPOs]);
+
+  const loadCommittedPOs = async (): Promise<void> => {
+    try {
+      const response = await fetch("/api/ppic/committed-pos");
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        const newCommittedPOs = result.data.committedPOs || [];
+        const newReservations = result.data.reservations || [];
+
+        setCommittedPOs(newCommittedPOs);
+        setStockReservations(newReservations);
+
+        setTimeout(() => {
+          syncCommitStatus();
+          forceRefreshUI();
+        }, 100);
+      }
+    } catch (error) {
+      console.error("Error loadCommittedPOs:", error);
+    }
+  };
+
+  const refreshAllData = async (): Promise<void> => {
+    try {
+      setLoading(true);
+      await loadCommittedPOs();
+      await fetchOrders(dateFilter.startDate, dateFilter.endDate);
+    } catch (error) {
+      console.error("Error refreshAllData:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ==================== FUNGSI PAGINATION ====================
+
+  const paginatedOrders = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return filteredOrders.slice(startIndex, endIndex);
+  }, [filteredOrders, currentPage, itemsPerPage]);
+
+  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
+
+  const goToPage = (page: number) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+  };
+
+  const handleItemsPerPageChange = (
+    e: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    const newItemsPerPage = parseInt(e.target.value);
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1);
+  };
+
+  // ==================== FUNGSI LAINNYA ====================
+
+  const fetchOrders = async (startDate?: string, endDate?: string) => {
+    try {
+      setLoading(true);
+      setError("");
+
+      let url = "/api/ppic";
+      const params = new URLSearchParams();
+
+      if (startDate) params.append("startDate", startDate);
+      if (endDate) params.append("endDate", endDate);
+
+      if (params.toString()) {
+        url += `?${params.toString()}`;
+      }
+
+      const response = await axios.get<ProductionOrder[]>(url);
+
+      // Gabungkan PO dengan No_SPK yang sama
+      const combinedOrders = combineDuplicatePOs(response.data);
+
+      // Buat production plans
+      const productionPlans: ProductionPlan[] = combinedOrders.map((order) => {
+        const existingOrder = orders.find(
+          (o) => o.order.No_SPK === order.No_SPK
+        );
+        const committedPO = committedPOs.find(
+          (po) => po.noSPK === order.No_SPK && po.status === "COMMITTED"
+        );
+
+        const isCommitted = existingOrder?.committed ?? !!committedPO;
+        const commitID = existingOrder?.commitID ?? committedPO?.commitID;
+
+        return {
+          order: {
+            ...order,
+            QTY: order.QTY || 0,
+            originalOrders: order.combinedItems || [order],
+          },
+          expanded: existingOrder?.expanded ?? false,
+          loading: false,
+          selected: existingOrder?.selected ?? false,
+          loadingBom: false,
+          viewMode: existingOrder?.viewMode ?? "table",
+          committed: isCommitted,
+          commitID: commitID,
+          bom: existingOrder?.bom,
+          stock: existingOrder?.stock,
+          stockLastUpdated: existingOrder?.stockLastUpdated,
+        };
+      });
+
+      setOrders(productionPlans);
+      setCurrentPage(1);
+    } catch (err: unknown) {
+      console.error("Error fetchOrders:", err);
+      if (err instanceof Error) {
+        setError("Gagal mengambil data produksi: " + err.message);
+      } else {
+        setError("Gagal mengambil data produksi: Unknown error");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDateFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setDateFilter((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const applyDateFilter = () => {
+    fetchOrders(dateFilter.startDate, dateFilter.endDate);
+  };
+
+  const resetDateFilter = () => {
+    setDateFilter({ startDate: "", endDate: "" });
+    fetchOrders();
+  };
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+    setCurrentPage(1);
   };
 
   // FUNGSI: Refresh stok untuk satu PO
@@ -1190,7 +1594,6 @@ export default function ProductionPlanPage() {
           )
         );
 
-        // Ambil stok terbaru untuk semua item di BOM
         const updatedStock = await fetchStockForItems(
           plan.bom.flat.map((item) => item.ItemID),
           plan.order.Tanggal_Order
@@ -1208,12 +1611,8 @@ export default function ProductionPlanPage() {
               : item
           )
         );
-
-        console.log(
-          `✅ Stok diperbarui untuk PO ${plan.order.No_SPK} 库存已更新`
-        );
       } catch (error) {
-        console.error(`❌ Gagal refresh stok 刷新库存失败:`, error);
+        console.error(`Gagal refresh stok:`, error);
         setOrders((prev) =>
           prev.map((item, i) =>
             i === globalIndex ? { ...item, loading: false } : item
@@ -1223,63 +1622,91 @@ export default function ProductionPlanPage() {
     }
   };
 
-  // FUNGSI: Commit PO ke database - FIXED VERSION
+  // FUNGSI: Commit PO ke database
   const commitPO = async (index: number): Promise<void> => {
     const globalIndex = (currentPage - 1) * itemsPerPage + index;
     const plan = filteredOrders[globalIndex];
 
     if (!plan.bom || !plan.stock) {
-      alert("BOM belum diload untuk PO ini! 此PO的BOM尚未加载!");
+      alert("BOM belum diload untuk PO ini!");
       return;
     }
 
-    // Validasi: cek apakah PO sudah di-commit di database
     const alreadyCommitted = committedPOs.find(
       (po) => po.noSPK === plan.order.No_SPK && po.status === "COMMITTED"
     );
 
     if (alreadyCommitted) {
-      alert(`PO ${plan.order.No_SPK} sudah di-commit sebelumnya! 此PO已提交!`);
-      syncCommitStatus();
+      alert(`PO ${plan.order.No_SPK} sudah di-commit sebelumnya!`);
       return;
     }
 
     setCommitting(plan.order.No_SPK);
 
     try {
-      // Siapkan material usage data
       const materialUsage: MaterialUsageItem[] = [];
 
-      plan.bom.flat.forEach((bomItem) => {
-        if (bomItem.Level > 0) {
-          const needed = bomItem.Qty * plan.order.QTY;
-          const availableStock =
-            plan.stock?.find((s) => s.itemid === bomItem.ItemID)?.stockAkhir ||
-            0;
-          const usedQty = Math.min(needed, availableStock);
-          const stockAfter = availableStock - usedQty;
+      // PERBAIKAN: Handle perhitungan untuk PO Gabungan
+      if (plan.order.combinedItems && plan.order.combinedItems.length > 1) {
+        // Untuk PO Gabungan, hitung per item
+        for (const combinedItem of plan.order.combinedItems) {
+          const materialNeeds = calculateMaterialNeedsForCombinedPO(
+            plan.bom,
+            [combinedItem],
+            plan.stock
+          );
 
-          if (usedQty > 0) {
-            materialUsage.push({
-              itemId: bomItem.ItemID,
-              itemName: bomItem.ItemName,
-              qtyPerUnit: bomItem.Qty,
-              totalNeeded: needed,
-              stockBefore: availableStock,
-              stockAfter: stockAfter,
-              qtyUsed: usedQty,
-              departemen: bomItem.Departemen,
-              level: bomItem.Level,
-            });
-          }
+          materialNeeds.items.forEach((bomItem) => {
+            if (bomItem.Level > 0) {
+              const needed = bomItem.needed;
+              const availableStock = bomItem.availableStock;
+              const usedQty = Math.min(needed, availableStock);
+              const stockAfter = availableStock - usedQty;
+
+              if (usedQty > 0) {
+                materialUsage.push({
+                  itemId: bomItem.ItemID,
+                  itemName: bomItem.ItemName,
+                  qtyPerUnit: bomItem.Qty,
+                  totalNeeded: needed,
+                  stockBefore: availableStock,
+                  stockAfter: stockAfter,
+                  qtyUsed: usedQty,
+                  departemen: bomItem.Departemen,
+                  level: bomItem.Level,
+                });
+              }
+            }
+          });
         }
-      });
+      } else {
+        // Untuk PO Biasa
+        plan.bom.flat.forEach((bomItem) => {
+          if (bomItem.Level > 0) {
+            const needed = bomItem.Qty * plan.order.QTY;
+            const availableStock =
+              plan.stock?.find((s) => s.itemid === bomItem.ItemID)
+                ?.stockAkhir || 0;
+            const usedQty = Math.min(needed, availableStock);
+            const stockAfter = availableStock - usedQty;
 
-      console.log(
-        `🔒 [commitPO] Mengirim request commit untuk ${plan.order.No_SPK} 发送提交请求`
-      );
+            if (usedQty > 0) {
+              materialUsage.push({
+                itemId: bomItem.ItemID,
+                itemName: bomItem.ItemName,
+                qtyPerUnit: bomItem.Qty,
+                totalNeeded: needed,
+                stockBefore: availableStock,
+                stockAfter: stockAfter,
+                qtyUsed: usedQty,
+                departemen: bomItem.Departemen,
+                level: bomItem.Level,
+              });
+            }
+          }
+        });
+      }
 
-      // Panggil API commit
       const response = await fetch("/api/ppic/commit-po", {
         method: "POST",
         headers: {
@@ -1292,35 +1719,23 @@ export default function ProductionPlanPage() {
           qty: plan.order.QTY,
           userID: "current_user",
           materialUsage: materialUsage,
+          isCombinedPO:
+            plan.order.combinedItems && plan.order.combinedItems.length > 1,
+          combinedItems: plan.order.combinedItems,
         }),
       });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
 
       const result = await response.json();
 
       if (!result.success) {
-        throw new Error(result.error);
+        throw new Error(result.error || "Unknown error from server");
       }
 
-      console.log(
-        `✅ [commitPO] Berhasil commit PO ${plan.order.No_SPK}, Commit ID: ${result.commitID} 提交成功`
-      );
-
-      // === PERBAIKAN: IMMEDIATE UI UPDATE ===
-      // Update state local SEBELUM load data dari database untuk feedback langsung
-      setOrders((prev) =>
-        prev.map((item, i) =>
-          i === globalIndex
-            ? {
-                ...item,
-                committed: true,
-                commitID: result.commitID,
-                selected: false, // Unselect setelah commit
-              }
-            : item
-        )
-      );
-
-      // Juga update committedPOs state untuk konsistensi
       const newCommittedPO: CommittedPO = {
         commitID: result.commitID,
         noSPK: plan.order.No_SPK,
@@ -1338,57 +1753,54 @@ export default function ProductionPlanPage() {
       };
 
       setCommittedPOs((prev) => [...prev, newCommittedPO]);
-      // === FORCE REFRESH UI ===
-      forceRefreshUI();
-      alert(
-        `PO berhasil di-commit!\nCommit ID: ${result.commitID}\n${materialUsage.length} material di-reserve\nPO提交成功!\n提交ID: ${result.commitID}\n${materialUsage.length} 个物料已预留`
-      );
 
-      // Refresh data committed POs dari database untuk memastikan konsistensi
-      await loadCommittedPOs();
-    } catch (error) {
-      console.error(
-        `❌ [commitPO] Gagal commit PO ${plan.order.No_SPK}: 提交失败`,
-        error
-      );
-
-      // === PERBAIKAN: ROLLBACK UI JIKA GAGAL ===
       setOrders((prev) =>
-        prev.map((item, i) =>
-          i === globalIndex
+        prev.map((item) =>
+          item.order.No_SPK === plan.order.No_SPK
             ? {
                 ...item,
-                committed: false,
-                commitID: undefined,
+                committed: true,
+                commitID: result.commitID,
+                selected: false,
               }
             : item
         )
       );
 
-      alert("Gagal commit PO. Silakan coba lagi. 提交失败，请重试");
+      setTimeout(() => {
+        forceRefreshUI();
+      }, 100);
+
+      alert(
+        `✅ PO berhasil di-commit!\nCommit ID: ${result.commitID}\n${materialUsage.length} material di-reserve`
+      );
+
+      setTimeout(async () => {
+        await loadCommittedPOs();
+      }, 500);
+    } catch (error: any) {
+      console.error(`Gagal commit PO ${plan.order.No_SPK}:`, error);
+      const errorMessage = error.message || "Unknown error occurred";
+      alert(`❌ Gagal commit PO: ${errorMessage}`);
     } finally {
       setCommitting(null);
     }
   };
 
-  // FUNGSI: Uncommit PO dari database - FIXED VERSION
+  // FUNGSI: Uncommit PO dari database
   const uncommitPO = async (index: number): Promise<void> => {
     const globalIndex = (currentPage - 1) * itemsPerPage + index;
     const plan = filteredOrders[globalIndex];
 
     if (
       !confirm(
-        `Apakah Anda yakin ingin uncommit PO ${plan.order.No_SPK}? Stok akan dikembalikan.\n确定要取消提交PO ${plan.order.No_SPK}吗？库存将被退回。`
+        `Apakah Anda yakin ingin uncommit PO ${plan.order.No_SPK}? Stok akan dikembalikan.`
       )
     ) {
       return;
     }
 
     try {
-      console.log(
-        `↩️ [uncommitPO] Mengirim request uncommit untuk ${plan.order.No_SPK} 发送取消提交请求`
-      );
-
       const response = await fetch("/api/ppic/uncommit-po", {
         method: "POST",
         headers: {
@@ -1406,11 +1818,6 @@ export default function ProductionPlanPage() {
         throw new Error(result.error);
       }
 
-      console.log(
-        `✅ [uncommitPO] Berhasil uncommit PO ${plan.order.No_SPK} 取消提交成功`
-      );
-
-      // === PERBAIKAN: IMMEDIATE UI UPDATE DENGAN STATE YANG BENAR ===
       setOrders((prev) =>
         prev.map((item, i) =>
           i === globalIndex
@@ -1424,51 +1831,41 @@ export default function ProductionPlanPage() {
         )
       );
 
-      // === PERBAIKAN: UPDATE COMMITTED POS STATE ===
       setCommittedPOs((prev) =>
         prev.filter(
           (po) => po.noSPK !== plan.order.No_SPK || po.status !== "COMMITTED"
         )
       );
 
-      // === PERBAIKAN: FORCE REFRESH UI ===
       forceRefreshUI();
 
-      alert(
-        "PO berhasil di-uncommit! Stok telah dikembalikan. PO取消提交成功! 库存已退回"
-      );
+      alert("PO berhasil di-uncommit! Stok telah dikembalikan.");
 
-      // === PERBAIKAN: REFRESH DATA DENGAN DELAY UNTUK MEMASTIKAN KONSISTENSI ===
       setTimeout(async () => {
         await loadCommittedPOs();
       }, 500);
     } catch (error) {
-      console.error(
-        `❌ [uncommitPO] Gagal uncommit PO ${plan.order.No_SPK}: 取消提交失败`,
-        error
-      );
-
-      // === PERBAIKAN: ROLLBACK UI JIKA GAGAL ===
+      console.error(`Gagal uncommit PO ${plan.order.No_SPK}:`, error);
       setOrders((prev) =>
         prev.map((item, i) =>
           i === globalIndex
             ? {
                 ...item,
-                committed: true, // Kembalikan ke status committed
+                committed: true,
               }
             : item
         )
       );
 
-      alert("Gagal uncommit PO. Silakan coba lagi. 取消提交失败，请重试");
+      alert("Gagal uncommit PO. Silakan coba lagi.");
     }
   };
 
-  // FUNGSI: Reset semua committed PO - IMPROVED VERSION
+  // FUNGSI: Reset semua committed PO
   const resetCommittedPOs = async () => {
     if (
       !confirm(
-        "Apakah Anda yakin ingin mereset SEMUA PO yang sudah di-commit? Tindakan ini akan mengembalikan semua stok yang di-reserve.\n确定要重置所有已提交的PO吗？此操作将退回所有预留库存。"
+        "Apakah Anda yakin ingin mereset SEMUA PO yang sudah di-commit? Tindakan ini akan mengembalikan semua stok yang di-reserve."
       )
     ) {
       return;
@@ -1493,11 +1890,10 @@ export default function ProductionPlanPage() {
 
         const result = await response.json();
         if (!result.success) {
-          console.error(`❌ Gagal uncommit PO ${po.noSPK}:`, result.error);
+          console.error(`Gagal uncommit PO ${po.noSPK}:`, result.error);
         }
       }
 
-      // === PERBAIKAN: UPDATE STATE LOKAL LANGSUNG ===
       setOrders((prev) =>
         prev.map((order) => ({
           ...order,
@@ -1509,15 +1905,12 @@ export default function ProductionPlanPage() {
 
       setCommittedPOs((prev) => prev.filter((po) => po.status !== "COMMITTED"));
 
-      // Refresh data untuk memastikan konsistensi
       await loadCommittedPOs();
 
-      alert(
-        `Berhasil reset ${committedPOsToReset.length} PO yang di-commit! 成功重置 ${committedPOsToReset.length} 个已提交PO!`
-      );
+      alert(`Berhasil reset ${committedPOsToReset.length} PO yang di-commit!`);
     } catch (error) {
-      console.error("❌ Gagal reset committed POs 重置失败:", error);
-      alert("Gagal reset committed POs. Silakan coba lagi. 重置失败，请重试");
+      console.error("Gagal reset committed POs:", error);
+      alert("Gagal reset committed POs. Silakan coba lagi.");
     }
   };
 
@@ -1534,15 +1927,7 @@ export default function ProductionPlanPage() {
         )
       );
 
-      console.log(
-        `📦 [loadBomWithStock] Loading BOM untuk ${kodeBarang} 加载BOM`
-      );
-
       const allKodeBarang = getAllKodeBarang(kodeBarang);
-      console.log(
-        `🎯 [loadBomWithStock] Mengambil semua kode barang: 获取所有物料代码`,
-        allKodeBarang
-      );
 
       const combinedBoms: {
         [kodeBarang: string]: { flat: BomItem[]; tree: BomItem[] };
@@ -1553,16 +1938,12 @@ export default function ProductionPlanPage() {
       // Load BOM untuk setiap kode barang
       for (const kb of allKodeBarang) {
         try {
-          console.log(
-            `📦 [loadBomWithStock] Loading BOM untuk kode barang: ${kb}`
-          );
           const bomResponse = await axios.get(
             `/api/bom/ppic?itemid=${encodeURIComponent(kb)}`,
             { timeout: 10000 }
           );
 
           if (bomResponse.data && bomResponse.data.flat) {
-            // PERBAIKAN: Build tree structure dari flat BOM
             const treeStructure = buildTreeStructure(bomResponse.data.flat);
             combinedBoms[kb] = {
               flat: bomResponse.data.flat,
@@ -1573,18 +1954,11 @@ export default function ProductionPlanPage() {
               (item: BomItem) => item.ItemID
             );
             allItemIds = [...allItemIds, ...itemIds];
-
-            console.log(
-              `✅ [loadBomWithStock] BOM berhasil untuk ${kb}: ${itemIds.length} items, ${treeStructure.length} root nodes BOM加载成功`
-            );
           } else {
-            throw new Error("Data BOM tidak valid BOM数据无效");
+            throw new Error("Data BOM tidak valid");
           }
         } catch (err) {
-          console.error(
-            `❌ [loadBomWithStock] Gagal load BOM untuk ${kb}: BOM加载失败`,
-            err
-          );
+          console.error(`Gagal load BOM untuk ${kb}:`, err);
           failedBoms.push(kb);
         }
       }
@@ -1594,26 +1968,19 @@ export default function ProductionPlanPage() {
         throw new Error(
           `Gagal memuat BOM untuk semua kode barang: ${allKodeBarang.join(
             ", "
-          )} 所有物料代码的BOM加载失败`
+          )}`
         );
       }
 
       // Hapus duplikat item IDs
       allItemIds = Array.from(new Set(allItemIds));
-      console.log(
-        `📋 [loadBomWithStock] Total unique Item IDs: 总唯一物料ID`,
-        allItemIds.length
-      );
 
       // Ambil stok untuk semua item
       let stockData: StockItem[] = [];
       try {
         stockData = await fetchStockForItems(allItemIds, orderDate);
       } catch (stockError) {
-        console.error(
-          `❌ [loadBomWithStock] Gagal mengambil stok: 获取库存失败`,
-          stockError
-        );
+        console.error(`Gagal mengambil stok:`, stockError);
         stockData = allItemIds.map((id) => ({
           itemid: id,
           itemname: id,
@@ -1637,26 +2004,14 @@ export default function ProductionPlanPage() {
                 stockLastUpdated: new Date().toISOString(),
                 error:
                   failedBoms.length > 0
-                    ? `Beberapa BOM gagal dimuat: ${failedBoms.join(
-                        ", "
-                      )} 部分BOM加载失败`
+                    ? `Beberapa BOM gagal dimuat: ${failedBoms.join(", ")}`
                     : undefined,
               }
             : item
         )
       );
-
-      console.log(`✅ [loadBomWithStock] Selesai untuk ${kodeBarang} 完成`);
-      console.log(
-        `📊 [loadBomWithStock] Total items dalam BOM gabungan: 组合BOM总项目数`,
-        finalBom.flat.length
-      );
-      console.log(
-        `🌳 [loadBomWithStock] Total tree nodes: 总树节点数`,
-        finalBom.tree.length
-      );
     } catch (err: unknown) {
-      console.error(`❌ [loadBomWithStock] Error untuk ${kodeBarang}:`, err);
+      console.error(`Error untuk ${kodeBarang}:`, err);
       setOrders((prev) =>
         prev.map((item, i) =>
           i === index
@@ -1665,8 +2020,8 @@ export default function ProductionPlanPage() {
                 loading: false,
                 error:
                   err instanceof Error
-                    ? `Gagal memuat data: ${err.message} 加载数据失败`
-                    : "Gagal memuat data: Unknown error 加载数据失败: 未知错误",
+                    ? `Gagal memuat data: ${err.message}`
+                    : "Gagal memuat data: Unknown error",
               }
             : item
         )
@@ -1674,9 +2029,313 @@ export default function ProductionPlanPage() {
     }
   };
 
+  const toggleOrder = async (
+    index: number,
+    kodeBarang: string,
+    orderDate: string
+  ) => {
+    const globalIndex = (currentPage - 1) * itemsPerPage + index;
+    const order = filteredOrders[globalIndex];
 
+    if (order.expanded) {
+      setOrders((prev) =>
+        prev.map((item, i) =>
+          i === globalIndex ? { ...item, expanded: false } : item
+        )
+      );
+    } else {
+      if (!order.bom && !order.loading) {
+        await loadBomWithStock(globalIndex, kodeBarang, orderDate);
+      } else {
+        // AUTO-REFRESH STOK SAAT BUKA DETAIL
+        if (order.bom && order.stock) {
+          await refreshStockForPlan(index);
+        }
 
-  // ==================== FUNGSI EXPORT SELECTED ONLY ====================
+        setOrders((prev) =>
+          prev.map((item, i) =>
+            i === globalIndex ? { ...item, expanded: true } : item
+          )
+        );
+      }
+    }
+  };
+
+  const toggleSelection = async (index: number) => {
+    const globalIndex = (currentPage - 1) * itemsPerPage + index;
+    const order = filteredOrders[globalIndex];
+    const newSelected = !order.selected;
+
+    if (newSelected && !order.bom && !order.loadingBom && !order.committed) {
+      setOrders((prev) =>
+        prev.map((item, i) =>
+          i === globalIndex ? { ...item, loadingBom: true } : item
+        )
+      );
+
+      try {
+        const allKodeBarang = getAllKodeBarang(order.order.Kode_Barang);
+        const combinedBoms: {
+          [kodeBarang: string]: { flat: BomItem[]; tree: BomItem[] };
+        } = {};
+        let allItemIds: string[] = [];
+
+        for (const kb of allKodeBarang) {
+          try {
+            const bomResponse = await axios.get(
+              `/api/bom/ppic?itemid=${encodeURIComponent(kb)}`
+            );
+            const treeStructure = buildTreeStructure(bomResponse.data.flat);
+            combinedBoms[kb] = {
+              flat: bomResponse.data.flat,
+              tree: treeStructure,
+            };
+
+            const itemIds = bomResponse.data.flat.map(
+              (item: BomItem) => item.ItemID
+            );
+            allItemIds = [...allItemIds, ...itemIds];
+          } catch (err) {
+            console.error(`Gagal load BOM untuk ${kb}:`, err);
+          }
+        }
+
+        allItemIds = Array.from(new Set(allItemIds));
+
+        const stockData = await fetchStockForItems(
+          allItemIds,
+          order.order.Tanggal_Order
+        );
+
+        const finalBom = combineBoms(combinedBoms);
+
+        setOrders((prev) =>
+          prev.map((item, i) =>
+            i === globalIndex
+              ? {
+                  ...item,
+                  bom: finalBom,
+                  stock: stockData,
+                  selected: newSelected,
+                  loadingBom: false,
+                  viewMode: "table",
+                  stockLastUpdated: new Date().toISOString(),
+                }
+              : item
+          )
+        );
+      } catch (err: unknown) {
+        console.error(`Error loading BOM:`, err);
+        setOrders((prev) =>
+          prev.map((item, i) =>
+            i === globalIndex
+              ? {
+                  ...item,
+                  selected: newSelected,
+                  loadingBom: false,
+                  error:
+                    err instanceof Error
+                      ? `Gagal load BOM: ${err.message}`
+                      : "Gagal load BOM: Unknown error",
+                }
+              : item
+          )
+        );
+      }
+    } else {
+      setOrders((prev) =>
+        prev.map((item, i) =>
+          i === globalIndex ? { ...item, selected: newSelected } : item
+        )
+      );
+    }
+  };
+
+  const toggleViewMode = (index: number) => {
+    const globalIndex = (currentPage - 1) * itemsPerPage + index;
+    setOrders((prev) =>
+      prev.map((item, i) =>
+        i === globalIndex
+          ? {
+              ...item,
+              viewMode: item.viewMode === "table" ? "tree" : "table",
+            }
+          : item
+      )
+    );
+  };
+
+  const toggleSelectAll = () => {
+    const allSelected = paginatedOrders.every(
+      (order) => order.selected && !order.committed
+    );
+    const newSelected = !allSelected;
+
+    setOrders((prev) =>
+      prev.map((order, index) => {
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const endIndex = startIndex + itemsPerPage;
+
+        if (index >= startIndex && index < endIndex && !order.committed) {
+          return { ...order, selected: newSelected };
+        }
+        return order;
+      })
+    );
+  };
+
+  const toggleSelectAllGlobal = () => {
+    const allSelected = filteredOrders.every(
+      (order) => order.selected && !order.committed
+    );
+    const newSelected = !allSelected;
+
+    setOrders((prev) =>
+      prev.map((order) =>
+        !order.committed ? { ...order, selected: newSelected } : order
+      )
+    );
+  };
+
+  // ==================== FUNGSI EXPORT YANG DIPERBAIKI ====================
+
+  const ExportProgress: React.FC<{
+    visible: boolean;
+    current: number;
+    total: number;
+    message: string;
+  }> = ({ visible, current, total, message }) => {
+    if (!visible) return null;
+
+    const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
+
+    return (
+      <div
+        style={{
+          position: "fixed",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          background: "rgba(0,0,0,0.9)",
+          color: "white",
+          padding: "25px",
+          borderRadius: "10px",
+          zIndex: 10000,
+          textAlign: "center",
+          minWidth: "350px",
+          border: "2px solid #4CAF50",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
+        }}
+      >
+        <div
+          style={{ fontSize: "18px", fontWeight: "bold", marginBottom: "10px" }}
+        >
+          🚀 Sedang Mengekspor Data...
+        </div>
+        <div style={{ fontSize: "14px", marginBottom: "15px" }}>
+          Exporting Data... 正在导出数据...
+        </div>
+
+        {message && (
+          <div
+            style={{
+              fontSize: "12px",
+              color: "#4CAF50",
+              marginBottom: "10px",
+              fontWeight: "bold",
+            }}
+          >
+            {message}
+          </div>
+        )}
+
+        <div
+          style={{
+            width: "100%",
+            background: "#333",
+            borderRadius: "10px",
+            marginTop: "15px",
+            height: "25px",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              width: `${percentage}%`,
+              background: "linear-gradient(90deg, #4CAF50, #45a049)",
+              height: "100%",
+              borderRadius: "10px",
+              transition: "width 0.5s ease",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "white",
+              fontSize: "12px",
+              fontWeight: "bold",
+            }}
+          >
+            {percentage}%
+          </div>
+        </div>
+
+        <div
+          style={{
+            marginTop: "10px",
+            fontSize: "12px",
+            color: "#ccc",
+            display: "flex",
+            justifyContent: "space-between",
+          }}
+        >
+          <span>
+            Progress: {current}/{total}
+          </span>
+          <span>
+            进度: {current}/{total}
+          </span>
+        </div>
+
+        <div
+          style={{
+            marginTop: "15px",
+            fontSize: "11px",
+            color: "#999",
+            lineHeight: "1.4",
+          }}
+        >
+          Harap tunggu, proses export sedang berjalan...
+          <br />
+          Jangan tutup halaman ini selama proses berlangsung
+          <br />
+          请稍候，导出过程正在进行中...
+          <br />
+          过程中请勿关闭此页面
+        </div>
+      </div>
+    );
+  };
+
+  // FUNGSI: Ambil BOM untuk item tertentu
+  const getBomForItem = async (
+    kodeBarang: string
+  ): Promise<{ flat: BomItem[]; tree: BomItem[] } | null> => {
+    try {
+      const response = await axios.get(
+        `/api/bom/ppic?itemid=${encodeURIComponent(kodeBarang)}`
+      );
+      if (response.data && response.data.flat) {
+        const treeStructure = buildTreeStructure(response.data.flat);
+        return {
+          flat: response.data.flat,
+          tree: treeStructure,
+        };
+      }
+      return null;
+    } catch (error) {
+      console.error(`Gagal mengambil BOM untuk ${kodeBarang}:`, error);
+      return null;
+    }
+  };
 
   const exportSelectedToExcel = async (): Promise<void> => {
     try {
@@ -1691,111 +2350,168 @@ export default function ProductionPlanPage() {
         return;
       }
 
-      // Data yang akan di-export (hanya yang dipilih)
+      console.log(`📊 Memulai export ${selectedOrders.length} PO terpilih`);
+
+      // Setup progress indicator
+      setExportProgress({
+        visible: true,
+        current: 0,
+        total: selectedOrders.length,
+        message: "Mempersiapkan data export...",
+      });
+
       const exportData: ExportData = {
         stockSummary: [],
         departmentSummary: [],
         productionOrders: [],
       };
 
-      // Map untuk summary per departemen
-      const departmentMap = new Map<string, any>();
+      // Process setiap PO secara sequential dengan progress
+      for (let i = 0; i < selectedOrders.length; i++) {
+        const plan = selectedOrders[i];
 
-      // 1. Data Stock Summary untuk PO yang dipilih
-      for (const plan of selectedOrders) {
+        setExportProgress((prev) => ({
+          ...prev,
+          current: i + 1,
+          message: `Memproses PO ${i + 1}/${selectedOrders.length}: ${
+            plan.order.No_SPK
+          }`,
+        }));
+
         if (plan.bom && plan.stock) {
-          const materialNeeds = calculateMaterialNeeds(
-            plan.bom.flat,
-            plan.order.QTY,
-            plan.stock
-          );
-
-          // Ambil data stok terbaru
-          const updatedStock: StockItem[] = await fetchStockForItems(
-            plan.bom.flat.map((item) => item.ItemID),
-            plan.order.Tanggal_Order
-          );
-
-          for (const item of materialNeeds.items) {
-            const stockItem: StockItem | undefined = updatedStock.find(
-              (s: StockItem) => s.itemid === item.ItemID
+          // PERBAIKAN: Handle perhitungan untuk PO Gabungan vs PO Biasa
+          if (plan.order.combinedItems && plan.order.combinedItems.length > 1) {
+            // ==================== PO GABUNGAN ====================
+            console.log(
+              `🔄 Processing PO Gabungan: ${plan.order.No_SPK} dengan ${plan.order.combinedItems.length} items`
             );
 
-            // PERHITUNGAN STOCK OTHER - HANYA committedQty dari PO lain
-            const sumOfTotal: number = item.needed; // QTY PO saat ini
-            const stockOther: number = stockItem?.committedQty || 0; // HANYA komitmen PO lain
-            const stockAvailable: number = stockItem?.stockAkhir || 0; // Stok tersedia
-            const stockReal: number =
-              stockItem?.physicalStock || stockItem?.stockAkhir || 0; // Stok fisik
-            const remainingStock: number = stockAvailable - sumOfTotal; // Sisa stok
+            // Untuk setiap item dalam PO gabungan, hitung secara terpisah
+            for (const combinedItem of plan.order.combinedItems) {
+              console.log(
+                `   ↳ Item: ${combinedItem.Kode_Barang}, QTY: ${combinedItem.QTY}`
+              );
 
-            // Data untuk worksheet utama
-            exportData.stockSummary.push({
-              "Kode Item 物料代码": item.ItemID,
-              "Nama Item 物料名称": item.ItemName,
-              "Departemen 部门": item.Departemen || "-",
-              "No SPK 生产订单号": plan.order.No_SPK,
-              "Nama PO 生产订单名称": plan.order.Nama_PO,
-              "Sum of Total 总需求": sumOfTotal,
-              "Stock Other 其他库存": stockOther,
-              "Stock Available 可用库存": stockAvailable,
-              "Stock Real 实际库存": stockReal,
-              "Remaining Stock 剩余库存": remainingStock,
-              "Status 状态": remainingStock >= 0 ? "CUKUP 充足" : "KURANG 不足",
-            });
+              // PERBAIKAN PENTING: Gunakan BOM yang sesuai untuk item ini
+              const itemBom = await getBomForItem(combinedItem.Kode_Barang);
 
-            // Update summary per departemen
-            const dept: string = item.Departemen || "Lainnya 其他";
-            if (!departmentMap.has(dept)) {
-              departmentMap.set(dept, {
-                departemen: dept,
-                totalItems: 0,
-                totalNeeded: 0,
-                totalStockOther: 0,
-                itemsCukup: 0,
-                itemsKurang: 0,
-                totalKekurangan: 0,
-              });
+              if (itemBom) {
+                // Hitung material needs untuk item ini dengan QTY-nya sendiri
+                const materialNeeds = calculateMaterialNeeds(
+                  itemBom.flat,
+                  combinedItem.QTY, // Gunakan QTY individual item
+                  plan.stock
+                );
+
+                // Ambil data stok terbaru
+                const updatedStock: StockItem[] = await fetchStockForItems(
+                  itemBom.flat.map((item: BomItem) => item.ItemID),
+                  plan.order.Tanggal_Order
+                );
+
+                for (const item of materialNeeds.items) {
+                  const stockItem: StockItem | undefined = updatedStock.find(
+                    (s: StockItem) => s.itemid === item.ItemID
+                  );
+
+                  const sumOfTotal: number = item.needed;
+                  const stockOther: number = stockItem?.committedQty || 0;
+                  const stockAvailable: number = stockItem?.stockAkhir || 0;
+                  const stockReal: number =
+                    stockItem?.physicalStock || stockItem?.stockAkhir || 0;
+                  const remainingStock: number = stockAvailable - sumOfTotal;
+
+                  // Data untuk worksheet utama - TAMPILAN TETAP SAMA
+                  exportData.stockSummary.push({
+                    "Kode Item 物料代码": item.ItemID,
+                    "Nama Item 物料名称": item.ItemName,
+                    "Departemen 部门": item.Departemen || "-",
+                    "No SPK 生产订单号": plan.order.No_SPK,
+                    "Tanggal PO 订单日期": plan.order.Tanggal_Order,
+                    "Nama PO 生产订单名称": combinedItem.Nama_PO, // Gunakan nama PO individual
+                    "Kode Barang PO PO物料代码": combinedItem.Kode_Barang,
+                    "QTY PO PO数量": combinedItem.QTY,
+                    "Sum of Total 总需求 (PO)": sumOfTotal,
+                    "Stock Other 其他库存 (Total PO lain)": stockOther,
+                    "Stock Available 可用库存": stockAvailable,
+                    "Stock Real 实际库存": stockReal,
+                    "Remaining Stock 剩余库存": remainingStock,
+                    "Status 状态":
+                      remainingStock >= 0 ? "CUKUP 充足" : "KURANG 不足",
+                  });
+                }
+              }
             }
+          } else {
+            // ==================== PO BIASA ====================
+            const materialNeeds = calculateMaterialNeeds(
+              plan.bom.flat,
+              plan.order.QTY,
+              plan.stock
+            );
 
-            const deptData = departmentMap.get(dept);
-            deptData.totalItems++;
-            deptData.totalNeeded += sumOfTotal;
-            deptData.totalStockOther += stockOther;
+            // Ambil data stok terbaru
+            const updatedStock: StockItem[] = await fetchStockForItems(
+              plan.bom.flat.map((item: BomItem) => item.ItemID),
+              plan.order.Tanggal_Order
+            );
 
-            if (remainingStock >= 0) {
-              deptData.itemsCukup++;
-            } else {
-              deptData.itemsKurang++;
-              deptData.totalKekurangan += Math.abs(remainingStock);
+            for (const item of materialNeeds.items) {
+              const stockItem: StockItem | undefined = updatedStock.find(
+                (s: StockItem) => s.itemid === item.ItemID
+              );
+
+              const sumOfTotal: number = item.needed;
+              const stockOther: number = stockItem?.committedQty || 0;
+              const stockAvailable: number = stockItem?.stockAkhir || 0;
+              const stockReal: number =
+                stockItem?.physicalStock || stockItem?.stockAkhir || 0;
+              const remainingStock: number = stockAvailable - sumOfTotal;
+
+              // Data untuk worksheet utama - TAMPILAN TETAP SAMA
+              exportData.stockSummary.push({
+                "Kode Item 物料代码": item.ItemID,
+                "Nama Item 物料名称": item.ItemName,
+                "Departemen 部门": item.Departemen || "-",
+                "No SPK 生产订单号": plan.order.No_SPK,
+                "Tanggal PO 订单日期": plan.order.Tanggal_Order,
+                "Nama PO 生产订单名称": plan.order.Nama_PO,
+                "Kode Barang PO PO物料代码": plan.order.Kode_Barang,
+                "QTY PO PO数量": plan.order.QTY,
+                "Sum of Total 总需求 (PO)": sumOfTotal,
+                "Stock Other 其他库存 (Total PO lain)": stockOther,
+                "Stock Available 可用库存": stockAvailable,
+                "Stock Real 实际库存": stockReal,
+                "Remaining Stock 剩余库存": remainingStock,
+                "Status 状态":
+                  remainingStock >= 0 ? "CUKUP 充足" : "KURANG 不足",
+              });
             }
           }
         }
+
+        // Small delay untuk memberikan feedback visual
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
 
-      // Konversi map ke array untuk department summary
-      exportData.departmentSummary = Array.from(departmentMap.values()).map(
-        (dept: any) => ({
-          "Departemen 部门": dept.departemen,
-          "Total Items 总项目数": dept.totalItems,
-          "Total Kebutuhan 总需求": dept.totalNeeded,
-          "Total Stock Other 其他库存总量": dept.totalStockOther,
-          "Items Stok Cukup 库存充足项目": dept.itemsCukup,
-          "Items Stok Kurang 库存不足项目": dept.itemsKurang,
-          "Total Kekurangan 总短缺": dept.totalKekurangan,
-          "Persentase Cukup 充足百分比": `${(
-            (dept.itemsCukup / dept.totalItems) *
-            100
-          ).toFixed(1)}%`,
-        })
-      );
-
-      // 2. Data Production Orders (selected only)
+      // Data Production Orders - TAMPILAN TETAP SAMA
+      setExportProgress((prev) => ({
+        ...prev,
+        message: "Menyusun data PO...",
+      }));
       exportData.productionOrders = selectedOrders.map(
         (plan: any, index: number) => {
           const isCombined: boolean =
             plan.order.combinedItems && plan.order.combinedItems.length > 1;
           const combinedCount: number = plan.order.combinedItems?.length || 1;
+
+          // Hitung total QTY untuk PO gabungan
+          const totalQTY = isCombined
+            ? plan.order.combinedItems?.reduce(
+                (sum: any, item: { QTY: any; }) => sum + item.QTY,
+                0
+              ) || 0
+            : plan.order.QTY;
 
           return {
             No: index + 1,
@@ -1803,7 +2519,7 @@ export default function ProductionPlanPage() {
             "Tanggal Order 订单日期": plan.order.Tanggal_Order,
             "Nama PO 生产订单名称": plan.order.Nama_PO,
             "Kode Barang 物料代码": plan.order.Kode_Barang,
-            "QTY 数量": plan.order.QTY,
+            "QTY 数量": totalQTY,
             "Status 状态": "SELECTED 已选择",
             "Tipe PO PO类型": isCombined
               ? `Gabungan (${combinedCount} PO) 合并(${combinedCount}个PO)`
@@ -1813,55 +2529,44 @@ export default function ProductionPlanPage() {
         }
       );
 
-      // Buat workbook dan worksheet
+      // Buat Excel file - TAMPILAN TETAP SAMA
+      setExportProgress((prev) => ({
+        ...prev,
+        message: "Membuat file Excel...",
+      }));
+
       const wb = XLSX.utils.book_new();
 
-      // Worksheet 1: Simple Stock Summary
+      // Worksheet 1: Simple Stock Summary - TAMPILAN TETAP SAMA
       if (exportData.stockSummary.length > 0) {
         const ws1 = XLSX.utils.json_to_sheet(exportData.stockSummary);
         XLSX.utils.book_append_sheet(wb, ws1, "Stock Summary 库存汇总");
 
-        // Styling untuk worksheet simple summary
+        // Styling untuk worksheet simple summary - TETAP SAMA
         if (!ws1["!cols"]) ws1["!cols"] = [];
         ws1["!cols"] = [
-          { wch: 12 }, // Kode Item
-          { wch: 25 }, // Nama Item
-          { wch: 12 }, // Departemen
-          { wch: 12 }, // No SPK
-          { wch: 25 }, // Nama PO
-          { wch: 12 }, // Sum of Total
-          { wch: 12 }, // Stock Other
-          { wch: 12 }, // Stock Available
-          { wch: 12 }, // Stock Real
-          { wch: 12 }, // Remaining Stock
-          { wch: 8 }, // Status
-        ];
-      }
-
-      // Worksheet 2: Department Summary
-      if (exportData.departmentSummary.length > 0) {
-        const ws2 = XLSX.utils.json_to_sheet(exportData.departmentSummary);
-        XLSX.utils.book_append_sheet(wb, ws2, "Department Summary 部门汇总");
-
-        // Styling untuk worksheet department summary
-        if (!ws2["!cols"]) ws2["!cols"] = [];
-        ws2["!cols"] = [
+          { wch: 15 }, // Kode Item
+          { wch: 30 }, // Nama Item
           { wch: 15 }, // Departemen
-          { wch: 10 }, // Total Items
-          { wch: 15 }, // Total Kebutuhan
-          { wch: 15 }, // Total Stock Other
-          { wch: 15 }, // Items Stok Cukup
-          { wch: 15 }, // Items Stok Kurang
-          { wch: 15 }, // Total Kekurangan
-          { wch: 12 }, // Persentase Cukup
+          { wch: 15 }, // No SPK
+          { wch: 12 }, // Tanggal PO
+          { wch: 30 }, // Nama PO
+          { wch: 15 }, // Kode Barang PO
+          { wch: 10 }, // QTY PO
+          { wch: 15 }, // Sum of Total
+          { wch: 15 }, // Stock Other
+          { wch: 15 }, // Stock Available
+          { wch: 15 }, // Stock Real
+          { wch: 15 }, // Remaining Stock
+          { wch: 12 }, // Status
         ];
       }
 
-      // Worksheet 3: Selected Production Orders
+      // Worksheet 2: Selected Production Orders - TAMPILAN TETAP SAMA
       const ws3 = XLSX.utils.json_to_sheet(exportData.productionOrders);
       XLSX.utils.book_append_sheet(wb, ws3, "Selected PO 已选择PO");
 
-      // Worksheet 4: Keterangan dan Rumus - UPDATE KETERANGAN
+      // Worksheet 3: Keterangan dan Rumus - TAMPILAN TETAP SAMA
       const keteranganData: any[][] = [
         ["SIMPLE STOCK SUMMARY REPORT 简单库存汇总报告"],
         [""],
@@ -1920,24 +2625,24 @@ export default function ProductionPlanPage() {
       const ws4 = XLSX.utils.aoa_to_sheet(keteranganData);
       XLSX.utils.book_append_sheet(wb, ws4, "Keterangan 说明");
 
-      // Styling untuk worksheet keterangan
+      // Styling untuk worksheet keterangan - TETAP SAMA
       if (ws4["!merges"] === undefined) ws4["!merges"] = [];
       ws4["!merges"].push(
         { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } },
-        { s: { r: 7, c: 0 }, e: { r: 7, c: 4 } },
-        { s: { r: 13, c: 0 }, e: { r: 13, c: 4 } },
-        { s: { r: 17, c: 0 }, e: { r: 17, c: 4 } },
-        { s: { r: 21, c: 0 }, e: { r: 21, c: 4 } }
+        { s: { r: 8, c: 0 }, e: { r: 8, c: 4 } },
+        { s: { r: 16, c: 0 }, e: { r: 16, c: 4 } },
+        { s: { r: 21, c: 0 }, e: { r: 21, c: 4 } },
+        { s: { r: 25, c: 0 }, e: { r: 25, c: 4 } }
       );
 
-      // Generate filename
+      // Generate filename - TETAP SAMA
       const timestamp: string = new Date()
         .toISOString()
         .replace(/[:.]/g, "-")
         .slice(0, -5);
       const filename = `Simple_Stock_Summary_${timestamp}.xlsx`;
 
-      // Export ke file
+      // Export ke file - TETAP SAMA
       const wbout: any = XLSX.write(wb, { bookType: "xlsx", type: "array" });
       const blob = new Blob([wbout], { type: "application/octet-stream" });
 
@@ -1954,305 +2659,11 @@ export default function ProductionPlanPage() {
       );
     } finally {
       setExportLoading(false);
+      setExportProgress({ visible: false, current: 0, total: 0, message: "" });
     }
   };
 
-  // ==================== FUNGSI EVENT HANDLER ====================
-
-  const fetchOrders = async (startDate?: string, endDate?: string) => {
-    try {
-      setLoading(true);
-      setError("");
-
-      let url = "/api/ppic";
-      const params = new URLSearchParams();
-
-      if (startDate) params.append("startDate", startDate);
-      if (endDate) params.append("endDate", endDate);
-
-      if (params.toString()) {
-        url += `?${params.toString()}`;
-      }
-
-      console.log("📡 [fetchOrders] Mengambil data orders 获取订单数据:", url);
-      const response = await axios.get<ProductionOrder[]>(url);
-
-      // Gabungkan PO dengan No_SPK yang sama
-      const combinedOrders = combineDuplicatePOs(response.data);
-
-      // Buat production plans TANPA override status commit
-      const productionPlans: ProductionPlan[] = combinedOrders.map((order) => {
-        // Gunakan data dari state local jika ada, atau cek dari committedPOs
-        const existingOrder = orders.find(
-          (o) => o.order.No_SPK === order.No_SPK
-        );
-        const committedPO = committedPOs.find(
-          (po) => po.noSPK === order.No_SPK && po.status === "COMMITTED"
-        );
-
-        // Prioritaskan state local, lalu database
-        const isCommitted = existingOrder?.committed ?? !!committedPO;
-        const commitID = existingOrder?.commitID ?? committedPO?.commitID;
-
-        return {
-          order: {
-            ...order,
-            QTY: order.QTY || 0,
-            originalOrders: order.combinedItems || [order],
-          },
-          expanded: existingOrder?.expanded ?? false,
-          loading: false,
-          selected: existingOrder?.selected ?? false,
-          loadingBom: false,
-          viewMode: existingOrder?.viewMode ?? "table",
-          committed: isCommitted,
-          commitID: commitID,
-          bom: existingOrder?.bom,
-          stock: existingOrder?.stock,
-          stockLastUpdated: existingOrder?.stockLastUpdated,
-        };
-      });
-
-      setOrders(productionPlans);
-      setCurrentPage(1);
-      console.log(
-        `✅ [fetchOrders] Data orders berhasil diambil 订单数据获取成功: ${productionPlans.length} orders`
-      );
-    } catch (err: unknown) {
-      console.error(
-        "❌ [fetchOrders] Error mengambil data SPK 获取SPK数据错误:",
-        err
-      );
-      if (err instanceof Error) {
-        setError(
-          "Gagal mengambil data produksi 获取生产数据失败: " + err.message
-        );
-      } else {
-        setError(
-          "Gagal mengambil data produksi 获取生产数据失败: Unknown error 未知错误"
-        );
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDateFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setDateFilter((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
-
-  const applyDateFilter = () => {
-    console.log(
-      "🔍 [applyDateFilter] Menerapkan filter 应用过滤器:",
-      dateFilter
-    );
-    fetchOrders(dateFilter.startDate, dateFilter.endDate);
-  };
-
-  const resetDateFilter = () => {
-    console.log("🔄 [resetDateFilter] Reset filter 重置过滤器");
-    setDateFilter({ startDate: "", endDate: "" });
-    fetchOrders();
-  };
-
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-    setCurrentPage(1); // Reset ke halaman pertama saat mencari
-  };
-
-  const toggleOrder = async (
-    index: number,
-    kodeBarang: string,
-    orderDate: string
-  ) => {
-    const globalIndex = (currentPage - 1) * itemsPerPage + index;
-    const order = filteredOrders[globalIndex];
-
-    if (order.expanded) {
-      setOrders((prev) =>
-        prev.map((item, i) =>
-          i === globalIndex ? { ...item, expanded: false } : item
-        )
-      );
-    } else {
-      if (!order.bom && !order.loading) {
-        console.log(`▶️ Expand dan load BOM untuk ${kodeBarang} 展开并加载BOM`);
-        await loadBomWithStock(globalIndex, kodeBarang, orderDate);
-      } else {
-        console.log(`▶️ Expand existing BOM untuk ${kodeBarang} 展开现有BOM`);
-
-        // AUTO-REFRESH STOK SAAT BUKA DETAIL
-        if (order.bom && order.stock) {
-          console.log(`🔄 Auto-refresh stok untuk ${kodeBarang} 自动刷新库存`);
-          await refreshStockForPlan(index);
-        }
-
-        setOrders((prev) =>
-          prev.map((item, i) =>
-            i === globalIndex ? { ...item, expanded: true } : item
-          )
-        );
-      }
-    }
-  };
-
-  const toggleSelection = async (index: number) => {
-    const globalIndex = (currentPage - 1) * itemsPerPage + index;
-    const order = filteredOrders[globalIndex];
-    const newSelected = !order.selected;
-
-    console.log(
-      `✓ [toggleSelection] Toggle selection untuk ${order.order.Kode_Barang}: ${newSelected} 切换选择`
-    );
-
-    if (newSelected && !order.bom && !order.loadingBom && !order.committed) {
-      setOrders((prev) =>
-        prev.map((item, i) =>
-          i === globalIndex ? { ...item, loadingBom: true } : item
-        )
-      );
-
-      try {
-        const allKodeBarang = getAllKodeBarang(order.order.Kode_Barang);
-        const combinedBoms: {
-          [kodeBarang: string]: { flat: BomItem[]; tree: BomItem[] };
-        } = {};
-        let allItemIds: string[] = [];
-
-        for (const kb of allKodeBarang) {
-          try {
-            const bomResponse = await axios.get(
-              `/api/bom/ppic?itemid=${encodeURIComponent(kb)}`
-            );
-            // PERBAIKAN: Build tree structure
-            const treeStructure = buildTreeStructure(bomResponse.data.flat);
-            combinedBoms[kb] = {
-              flat: bomResponse.data.flat,
-              tree: treeStructure,
-            };
-
-            const itemIds = bomResponse.data.flat.map(
-              (item: BomItem) => item.ItemID
-            );
-            allItemIds = [...allItemIds, ...itemIds];
-          } catch (err) {
-            console.error(`❌ Gagal load BOM untuk ${kb}: BOM加载失败`, err);
-          }
-        }
-
-        allItemIds = Array.from(new Set(allItemIds));
-
-        const stockData = await fetchStockForItems(
-          allItemIds,
-          order.order.Tanggal_Order
-        );
-
-        const finalBom = combineBoms(combinedBoms);
-
-        setOrders((prev) =>
-          prev.map((item, i) =>
-            i === globalIndex
-              ? {
-                  ...item,
-                  bom: finalBom,
-                  stock: stockData,
-                  selected: newSelected,
-                  loadingBom: false,
-                  viewMode: "table",
-                  stockLastUpdated: new Date().toISOString(),
-                }
-              : item
-          )
-        );
-      } catch (err: unknown) {
-        console.error(
-          `❌ [toggleSelection] Error loading BOM 加载BOM错误:`,
-          err
-        );
-        setOrders((prev) =>
-          prev.map((item, i) =>
-            i === globalIndex
-              ? {
-                  ...item,
-                  selected: newSelected,
-                  loadingBom: false,
-                  error:
-                    err instanceof Error
-                      ? `Gagal load BOM 加载BOM失败: ${err.message}`
-                      : "Gagal load BOM 加载BOM失败: Unknown error 未知错误",
-                }
-              : item
-          )
-        );
-      }
-    } else {
-      setOrders((prev) =>
-        prev.map((item, i) =>
-          i === globalIndex ? { ...item, selected: newSelected } : item
-        )
-      );
-    }
-  };
-
-  const toggleViewMode = (index: number) => {
-    const globalIndex = (currentPage - 1) * itemsPerPage + index;
-    setOrders((prev) =>
-      prev.map((item, i) =>
-        i === globalIndex
-          ? {
-              ...item,
-              viewMode: item.viewMode === "table" ? "tree" : "table",
-            }
-          : item
-      )
-    );
-  };
-
-  const toggleSelectAll = () => {
-    const allSelected = paginatedOrders.every(
-      (order) => order.selected && !order.committed
-    );
-    const newSelected = !allSelected;
-
-    console.log(
-      `✓ [toggleSelectAll] Select all di halaman ${currentPage}: ${newSelected} 全选当前页`
-    );
-
-    setOrders((prev) =>
-      prev.map((order, index) => {
-        const startIndex = (currentPage - 1) * itemsPerPage;
-        const endIndex = startIndex + itemsPerPage;
-
-        if (index >= startIndex && index < endIndex && !order.committed) {
-          return { ...order, selected: newSelected };
-        }
-        return order;
-      })
-    );
-  };
-
-  const toggleSelectAllGlobal = () => {
-    const allSelected = filteredOrders.every(
-      (order) => order.selected && !order.committed
-    );
-    const newSelected = !allSelected;
-
-    console.log(
-      `✓ [toggleSelectAllGlobal] Select all global: ${newSelected} 全局全选`
-    );
-
-    setOrders((prev) =>
-      prev.map((order) =>
-        !order.committed ? { ...order, selected: newSelected } : order
-      )
-    );
-  };
-
-  // ==================== KOMPONEN ORDER ROW ====================
+  // ==================== KOMPONEN ORDER ROW YANG DIPERBAIKI ====================
 
   const OrderRow = ({
     plan,
@@ -2261,16 +2672,38 @@ export default function ProductionPlanPage() {
     plan: ProductionPlan;
     index: number;
   }) => {
-    const materialNeeds =
-      plan.bom && plan.stock
-        ? calculateMaterialNeeds(plan.bom.flat, plan.order.QTY, plan.stock)
-        : null;
-    const hasShortage = (materialNeeds?.totalShortage ?? 0) > 0;
-
     const isCombinedPO =
       plan.order.combinedItems && plan.order.combinedItems.length > 1;
     const combinedCount = plan.order.combinedItems?.length || 1;
 
+    // PERBAIKAN: Hitung material needs dengan mempertimbangkan PO gabungan
+    const materialNeeds = useMemo(() => {
+      if (!plan.bom || !plan.stock) return null;
+
+      if (isCombinedPO && plan.order.combinedItems) {
+        // Untuk PO gabungan, hitung per item dan gabungkan
+        return calculateMaterialNeedsForCombinedPO(
+          plan.bom,
+          plan.order.combinedItems, // Kirim semua item gabungan
+          plan.stock
+        );
+      } else {
+        // Untuk PO biasa
+        return calculateMaterialNeeds(
+          plan.bom.flat,
+          plan.order.QTY,
+          plan.stock
+        );
+      }
+    }, [
+      plan.bom,
+      plan.stock,
+      isCombinedPO,
+      plan.order.combinedItems,
+      plan.order.QTY,
+    ]);
+
+    const hasShortage = (materialNeeds?.totalShortage ?? 0) > 0;
     const isStokUpdated = plan.stockLastUpdated;
 
     return (
@@ -2350,7 +2783,7 @@ export default function ProductionPlanPage() {
                 <div className="text-xs text-gray-500 mt-1">
                   {plan.order.combinedItems.slice(0, 2).map((item, idx) => (
                     <div key={idx}>
-                      • {item.Nama_PO} ({item.QTY})
+                      • {item.Nama_PO} (QTY: {item.QTY})
                     </div>
                   ))}
                   {plan.order.combinedItems.length > 2 && (
@@ -2376,18 +2809,26 @@ export default function ProductionPlanPage() {
             )}
           </td>
 
+          {/* PERBAIKAN: Tampilkan QTY sesuai tipe PO */}
           <td className="px-4 py-3 text-right font-bold">
             <div>
-              {plan.order.QTY.toLocaleString()}
-              {isCombinedPO && (
-                <div className="text-xs text-gray-500">
-                  Total dari {combinedCount} PO 来自{combinedCount}个PO的总数
-                </div>
+              {isCombinedPO ? (
+                <>
+                  <span className="text-purple-600">Gabungan 合并</span>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {plan.order.combinedItems?.map((item, idx) => (
+                      <div key={idx}>
+                        {item.Kode_Barang}: {item.QTY.toLocaleString()}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                plan.order.QTY.toLocaleString()
               )}
             </div>
           </td>
 
-          {/* Kolom Status Commit */}
           <td className="px-4 py-3 text-center">
             {plan.committed ? (
               <div className="flex flex-col items-center gap-1">
@@ -2478,16 +2919,23 @@ export default function ProductionPlanPage() {
                       )}
                     </h4>
                     <p className="text-sm text-gray-600">
-                      SPK: {plan.order.No_SPK} | PO: {plan.order.Nama_PO} | Qty:{" "}
-                      {plan.order.QTY.toLocaleString()} unit 单位 | Stok per
-                      库存日期: {plan.order.Tanggal_Order}
-                      {isCombinedPO && (
-                        <span className="text-purple-600 font-medium">
+                      SPK: {plan.order.No_SPK} | PO: {plan.order.Nama_PO} |
+                      {isCombinedPO ? (
+                        <span>
                           {" "}
-                          | PO Gabungan dari {combinedCount} data 来自
-                          {combinedCount}个数据的合并PO
+                          Qty per Item sesuai PO asli 根据原始PO的项目数量
+                          <span className="text-purple-600 font-medium">
+                            {" "}
+                            ({combinedCount} PO Gabungan 合并PO)
+                          </span>
                         </span>
-                      )}
+                      ) : (
+                        <span>
+                          {" "}
+                          Qty: {plan.order.QTY.toLocaleString()} unit 单位
+                        </span>
+                      )}{" "}
+                      | Stok per 库存日期: {plan.order.Tanggal_Order}
                       {plan.stockLastUpdated && (
                         <span className="text-green-600 font-medium">
                           {" "}
@@ -2499,7 +2947,22 @@ export default function ProductionPlanPage() {
                       )}
                     </p>
 
-                    {/* Info stok dengan commit */}
+                    {/* Tampilkan detail QTY per item untuk PO gabungan */}
+                    {isCombinedPO && plan.order.combinedItems && (
+                      <div className="mt-2 p-2 bg-purple-50 rounded border border-purple-200">
+                        <p className="text-xs text-purple-700 font-medium">
+                          Detail QTY per Item 每个项目数量详情:
+                        </p>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-1">
+                          {plan.order.combinedItems.map((item, idx) => (
+                            <div key={idx} className="text-xs text-purple-600">
+                              • {item.Kode_Barang}: {item.QTY} unit
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
                       <p className="text-xs text-blue-700">
                         <strong>Info Stok Real-time 实时库存信息:</strong> Stok
@@ -2518,7 +2981,6 @@ export default function ProductionPlanPage() {
                     )}
                   </div>
                   <div className="flex gap-2">
-                    {/* TOMBOL REFRESH STOK */}
                     <button
                       onClick={() => refreshStockForPlan(index)}
                       disabled={plan.loading}
@@ -2579,7 +3041,7 @@ export default function ProductionPlanPage() {
                       Total Item 总项目数
                     </div>
                     <div className="text-2xl font-bold">
-                      {plan.bom.flat.length}
+                      {materialNeeds?.items.length || 0}
                     </div>
                   </div>
                   <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
@@ -2587,10 +3049,8 @@ export default function ProductionPlanPage() {
                       Stok Cukup 库存充足
                     </div>
                     <div className="text-2xl font-bold">
-                      {
-                        materialNeeds?.items.filter((i) => i.shortage === 0)
-                          .length
-                      }
+                      {materialNeeds?.items.filter((i) => i.shortage === 0)
+                        .length || 0}
                     </div>
                   </div>
                   <div className="text-center p-3 bg-red-50 rounded-lg border border-red-200">
@@ -2598,10 +3058,8 @@ export default function ProductionPlanPage() {
                       Stok Kurang 库存不足
                     </div>
                     <div className="text-2xl font-bold">
-                      {
-                        materialNeeds?.items.filter((i) => i.shortage > 0)
-                          .length
-                      }
+                      {materialNeeds?.items.filter((i) => i.shortage > 0)
+                        .length || 0}
                     </div>
                   </div>
                   <div className="text-center p-3 bg-yellow-50 rounded-lg border border-yellow-200">
@@ -2609,10 +3067,70 @@ export default function ProductionPlanPage() {
                       Total Kekurangan 总短缺
                     </div>
                     <div className="text-2xl font-bold text-red-600">
-                      {materialNeeds?.totalShortage.toLocaleString()}
+                      {materialNeeds?.totalShortage.toLocaleString() || 0}
                     </div>
                   </div>
                 </div>
+
+                {/* Tampilkan detail per item untuk PO Gabungan */}
+                {isCombinedPO && plan.order.combinedItems && (
+                  <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                    <h5 className="font-bold text-purple-800 mb-3">
+                      📊 Perhitungan per Item PO Gabungan 合并PO分项计算:
+                    </h5>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {plan.order.combinedItems.map((item, idx) => {
+                        const itemMaterialNeeds =
+                          plan.bom && plan.stock
+                            ? calculateMaterialNeedsForCombinedPO(
+                                plan.bom,
+                                [item],
+                                plan.stock
+                              )
+                            : null;
+
+                        return (
+                          <div
+                            key={idx}
+                            className="bg-white p-3 rounded border"
+                          >
+                            <div className="font-bold text-purple-700">
+                              {item.Kode_Barang}
+                            </div>
+                            <div className="text-sm text-gray-600">
+                              {item.Nama_PO}
+                            </div>
+                            <div className="text-sm font-medium mt-1">
+                              QTY: {item.QTY.toLocaleString()} unit 单位
+                            </div>
+                            {itemMaterialNeeds && (
+                              <div className="text-xs mt-2">
+                                <div className="flex justify-between">
+                                  <span>Total Kebutuhan 总需求:</span>
+                                  <span className="font-bold">
+                                    {itemMaterialNeeds.totalNeeded.toLocaleString()}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Kekurangan 短缺:</span>
+                                  <span
+                                    className={`font-bold ${
+                                      itemMaterialNeeds.totalShortage > 0
+                                        ? "text-red-600"
+                                        : "text-green-600"
+                                    }`}
+                                  >
+                                    {itemMaterialNeeds.totalShortage.toLocaleString()}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {plan.viewMode === "table" ? (
                   <BomTableView
@@ -2621,13 +3139,20 @@ export default function ProductionPlanPage() {
                     stock={plan.stock}
                     orderDate={plan.order.Tanggal_Order}
                     stockLastUpdated={plan.stockLastUpdated}
+                    isCombinedPO={isCombinedPO}
+                    combinedItems={plan.order.combinedItems}
+                    combinedBoms={plan.bom.combinedBoms}
                   />
                 ) : (
+                  // Di dalam komponen OrderRow, pada bagian pemanggilan SimpleBomTree:
                   <SimpleBomTree
                     treeData={plan.bom.tree}
                     productionQty={plan.order.QTY}
                     stock={plan.stock}
                     orderDate={plan.order.Tanggal_Order}
+                    isCombinedPO={isCombinedPO}
+                    combinedItems={plan.order.combinedItems}
+                    combinedBoms={plan.bom.combinedBoms} // TAMBAHKAN INI
                   />
                 )}
               </div>
@@ -2740,12 +3265,29 @@ export default function ProductionPlanPage() {
   }, []);
 
   // Sinkronkan setiap kali committedPOs berubah
- useEffect(() => {
-   if (committedPOs.length > 0 || orders.length > 0) {
-     console.log("🔄 [useEffect] Sinkronisasi commit status");
-     syncCommitStatus();
-   }
- }, [committedPOs]);
+  useEffect(() => {
+    if (committedPOs.length > 0 || orders.length > 0) {
+      syncCommitStatus();
+    }
+  }, [committedPOs]);
+
+  // Statistik untuk penggabungan PO
+  const combinedStats = useMemo(() => {
+    const totalOriginalOrders = filteredOrders.reduce((total, order) => {
+      return total + (order.order.combinedItems?.length || 1);
+    }, 0);
+
+    const combinedCount = filteredOrders.filter(
+      (order) =>
+        order.order.combinedItems && order.order.combinedItems.length > 1
+    ).length;
+
+    return {
+      totalOriginalOrders,
+      combinedCount,
+      saving: totalOriginalOrders - filteredOrders.length,
+    };
+  }, [filteredOrders]);
 
   // ==================== RENDER COMPONENT ====================
 
@@ -2775,15 +3317,17 @@ export default function ProductionPlanPage() {
 
               {/* Tombol Export */}
               <div className="flex gap-2">
-           
+                <ExportProgress
+                  visible={exportProgress.visible}
+                  current={exportProgress.current}
+                  total={exportProgress.total}
+                  message={exportProgress.message}
+                />
 
+                {/* Tombol Export */}
                 <button
                   onClick={exportSelectedToExcel}
-                  disabled={
-                    exportLoading ||
-                    filteredOrders.filter((p) => p.selected && !p.committed)
-                      .length === 0
-                  }
+                  disabled={exportLoading}
                   className="bg-purple-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-purple-600 disabled:opacity-50 flex items-center gap-2"
                 >
                   {exportLoading ? (
@@ -2946,8 +3490,8 @@ export default function ProductionPlanPage() {
                   • PO dengan No SPK yang sama akan digabungkan secara otomatis
                   相同SPK号的PO将自动合并
                   <br />
-                  • QTY akan dijumlahkan, nama dan kode barang akan digabungkan
-                  数量将累加，名称和物料代码将合并
+                  • QTY per item TIDAK dijumlahkan, tetap sesuai PO aslinya
+                  每个项目的数量不会累加，保持原始PO的数量
                   <br />• Sistem commit berlaku untuk PO gabungan
                   提交系统适用于合并PO
                 </p>
@@ -3105,32 +3649,34 @@ export default function ProductionPlanPage() {
         {!loading && filteredOrders.length > 0 && (
           <>
             <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-              <table className="w-full">
-                <thead className="bg-gray-800 text-white">
-                  <tr>
-                    <th className="px-4 py-3 text-center w-12">Pilih 选择</th>
-                    <th className="px-4 py-3 text-center w-12">#</th>
-                    <th className="px-4 py-3 text-left">No SPK 生产订单号</th>
-                    <th className="px-4 py-3 text-left">Tanggal 日期</th>
-                    <th className="px-4 py-3 text-left">
-                      Nama PO 生产订单名称
-                    </th>
-                    <th className="px-4 py-3 text-left">
-                      Kode Barang 物料代码
-                    </th>
-                    <th className="px-4 py-3 text-right">QTY 数量</th>
-                    <th className="px-4 py-3 text-center">Commit 提交</th>
-                    <th className="px-4 py-3 text-center">
-                      Status Stok 库存状态
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedOrders.map((plan, index) => (
-                    <OrderRow key={index} plan={plan} index={index} />
-                  ))}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="min-w-full table-auto border-collapse">
+                  <thead className="bg-gray-800 text-white">
+                    <tr>
+                      <th className="px-4 py-3 text-center w-12">Pilih 选择</th>
+                      <th className="px-4 py-3 text-center w-12">#</th>
+                      <th className="px-4 py-3 text-left">No SPK 生产订单号</th>
+                      <th className="px-4 py-3 text-left">Tanggal 日期</th>
+                      <th className="px-4 py-3 text-left">
+                        Nama PO 生产订单名称
+                      </th>
+                      <th className="px-4 py-3 text-left">
+                        Kode Barang 物料代码
+                      </th>
+                      <th className="px-4 py-3 text-right">QTY 数量</th>
+                      <th className="px-4 py-3 text-center">Commit 提交</th>
+                      <th className="px-4 py-3 text-center">
+                        Status Stok 库存状态
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedOrders.map((plan, index) => (
+                      <OrderRow key={index} plan={plan} index={index} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             <Pagination />
