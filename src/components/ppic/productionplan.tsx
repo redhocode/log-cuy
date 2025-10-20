@@ -2337,6 +2337,8 @@ export default function ProductionPlanPage() {
     }
   };
 
+  // ==================== FUNGSI EXPORT YANG DIPERBAIKI ====================
+
   const exportSelectedToExcel = async (): Promise<void> => {
     try {
       setExportLoading(true);
@@ -2365,6 +2367,9 @@ export default function ProductionPlanPage() {
         departmentSummary: [],
         productionOrders: [],
       };
+
+      // Map untuk menggabungkan item dengan kode yang sama
+      const itemSummaryMap = new Map();
 
       // Process setiap PO secara sequential dengan progress
       for (let i = 0; i < selectedOrders.length; i++) {
@@ -2415,30 +2420,55 @@ export default function ProductionPlanPage() {
                   );
 
                   const sumOfTotal: number = item.needed;
+
+                  // PERBAIKAN 1: Ambil stockOther dari committedQty yang benar
                   const stockOther: number = stockItem?.committedQty || 0;
-                  const stockAvailable: number = stockItem?.stockAkhir || 0;
+
+                  // PERBAIKAN 2: Stock Available harus memperhitungkan stockOther
+                  const stockAvailable: number =
+                    (stockItem?.stockAkhir || 0) - stockOther;
+
                   const stockReal: number =
                     stockItem?.physicalStock || stockItem?.stockAkhir || 0;
                   const remainingStock: number = stockAvailable - sumOfTotal;
 
-                  // Data untuk worksheet utama - TAMPILAN TETAP SAMA
-                  exportData.stockSummary.push({
-                    "Kode Item 物料代码": item.ItemID,
-                    "Nama Item 物料名称": item.ItemName,
-                    "Departemen 部门": item.Departemen || "-",
-                    "No SPK 生产订单号": plan.order.No_SPK,
-                    "Tanggal PO 订单日期": plan.order.Tanggal_Order,
-                    "Nama PO 生产订单名称": combinedItem.Nama_PO, // Gunakan nama PO individual
-                    "Kode Barang PO PO物料代码": combinedItem.Kode_Barang,
-                    "QTY PO PO数量": combinedItem.QTY,
-                    "Sum of Total 总需求 (PO)": sumOfTotal,
-                    "Stock Other 其他库存 (Total PO lain)": stockOther,
-                    "Stock Available 可用库存": stockAvailable,
-                    "Stock Real 实际库存": stockReal,
-                    "Remaining Stock 剩余库存": remainingStock,
-                    "Status 状态":
-                      remainingStock >= 0 ? "CUKUP 充足" : "KURANG 不足",
-                  });
+                  // PERBAIKAN 3: Gabungkan item dengan kode yang sama
+                  const existingItem = itemSummaryMap.get(item.ItemID);
+
+                  if (existingItem) {
+                    // Jika item sudah ada, jumlahkan sumOfTotal
+                    existingItem.sumOfTotal += sumOfTotal;
+                    existingItem.remainingStock =
+                      existingItem.stockAvailable - existingItem.sumOfTotal;
+                    existingItem.sourcePOs.push({
+                      noSPK: plan.order.No_SPK,
+                      kodeBarang: combinedItem.Kode_Barang,
+                      qty: combinedItem.QTY,
+                      needed: sumOfTotal,
+                    });
+                  } else {
+                    // Item baru, tambahkan ke map
+                    itemSummaryMap.set(item.ItemID, {
+                      "Kode Item 物料代码": item.ItemID,
+                      "Nama Item 物料名称": item.ItemName,
+                      "Departemen 部门": item.Departemen || "-",
+                      "Sum of Total 总需求 (PO)": sumOfTotal,
+                      "Stock Other 其他库存 (Total PO lain)": stockOther,
+                      "Stock Available 可用库存": stockAvailable,
+                      "Stock Real 实际库存": stockReal,
+                      "Remaining Stock 剩余库存": remainingStock,
+                      "Status 状态":
+                        remainingStock >= 0 ? "CUKUP 充足" : "KURANG 不足",
+                      sourcePOs: [
+                        {
+                          noSPK: plan.order.No_SPK,
+                          kodeBarang: combinedItem.Kode_Barang,
+                          qty: combinedItem.QTY,
+                          needed: sumOfTotal,
+                        },
+                      ],
+                    });
+                  }
                 }
               }
             }
@@ -2462,30 +2492,55 @@ export default function ProductionPlanPage() {
               );
 
               const sumOfTotal: number = item.needed;
+
+              // PERBAIKAN 1: Ambil stockOther dari committedQty yang benar
               const stockOther: number = stockItem?.committedQty || 0;
-              const stockAvailable: number = stockItem?.stockAkhir || 0;
+
+              // PERBAIKAN 2: Stock Available harus memperhitungkan stockOther
+              const stockAvailable: number =
+                (stockItem?.stockAkhir || 0) - stockOther;
+
               const stockReal: number =
                 stockItem?.physicalStock || stockItem?.stockAkhir || 0;
               const remainingStock: number = stockAvailable - sumOfTotal;
 
-              // Data untuk worksheet utama - TAMPILAN TETAP SAMA
-              exportData.stockSummary.push({
-                "Kode Item 物料代码": item.ItemID,
-                "Nama Item 物料名称": item.ItemName,
-                "Departemen 部门": item.Departemen || "-",
-                "No SPK 生产订单号": plan.order.No_SPK,
-                "Tanggal PO 订单日期": plan.order.Tanggal_Order,
-                "Nama PO 生产订单名称": plan.order.Nama_PO,
-                "Kode Barang PO PO物料代码": plan.order.Kode_Barang,
-                "QTY PO PO数量": plan.order.QTY,
-                "Sum of Total 总需求 (PO)": sumOfTotal,
-                "Stock Other 其他库存 (Total PO lain)": stockOther,
-                "Stock Available 可用库存": stockAvailable,
-                "Stock Real 实际库存": stockReal,
-                "Remaining Stock 剩余库存": remainingStock,
-                "Status 状态":
-                  remainingStock >= 0 ? "CUKUP 充足" : "KURANG 不足",
-              });
+              // PERBAIKAN 3: Gabungkan item dengan kode yang sama
+              const existingItem = itemSummaryMap.get(item.ItemID);
+
+              if (existingItem) {
+                // Jika item sudah ada, jumlahkan sumOfTotal
+                existingItem.sumOfTotal += sumOfTotal;
+                existingItem.remainingStock =
+                  existingItem.stockAvailable - existingItem.sumOfTotal;
+                existingItem.sourcePOs.push({
+                  noSPK: plan.order.No_SPK,
+                  kodeBarang: plan.order.Kode_Barang,
+                  qty: plan.order.QTY,
+                  needed: sumOfTotal,
+                });
+              } else {
+                // Item baru, tambahkan ke map
+                itemSummaryMap.set(item.ItemID, {
+                  "Kode Item 物料代码": item.ItemID,
+                  "Nama Item 物料名称": item.ItemName,
+                  "Departemen 部门": item.Departemen || "-",
+                  "Sum of Total 总需求 (PO)": sumOfTotal,
+                  "Stock Other 其他库存 (Total PO lain)": stockOther,
+                  "Stock Available 可用库存": stockAvailable,
+                  "Stock Real 实际库存": stockReal,
+                  "Remaining Stock 剩余库存": remainingStock,
+                  "Status 状态":
+                    remainingStock >= 0 ? "CUKUP 充足" : "KURANG 不足",
+                  sourcePOs: [
+                    {
+                      noSPK: plan.order.No_SPK,
+                      kodeBarang: plan.order.Kode_Barang,
+                      qty: plan.order.QTY,
+                      needed: sumOfTotal,
+                    },
+                  ],
+                });
+              }
             }
           }
         }
@@ -2494,7 +2549,29 @@ export default function ProductionPlanPage() {
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
 
-      // Data Production Orders - TAMPILAN TETAP SAMA
+      // PERBAIKAN 4: Konversi map ke array untuk export
+      exportData.stockSummary = Array.from(itemSummaryMap.values()).map(
+        (item) => ({
+          "Kode Item 物料代码": item["Kode Item 物料代码"],
+          "Nama Item 物料名称": item["Nama Item 物料名称"],
+          "Departemen 部门": item["Departemen 部门"],
+          "Sum of Total 总需求 (PO)": item["Sum of Total 总需求 (PO)"],
+          "Stock Other 其他库存 (Total PO lain)":
+            item["Stock Other 其他库存 (Total PO lain)"],
+          "Stock Available 可用库存": item["Stock Available 可用库存"],
+          "Stock Real 实际库存": item["Stock Real 实际库存"],
+          "Remaining Stock 剩余库存": item["Remaining Stock 剩余库存"],
+          "Status 状态": item["Status 状态"],
+          "Detail PO 订单详情": item.sourcePOs
+            .map(
+              (source: any) =>
+                `${source.noSPK}-${source.kodeBarang}: ${source.qty} unit → ${source.needed}`
+            )
+            .join("; "),
+        })
+      );
+
+      // Data Production Orders
       setExportProgress((prev) => ({
         ...prev,
         message: "Menyusun data PO...",
@@ -2508,7 +2585,7 @@ export default function ProductionPlanPage() {
           // Hitung total QTY untuk PO gabungan
           const totalQTY = isCombined
             ? plan.order.combinedItems?.reduce(
-                (sum: any, item: { QTY: any; }) => sum + item.QTY,
+                (sum: any, item: any) => sum + item.QTY,
                 0
               ) || 0
             : plan.order.QTY;
@@ -2529,7 +2606,7 @@ export default function ProductionPlanPage() {
         }
       );
 
-      // Buat Excel file - TAMPILAN TETAP SAMA
+      // Buat Excel file
       setExportProgress((prev) => ({
         ...prev,
         message: "Membuat file Excel...",
@@ -2537,36 +2614,32 @@ export default function ProductionPlanPage() {
 
       const wb = XLSX.utils.book_new();
 
-      // Worksheet 1: Simple Stock Summary - TAMPILAN TETAP SAMA
+      // Worksheet 1: Simple Stock Summary - DIPERBAIKI
       if (exportData.stockSummary.length > 0) {
         const ws1 = XLSX.utils.json_to_sheet(exportData.stockSummary);
         XLSX.utils.book_append_sheet(wb, ws1, "Stock Summary 库存汇总");
 
-        // Styling untuk worksheet simple summary - TETAP SAMA
+        // Styling untuk worksheet simple summary
         if (!ws1["!cols"]) ws1["!cols"] = [];
         ws1["!cols"] = [
           { wch: 15 }, // Kode Item
           { wch: 30 }, // Nama Item
           { wch: 15 }, // Departemen
-          { wch: 15 }, // No SPK
-          { wch: 12 }, // Tanggal PO
-          { wch: 30 }, // Nama PO
-          { wch: 15 }, // Kode Barang PO
-          { wch: 10 }, // QTY PO
           { wch: 15 }, // Sum of Total
           { wch: 15 }, // Stock Other
           { wch: 15 }, // Stock Available
           { wch: 15 }, // Stock Real
           { wch: 15 }, // Remaining Stock
           { wch: 12 }, // Status
+          { wch: 40 }, // Detail PO
         ];
       }
 
-      // Worksheet 2: Selected Production Orders - TAMPILAN TETAP SAMA
+      // Worksheet 2: Selected Production Orders
       const ws3 = XLSX.utils.json_to_sheet(exportData.productionOrders);
       XLSX.utils.book_append_sheet(wb, ws3, "Selected PO 已选择PO");
 
-      // Worksheet 3: Keterangan dan Rumus - TAMPILAN TETAP SAMA
+      // Worksheet 3: Keterangan dan Rumus - DIPERBAIKI
       const keteranganData: any[][] = [
         ["SIMPLE STOCK SUMMARY REPORT 简单库存汇总报告"],
         [""],
@@ -2586,18 +2659,32 @@ export default function ProductionPlanPage() {
           ).length,
         ],
         [""],
+        ["PERBAIKAN YANG DITERAPKAN 已应用的修复:"],
+        [
+          "1. Stock Other: Menggunakan committedQty dari database 使用数据库中的已提交数量",
+        ],
+        [
+          "2. Stock Available: stockAkhir - stockOther 可用库存 = 最终库存 - 其他库存",
+        ],
+        [
+          "3. Sum of Total: Digabungkan untuk kode item yang sama 相同物料代码的需求量合并",
+        ],
+        [
+          "4. Remaining Stock: stockAvailable - sumOfTotal 剩余库存 = 可用库存 - 总需求",
+        ],
+        [""],
         ["KETERANGAN KOLOM 列说明:"],
         [
           "Sum of Total 总需求",
-          "Total kebutuhan untuk PO ini (QTY PO) 此PO的总需求(PO数量)",
+          "Total kebutuhan untuk semua PO yang dipilih (jika kode item sama, dijumlahkan) 所有选择PO的总需求(相同物料代码的需求量合并)",
         ],
         [
           "Stock Other 其他库存",
-          "Total komitmen dari PO lain (Committed Qty) 其他PO的总承诺量(已提交数量)",
+          "Total komitmen dari PO lain (Committed Qty) - DATA REAL dari database 其他PO的总承诺量(已提交数量) - 来自数据库的真实数据",
         ],
         [
           "Stock Available 可用库存",
-          "Stok tersedia setelah dikurangi komitmen PO lain 减去其他PO承诺后的可用库存",
+          "Stok tersedia setelah dikurangi komitmen PO lain (stockAkhir - stockOther) 减去其他PO承诺后的可用库存(最终库存 - 其他库存)",
         ],
         ["Stock Real 实际库存", "Stok fisik aktual di gudang 仓库实际物理库存"],
         [
@@ -2615,34 +2702,34 @@ export default function ProductionPlanPage() {
         [""],
         ["CATATAN 备注:"],
         [
-          "Stock Other hanya mencakup quantity yang sudah di-commit untuk PO lain 其他库存仅包括其他PO已提交的数量",
+          "Stock Other adalah data REAL dari database, mencakup quantity yang sudah di-commit untuk PO lain 其他库存是来自数据库的真实数据，包括其他PO已提交的数量",
         ],
         [
-          "Tidak termasuk reserved quantity atau stok lainnya 不包括预留数量或其他库存",
+          "Sum of Total sudah digabungkan untuk item dengan kode yang sama dari berbagai PO 相同物料代码的需求量已从各个PO合并",
         ],
       ];
 
       const ws4 = XLSX.utils.aoa_to_sheet(keteranganData);
       XLSX.utils.book_append_sheet(wb, ws4, "Keterangan 说明");
 
-      // Styling untuk worksheet keterangan - TETAP SAMA
+      // Styling untuk worksheet keterangan
       if (ws4["!merges"] === undefined) ws4["!merges"] = [];
       ws4["!merges"].push(
         { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } },
         { s: { r: 8, c: 0 }, e: { r: 8, c: 4 } },
         { s: { r: 16, c: 0 }, e: { r: 16, c: 4 } },
-        { s: { r: 21, c: 0 }, e: { r: 21, c: 4 } },
-        { s: { r: 25, c: 0 }, e: { r: 25, c: 4 } }
+        { s: { r: 23, c: 0 }, e: { r: 23, c: 4 } },
+        { s: { r: 30, c: 0 }, e: { r: 30, c: 4 } }
       );
 
-      // Generate filename - TETAP SAMA
+      // Generate filename
       const timestamp: string = new Date()
         .toISOString()
         .replace(/[:.]/g, "-")
         .slice(0, -5);
       const filename = `Simple_Stock_Summary_${timestamp}.xlsx`;
 
-      // Export ke file - TETAP SAMA
+      // Export ke file
       const wbout: any = XLSX.write(wb, { bookType: "xlsx", type: "array" });
       const blob = new Blob([wbout], { type: "application/octet-stream" });
 
@@ -2650,7 +2737,20 @@ export default function ProductionPlanPage() {
 
       console.log(`✅ Export simple berhasil 简单导出成功: ${filename}`);
       console.log(
-        `📊 Data yang di-export 导出数据: ${selectedOrders.length} PO terpilih 选择的PO`
+        `📊 Data yang di-export 导出数据: ${selectedOrders.length} PO terpilih, ${exportData.stockSummary.length} item unique 唯一物料`
+      );
+
+      // Tampilkan summary
+      const totalSumOfTotal = exportData.stockSummary.reduce(
+        (sum, item) => sum + item["Sum of Total 总需求 (PO)"],
+        0
+      );
+      const totalShortage = exportData.stockSummary.filter(
+        (item) => item["Remaining Stock 剩余库存"] < 0
+      ).length;
+
+      console.log(
+        `📈 Summary: Total Sum of Total: ${totalSumOfTotal}, Items dengan shortage: ${totalShortage}`
       );
     } catch (error) {
       console.error("❌ Error dalam export simple 简单导出错误:", error);
