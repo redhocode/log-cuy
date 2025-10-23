@@ -3029,7 +3029,7 @@ ${
           console.log(`✅ [EXPORT] Data ditemukan untuk ${itemId}:`, itemData);
 
           // ⭐ FOKUS PADA SALDOAKHIR dari API response
-          const stockReal = parseFloat(itemData.SaldoAkhir) || 0;
+          const stockReal = parseFloat(itemData.SaldoAkhirFisik) || 0;
 
           console.log(`📦 [EXPORT] Stock REAL untuk ${itemId}:`, {
             stockReal,
