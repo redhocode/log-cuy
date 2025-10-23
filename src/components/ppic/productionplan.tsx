@@ -3686,38 +3686,64 @@ ${
           Status: "PERLU PERHATIAN 需要注意",
           "Detail PO": item["Detail PO 订单详情"],
         }));
+// Phase 9: Generate dan download file - COMPREHENSIVE VERSION
+setExportProgress({
+  visible: true,
+  current: 98,
+  total: 100,
+  message: "Menyimpan file...",
+});
 
-      // Phase 9: Generate dan download file
-      setExportProgress({
-        visible: true,
-        current: 98,
-        total: 100,
-        message: "Menyimpan file...",
-      });
+// ⭐ VERSI TERBAIK: Nama file dengan informasi komprehensif
+const getCleanFileName = (text: string, maxLength: number = 40): string => {
+  return text
+  .replace(/[<>:"/\\|?*]/g, '') // Hapus karakter ilegal Windows
+  .replace(/[^a-zA-Z0-9\u4e00-\u9fa5\s_-]/g, '') // Hanya karakter aman
+  .replace(/\s+/g, ' ') // Normalize spasi
+  .trim()
+  .substring(0, maxLength)
+  .replace(/\s+/g, '_'); // Ganti spasi dengan underscore
+};
+const timestamp = new Date().toISOString().split("T")[0];
 
-      // Generate filename dengan timestamp
-      const timestamp: string = new Date()
-        .toISOString()
-        .replace(/[:.]/g, "-")
-        .slice(0, -5);
-      const filename = `Stock_Real_Export_${timestamp}.xlsx`;
+let filename = "";
+if (selectedOrders.length === 1) {
+  const order = selectedOrders[0];
+  const noSPK = order.order.No_SPK || "NO_SPK";
+  const poName = order.order.Nama_PO || "NO_NAME";
+  const itemCode = order.order.Kode_Barang || "NO_CODE";
+  
+  const cleanSPK = getCleanFileName(noSPK, 15);
+  const cleanPOName = getCleanFileName(poName, 25);
+  const cleanItemCode = getCleanFileName(itemCode, 10);
+  
+  filename = `PO_${cleanSPK}_${cleanPOName}_${cleanItemCode}_${timestamp}.xlsx`;
+  
+  console.log(`📝 Export single PO: ${noSPK} - ${poName}`);
+} else {
+  const poCount = selectedOrders.length;
+  const totalQty = selectedOrders.reduce((sum, order) => sum + order.order.QTY, 0);
+  
+  // Ambil 2 PO pertama untuk representasi
+  const representativePOs = selectedOrders.slice(0, 2).map(order => 
+    getCleanFileName(order.order.No_SPK || "SPK", 10)
+  ).join('_');
+  
+  if (poCount === 2) {
+    filename = `PO_${representativePOs}_${totalQty}QTY_${timestamp}.xlsx`;
+  } else {
+    filename = `PO_${representativePOs}_+${poCount - 2}more_${totalQty}QTY_${timestamp}.xlsx`;
+  }
+  
+  console.log(`📝 Export ${poCount} POs, total QTY: ${totalQty}`);
+}
 
-      // Export ke file
-      const wbout: any = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-      const blob = new Blob([wbout], { type: "application/octet-stream" });
+// Final safety check
+if (!filename) {
+  filename = `Production_Export_${timestamp}.xlsx`;
+}
 
-      saveAs(blob, filename);
-
-      // Phase 10: Selesai
-      setExportProgress({
-        visible: true,
-        current: 100,
-        total: 100,
-        message: "Export selesai!",
-      });
-
-      // Log hasil
-      console.log(`✅ [EXPORT] Export berhasil: ${filename}`);
+console.log(`💾 File akan disimpan sebagai: ${filename}`);
 
       // Tampilkan summary
       const totalItems = exportData.stockSummary.length;
