@@ -112,7 +112,8 @@ const createPool = async (
 
     // Setup error handler untuk pool
     connectedPool.on("error", (err: sql.ConnectionError) => {
-      logger.error(`❌ [${poolName}] Database pool error:`, err);
+      // PERBAIKAN: Gunakan string template untuk menggabungkan pesan dan error
+      logger.error(`❌ [${poolName}] Database pool error: ${err.message}`);
       // Reset pool ketika error
       if (poolName === "default") poolPromiseDefault = undefined;
       if (poolName === "login") poolPromiseLogin = undefined;
@@ -122,7 +123,11 @@ const createPool = async (
     logger.info(`✅ [${poolName}] Connected to MSSQL: ${config.database}`);
     return connectedPool;
   } catch (err) {
-    logger.error(`❌ [${poolName}] Database connection failed:`, err);
+    // PERBAIKAN: Gunakan string template untuk error juga
+    const error = err as Error;
+    logger.error(
+      `❌ [${poolName}] Database connection failed: ${error.message}`
+    );
     throw err;
   }
 };
@@ -216,7 +221,8 @@ export const executeQuery = async (
     return result;
   } catch (error) {
     const dbError = error as sql.ConnectionError;
-    logger.error(`❌ [${poolType}] Query execution failed:`, dbError);
+    // PERBAIKAN: Gunakan string template untuk error
+    logger.error(`❌ [${poolType}] Query execution failed: ${dbError.message}`);
 
     // Jika error connection, coba sekali lagi dengan fresh connection
     if (
@@ -266,7 +272,9 @@ export const closeAllPools = async (): Promise<void> => {
             logger.info("🔒 [default] Database connection closed");
           })
           .catch((error) => {
-            logger.error("Error closing default pool:", error);
+            // PERBAIKAN: Gunakan string template
+            const err = error as Error;
+            logger.error(`Error closing default pool: ${err.message}`);
           })
       );
     }
@@ -280,7 +288,8 @@ export const closeAllPools = async (): Promise<void> => {
             logger.info("🔒 [login] Database connection closed");
           })
           .catch((error) => {
-            logger.error("Error closing login pool:", error);
+            const err = error as Error;
+            logger.error(`Error closing login pool: ${err.message}`);
           })
       );
     }
@@ -294,14 +303,16 @@ export const closeAllPools = async (): Promise<void> => {
             logger.info("🔒 [absensi] Database connection closed");
           })
           .catch((error) => {
-            logger.error("Error closing absensi pool:", error);
+            const err = error as Error;
+            logger.error(`Error closing absensi pool: ${err.message}`);
           })
       );
     }
 
     await Promise.allSettled(closePromises);
   } catch (error) {
-    logger.error("Error closing database connections:", error);
+    const err = error as Error;
+    logger.error(`Error closing database connections: ${err.message}`);
   }
 };
 

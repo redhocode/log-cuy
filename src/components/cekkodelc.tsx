@@ -56,6 +56,7 @@ interface BomTreeData {
   KodeJenis: string;
 }
 
+
 export default function CekKodeLC() {
   const [allItemPairs, setAllItemPairs] = useState<ItemPair[]>([]);
   const [filteredItemPairs, setFilteredItemPairs] = useState<ItemPair[]>([]);
@@ -153,9 +154,10 @@ export default function CekKodeLC() {
 
     return Array.from(pairsMap.values());
   };
+// components/cekkodelc.tsx
 
-// components/cekkodelc.tsx - Modifikasi bagian fetchBomData
-const fetchBomData = async (itemId: string) => {
+// Pindahkan fetchBomData ke useCallback
+const fetchBomData = useCallback(async (itemId: string) => {
   // Check cache lokal terlebih dahulu
   if (bomData[itemId]) {
     console.log(`[FRONTEND CACHE HIT] BOM data for ${itemId}`);
@@ -176,9 +178,9 @@ const fetchBomData = async (itemId: string) => {
   } finally {
     setBomLoading(prev => ({ ...prev, [itemId]: false }));
   }
-};
+}, [bomData]);
 
-// Modifikasi useEffect untuk loadAllBomData
+// Modifikasi useEffect untuk loadAllBomData dengan batch
 useEffect(() => {
   const loadAllBomData = async () => {
     if (allItemPairs.length === 0) return;
@@ -225,54 +227,42 @@ useEffect(() => {
   };
   
   loadAllBomData();
-}, [allItemPairs]); // Hanya depend on allItemPairs, bukan bomData
-  // Load semua BOM data sekaligus
-  useEffect(() => {
-    const loadAllBomData = async () => {
-      if (allItemPairs.length === 0) return;
-      
-      setInitialBomLoading(true);
-      
-      try {
-        // Load BOM data untuk semua item LC dan Non-LC
-        const bomPromises: Promise<void>[] = [];
-        
-        allItemPairs.forEach(pair => {
-          if (pair.lcItem) {
-            bomPromises.push(
-              fetchBomData(pair.lcItem!.ItemID)
-            );
-          }
-          if (pair.nonLcItem) {
-            bomPromises.push(
-              fetchBomData(pair.nonLcItem!.ItemID)
-            );
-          }
-        });
-        
-        await Promise.all(bomPromises);
-      } catch (error) {
-        console.error('Error loading BOM data:', error);
-      } finally {
-        setInitialBomLoading(false);
-      }
-    };
-    
-    loadAllBomData();
-  }, [allItemPairs]);
+}, [allItemPairs, bomData, fetchBomData]);
 
-  // Filter items yang memiliki BOM data
-  useEffect(() => {
-    if (initialBomLoading) return; // Jangan filter saat masih loading
+// Load semua BOM data sekaligus (fallback)
+useEffect(() => {
+  const loadAllBomData = async () => {
+    if (allItemPairs.length === 0) return;
     
-    const itemsWithBom = allItemPairs.filter(pair => {
-      const lcHasBom = pair.lcItem && bomData[pair.lcItem.ItemID] && bomData[pair.lcItem.ItemID].length > 0;
-      const nonLcHasBom = pair.nonLcItem && bomData[pair.nonLcItem.ItemID] && bomData[pair.nonLcItem.ItemID].length > 0;
-      return lcHasBom || nonLcHasBom;
-    });
+    setInitialBomLoading(true);
     
-    setFilteredItemPairs(itemsWithBom);
-  }, [bomData, allItemPairs, initialBomLoading]);
+    try {
+      // Load BOM data untuk semua item LC dan Non-LC
+      const bomPromises: Promise<void>[] = [];
+      
+      allItemPairs.forEach(pair => {
+        if (pair.lcItem) {
+          bomPromises.push(
+            fetchBomData(pair.lcItem!.ItemID)
+          );
+        }
+        if (pair.nonLcItem) {
+          bomPromises.push(
+            fetchBomData(pair.nonLcItem!.ItemID)
+          );
+        }
+      });
+      
+      await Promise.all(bomPromises);
+    } catch (error) {
+      console.error('Error loading BOM data:', error);
+    } finally {
+      setInitialBomLoading(false);
+    }
+  };
+  
+  loadAllBomData();
+}, [allItemPairs, fetchBomData]);
 
   // Fungsi untuk export ke Excel
   const exportToExcel = useCallback(async () => {
