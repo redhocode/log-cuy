@@ -1,6 +1,6 @@
 "use client";
 import Loading from "@/app/loading";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react"; // Added useCallback
 
 interface PORecord {
   orderid: string;
@@ -35,7 +35,6 @@ interface KartuStockData {
   Saldo?: number; // saldo kumulatif
 }
 
-
 export default function MonitoringPOPage() {
   const [data, setData] = useState<PORecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -46,9 +45,10 @@ export default function MonitoringPOPage() {
     {}
   );
   const [stockLoading, setStockLoading] = useState<Record<string, boolean>>({});
-const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
-  const fetchData = async () => {
+  // Wrap fetchData with useCallback to prevent infinite re-renders
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch(
@@ -62,41 +62,47 @@ const [searchTerm, setSearchTerm] = useState("");
     } finally {
       setLoading(false);
     }
-  };
+  }, [tgl1, tgl2]); // Add dependencies that are used inside
 
- const fetchStock = async (item: string, itemid: string) => {
-   setStockLoading((prev) => ({ ...prev, [itemid]: true }));
-   try {
-     const res = await fetch(
-       `/api/kartustock?tgl1=${tgl1}&tgl2=${tgl2}&item=${encodeURIComponent(
-         item
-       )}&itemid=${encodeURIComponent(itemid)}`
-     );
-     const d = await res.json();
-     const records: KartuStockData[] = Array.isArray(d) ? d : d.recordset ?? [];
+  // Wrap fetchStock with useCallback
+  const fetchStock = useCallback(
+    async (item: string, itemid: string) => {
+      setStockLoading((prev) => ({ ...prev, [itemid]: true }));
+      try {
+        const res = await fetch(
+          `/api/kartustock?tgl1=${tgl1}&tgl2=${tgl2}&item=${encodeURIComponent(
+            item
+          )}&itemid=${encodeURIComponent(itemid)}`
+        );
+        const d = await res.json();
+        const records: KartuStockData[] = Array.isArray(d)
+          ? d
+          : d.recordset ?? [];
 
-     // Hitung saldo kumulatif
-     let saldo = 0;
-     const withSaldo = records.map((r) => {
-       saldo += (r.KgI || 0) - (r.KgO || 0);
-       return {
-         ...r,
-         Saldo: saldo, // ✅ tambahkan properti saldo ke record
-       };
-     });
+        // Hitung saldo kumulatif
+        let saldo = 0;
+        const withSaldo = records.map((r) => {
+          saldo += (r.KgI || 0) - (r.KgO || 0);
+          return {
+            ...r,
+            Saldo: saldo, // ✅ tambahkan properti saldo ke record
+          };
+        });
 
-     setStockData((prev) => ({ ...prev, [itemid]: withSaldo }));
-   } catch (err) {
-     console.error("Gagal fetch kartu stock:", err);
-   } finally {
-     setStockLoading((prev) => ({ ...prev, [itemid]: false }));
-   }
- };
+        setStockData((prev) => ({ ...prev, [itemid]: withSaldo }));
+      } catch (err) {
+        console.error("Gagal fetch kartu stock:", err);
+      } finally {
+        setStockLoading((prev) => ({ ...prev, [itemid]: false }));
+      }
+    },
+    [tgl1, tgl2]
+  ); // Add dependencies that are used inside
 
-
+  // Fixed useEffect with proper dependency
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]); // Added fetchData as dependency
 
   // Grouping by orderid
   const grouped = data.reduce((acc: Record<string, PORecord[]>, row) => {
@@ -137,19 +143,19 @@ const [searchTerm, setSearchTerm] = useState("");
       return true;
     })
     .filter((po) => {
-  if (!searchTerm.trim()) return true;
-  const keyword = searchTerm.toLowerCase();
-  const matchOrderId = po.header.orderid.toLowerCase().includes(keyword);
-  const matchName = po.header.companyname1.toLowerCase().includes(keyword);
-  if (matchOrderId || matchName) return true;
-  // Check items
-  const matchItem = po.items.some((it) =>
-    it.records[0].itemname.toLowerCase().includes(keyword)
-  );
-  return matchOrderId || matchItem;
-});
+      if (!searchTerm.trim()) return true;
+      const keyword = searchTerm.toLowerCase();
+      const matchOrderId = po.header.orderid.toLowerCase().includes(keyword);
+      const matchName = po.header.companyname1.toLowerCase().includes(keyword);
+      if (matchOrderId || matchName) return true;
+      // Check items
+      const matchItem = po.items.some((it) =>
+        it.records[0].itemname.toLowerCase().includes(keyword)
+      );
+      return matchOrderId || matchItem;
+    });
 
-  // Fetch kartu stok ketika ada PO baru
+  // Fixed useEffect with all dependencies
   useEffect(() => {
     poList.forEach((po) => {
       po.items.forEach((it) => {
@@ -158,8 +164,9 @@ const [searchTerm, setSearchTerm] = useState("");
         }
       });
     });
-  }, [poList]);
+  }, [poList, stockData, stockLoading, fetchStock]); // Added missing dependencies
 
+  // The rest of your component remains the same...
   return (
     <div className="p-6">
       <h1 className="text-xl font-bold mb-4 text-center">

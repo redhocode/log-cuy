@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { DataTable } from "../data-table";
 import { columns } from "./columns";
 import Loading from "@/app/loading";
@@ -37,7 +37,9 @@ const StockPergudang: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split("T")[0] // default hari ini
   );
-const [cacheData, setCacheData] = useState<{ [key: string]: StockItem[] }>({});
+  const [cacheData, setCacheData] = useState<{ [key: string]: StockItem[] }>(
+    {}
+  );
 
   const debounceTimeout = useRef<any>(null);
   const periodeR = "201905";
@@ -69,64 +71,64 @@ const [cacheData, setCacheData] = useState<{ [key: string]: StockItem[] }>({});
   };
 
   // filter sesuai combo box
-  const applyFilter = (data: StockItem[], option: string) => {
+  const applyFilter = useCallback((data: StockItem[], option: string) => {
     if (option === "utama") {
       return data.filter((item) => itemGudangUtama.includes(item.itemid));
     } else if (option === "injeksi") {
       return data.filter((item) => itemGudangInjeksi.includes(item.itemid));
     }
     return data; // default semua
-  };
+  }, []);
 
   // fetch data dari API → SELALU ambil semua item (%)
- useEffect(() => {
-   const fetchData = async () => {
-     // cek cache dulu
-     if (cacheData[selectedDate]) {
-       setData(cacheData[selectedDate]);
-       setFilteredData(applyFilter(cacheData[selectedDate], filterOption));
-       setLoading(false);
-       return;
-     }
+  const fetchData = useCallback(async () => {
+    // cek cache dulu
+    if (cacheData[selectedDate]) {
+      setData(cacheData[selectedDate]);
+      setFilteredData(applyFilter(cacheData[selectedDate], filterOption));
+      setLoading(false);
+      return;
+    }
 
-     setLoading(true);
-     try {
-       const response = await fetch(
-         `/api/stock?periodeR=${periodeR}&loc=%&item=%&tgl=${selectedDate}&company=0&tipestock=0&jenisbarang=0&kategori=%&minus=0`
-       );
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `/api/stock?periodeR=${periodeR}&loc=%&item=%&tgl=${selectedDate}&company=0&tipestock=0&jenisbarang=0&kategori=%&minus=0`
+      );
 
-       if (!response.ok) {
-         setError("System Busy, Please reload");
-         return;
-       }
+      if (!response.ok) {
+        setError("System Busy, Please reload");
+        return;
+      }
 
-       const result = await response.json();
-       if (result.data) {
-         setData(result.data);
-         setFilteredData(applyFilter(result.data, filterOption));
+      const result = await response.json();
+      if (result.data) {
+        setData(result.data);
+        setFilteredData(applyFilter(result.data, filterOption));
 
-         // simpan ke cache frontend
-         setCacheData((prev) => ({
-           ...prev,
-           [selectedDate]: result.data,
-         }));
-       } else {
-         setError("System Busy, Please reload");
-       }
-     } catch (err: any) {
-       setError(err.message);
-     } finally {
-       setLoading(false);
-     }
-   };
+        // simpan ke cache frontend
+        setCacheData((prev) => ({
+          ...prev,
+          [selectedDate]: result.data,
+        }));
+      } else {
+        setError("System Busy, Please reload");
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedDate, cacheData, filterOption, applyFilter]);
 
-   fetchData();
- }, [selectedDate]);
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   // kalau filterOption berubah → filter ulang data
   useEffect(() => {
     setFilteredData(applyFilter(data, filterOption));
-  }, [filterOption, data]);
+  }, [filterOption, data, applyFilter]);
 
   // hitung stock akhir dari data terfilter
   const dataWithStockAkhir = getStockAkhirPerItem(filteredData).filter(
@@ -153,39 +155,40 @@ const [cacheData, setCacheData] = useState<{ [key: string]: StockItem[] }>({});
     }, 300);
   };
 
+  const handleExport = () => {
+    // pilih data yang sudah difilter
+    const exportData = dataWithStockAkhir.map((item) => ({
+      ItemID: item.itemid,
+      ItemName: item.itemname,
+      Kategori: item.kategori,
+      StockAkhir: item.stockAkhir,
+    }));
+
+    // buat worksheet dan workbook
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Stock");
+
+    // nama file sesuai gudang
+    const gudang =
+      filterOption === "utama"
+        ? "Gudang_Utama"
+        : filterOption === "injeksi"
+        ? "Gudang_Injeksi"
+        : "Semua_Gudang";
+
+    const fileName = `Laporan_Stock_${gudang}_${selectedDate}.xlsx`;
+
+    // simpan file
+    const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    saveAs(
+      new Blob([excelBuffer], { type: "application/octet-stream" }),
+      fileName
+    );
+  };
+
   if (loading) return <Loading />;
   if (error) return <div>Error: {error}</div>;
-const handleExport = () => {
-  // pilih data yang sudah difilter
-  const exportData = dataWithStockAkhir.map((item) => ({
-    ItemID: item.itemid,
-    ItemName: item.itemname,
-    Kategori: item.kategori,
-    StockAkhir: item.stockAkhir,
-  }));
-
-  // buat worksheet dan workbook
-  const ws = XLSX.utils.json_to_sheet(exportData);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Stock");
-
-  // nama file sesuai gudang
-  const gudang =
-    filterOption === "utama"
-      ? "Gudang_Utama"
-      : filterOption === "injeksi"
-      ? "Gudang_Injeksi"
-      : "Semua_Gudang";
-
-  const fileName = `Laporan_Stock_${gudang}_${selectedDate}.xlsx`;
-
-  // simpan file
-  const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-  saveAs(
-    new Blob([excelBuffer], { type: "application/octet-stream" }),
-    fileName
-  );
-};
 
   return (
     <div>

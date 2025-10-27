@@ -472,53 +472,6 @@ const debugReservedQty = async (itemIds: string[]) => {
   }
 };
 
-// Fungsi untuk refresh data reservedQty
-const refreshReservedQtyData = async (orders: { bom: { flat: any[]; }; stock: any; }[]) => {
-  try {
-    console.log("🔄 Force refreshing reservedQty data...");
-
-    // Ambil semua item IDs dari semua orders yang memiliki BOM
-    const allItemIds: string[] = [];
-    orders.forEach((order: { bom: { flat: any[]; }; stock: any; }) => {
-      if (order.bom && order.stock) {
-        order.bom.flat.forEach((item: { ItemID: string; }) => {
-          allItemIds.push(item.ItemID);
-        });
-      }
-    });
-    
-    const uniqueItemIds = Array.from(new Set(allItemIds));
-    console.log(`📋 Refreshing ${uniqueItemIds.length} unique items`);
-    
-    // Refresh data stock untuk semua item
-    const refreshedStock = await fetchStockForItemsWithCommitment(
-      uniqueItemIds,
-      new Date().toISOString().split("T")[0]
-    );
-    
-    // Update orders dengan data stock yang baru
-    setOrders((prev: any[]) => prev.map((order: { bom: { flat: any[]; }; }) => {
-      if (order.bom) {
-        const orderItemIds = order.bom.flat.map((item: { ItemID: any; }) => item.ItemID);
-        const relevantStock = refreshedStock.filter(stock => 
-          orderItemIds.includes(stock.itemid)
-        );
-        
-        return {
-          ...order,
-          stock: relevantStock,
-          stockLastUpdated: new Date().toISOString()
-        };
-      }
-      return order;
-    }));
-    
-    console.log("✅ ReservedQty data refreshed successfully");
-  } catch (error) {
-    console.error("❌ Error refreshing reservedQty data:", error);
-  }
-};
-
 // ==================== KOMPONEN BOM TREE YANG DIPERBAIKI ====================
 const SimpleBomTree: React.FC<{
   treeData: BomItem[];
@@ -1862,7 +1815,7 @@ export default function ProductionPlanPage() {
     }
   };
 
-  const refreshAllData = async (): Promise<void> => {
+  const refreshAllData = useCallback(async (): Promise<void> => {
     try {
       setLoading(true);
       await loadCommittedPOs();
@@ -1872,7 +1825,7 @@ export default function ProductionPlanPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [dateFilter.startDate, dateFilter.endDate]);
 
   // ==================== FUNGSI PAGINATION ====================
 
@@ -2025,6 +1978,53 @@ export default function ProductionPlanPage() {
       }
     }
   };
+
+  // Fungsi untuk refresh data reservedQty
+  const refreshReservedQtyData = useCallback(async () => {
+    try {
+      console.log("🔄 Force refreshing reservedQty data...");
+
+      // Ambil semua item IDs dari semua orders yang memiliki BOM
+      const allItemIds: string[] = [];
+      orders.forEach((order) => {
+        if (order.bom && order.stock) {
+          order.bom.flat.forEach((item) => {
+            allItemIds.push(item.ItemID);
+          });
+        }
+      });
+      
+      const uniqueItemIds = Array.from(new Set(allItemIds));
+      console.log(`📋 Refreshing ${uniqueItemIds.length} unique items`);
+      
+      // Refresh data stock untuk semua item
+      const refreshedStock = await fetchStockForItemsWithCommitment(
+        uniqueItemIds,
+        new Date().toISOString().split("T")[0]
+      );
+      
+      // Update orders dengan data stock yang baru
+      setOrders((prev) => prev.map((order) => {
+        if (order.bom) {
+          const orderItemIds = order.bom.flat.map((item) => item.ItemID);
+          const relevantStock = refreshedStock.filter(stock => 
+            orderItemIds.includes(stock.itemid)
+          );
+          
+          return {
+            ...order,
+            stock: relevantStock,
+            stockLastUpdated: new Date().toISOString()
+          };
+        }
+        return order;
+      }));
+      
+      console.log("✅ ReservedQty data refreshed successfully");
+    } catch (error) {
+      console.error("❌ Error refreshing reservedQty data:", error);
+    }
+  }, [orders]);
 
   // FUNGSI: Commit PO dengan mengambil semua kebutuhan material (termasuk yang minus)
   const commitPO = async (index: number): Promise<void> => {
@@ -2958,216 +2958,283 @@ ${
   };
 
   // ==================== FUNGSI UTAMA YANG DIPERBAIKI - TANGGAL SEKARANG ====================
+// FUNGSI: Ambil stock real langsung dari API /api/stock/ppic - VERSION 4.0 - TANGGAL SEKARANG
+// + TAMBAHAN: Data pengeluaran dari API yang sama
+const getRealStockFromAPI = async (
+  itemId: string
+): Promise<{ 
+  stockReal: number; 
+  rawData: any;
+  pengeluaran: number; // ⭐ TAMBAHAN: Data pengeluaran saja
+}> => {
+  try {
+    console.log(`🔍 [EXPORT] Mengambil stock REAL untuk ${itemId}...`);
 
-  // FUNGSI: Ambil stock real langsung dari API /api/stock/ppic - VERSION 4.0 - TANGGAL SEKARANG
-  const getRealStockFromAPI = async (
-    itemId: string
-  ): Promise<{ stockReal: number; rawData: any }> => {
-    try {
-      console.log(`🔍 [EXPORT] Mengambil stock REAL untuk ${itemId}...`);
+    // ⭐ PERBAIKAN: Gunakan tanggal sekarang (hari ini)
+    const today = new Date().toISOString().split("T")[0]; // Format: YYYY-MM-DD
+    const periodeR = "201905"; // Tetap
 
-      // ⭐ PERBAIKAN: Gunakan tanggal sekarang (hari ini)
-      const today = new Date().toISOString().split("T")[0]; // Format: YYYY-MM-DD
-      const periodeR = "201905"; // Tetap
+    const apiUrl = `/api/stock/ppic?tgl1=${today}&tgl2=${today}&loc=%&periodeR=${periodeR}&kategori=%&itemid=${encodeURIComponent(
+      itemId
+    )}`;
 
-      const apiUrl = `/api/stock/ppic?tgl1=${today}&tgl2=${today}&loc=%&periodeR=${periodeR}&kategori=%&itemid=${encodeURIComponent(
-        itemId
-      )}`;
+    console.log(`🌐 [EXPORT] API URL: ${apiUrl}`);
 
-      console.log(`🌐 [EXPORT] API URL: ${apiUrl}`);
-
-      const response = await fetch(apiUrl, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "Cache-Control": "no-cache",
-        },
-        cache: "no-cache",
-      });
-
-      if (!response.ok) {
-        console.warn(
-          `❌ [EXPORT] HTTP error for ${itemId}: ${response.status}`
-        );
-        return { stockReal: 0, rawData: null };
-      }
-
-      const result = await response.json();
-      console.log(`📊 [EXPORT] RAW API Response for ${itemId}:`, result);
-
-      // Handle response format untuk API stock/ppic
-      let dataArray = [];
-
-      if (result.data && Array.isArray(result.data)) {
-        dataArray = result.data;
-      } else if (Array.isArray(result)) {
-        dataArray = result;
-      } else if (result.stockData && Array.isArray(result.stockData)) {
-        dataArray = result.stockData;
-      } else {
-        console.warn(
-          `⚠️ [EXPORT] ${itemId}: Format response tidak dikenali`,
-          result
-        );
-        return { stockReal: 0, rawData: null };
-      }
-
-      if (dataArray.length > 0) {
-        // Mencari item dengan berbagai kemungkinan field identifier
-        const itemData = dataArray.find((item: any) => {
-          return (
-            item.KodeBarang === itemId ||
-            item.ItemID === itemId ||
-            item.itemid === itemId ||
-            item.kodeBarang === itemId ||
-            item.Kode_Barang === itemId ||
-            item.kode_barang === itemId
-          );
-        });
-
-        if (itemData) {
-          console.log(`✅ [EXPORT] Data ditemukan untuk ${itemId}:`, itemData);
-
-          // ⭐ FOKUS PADA SALDOAKHIR dari API response
-          const stockReal = parseFloat(itemData.SaldoAkhirFisik) || 0;
-
-          console.log(`📦 [EXPORT] Stock REAL untuk ${itemId}:`, {
-            stockReal,
-            SaldoAkhir: itemData.SaldoAkhir,
-            SaldoAkhirFisik: itemData.SaldoAkhirFisik,
-            TotalCommitted: itemData.TotalCommitted,
-            TotalReserved: itemData.TotalReserved,
-            rawData: itemData,
-          });
-
-          return { stockReal, rawData: itemData };
-        } else {
-          console.warn(
-            `⚠️ [EXPORT] ${itemId}: Tidak ditemukan di API response`
-          );
-          console.log(
-            `🔍 Available items in response:`,
-            dataArray.map((item: any) => ({
-              KodeBarang: item.KodeBarang,
-              ItemID: item.ItemID,
-              SaldoAkhir: item.SaldoAkhir,
-              TotalReserved: item.TotalReserved,
-            }))
-          );
-        }
-      } else {
-        console.warn(
-          `⚠️ [EXPORT] ${itemId}: Tidak ada data array dalam response`
-        );
-      }
-
-      console.warn(`⚠️ [EXPORT] ${itemId}: Menggunakan fallback 0`);
-      return { stockReal: 0, rawData: null };
-    } catch (error) {
-      console.error(
-        `❌ [EXPORT] Error mengambil stock REAL untuk ${itemId}:`,
-        error
-      );
-      return { stockReal: 0, rawData: null };
-    }
-  };
-
-  // FUNGSI: Ambil stock real untuk multiple items dengan batch processing - TANGGAL SEKARANG
-  const getRealStocksFromAPI = async (
-    itemIds: string[]
-  ): Promise<Map<string, { stockReal: number; rawData: any }>> => {
-    const stockRealMap = new Map<string, { stockReal: number; rawData: any }>();
-    const batchSize = 3;
-    const delay = 300;
-
-    // ⭐ PERBAIKAN: Dapatkan tanggal sekarang
-    const today = new Date().toISOString().split("T")[0];
-
-    console.log(
-      `🔄 [EXPORT] Mengambil stock real untuk ${itemIds.length} item dari API...`
-    );
-    console.log(`📅 [EXPORT] Tanggal: ${today} (SEKARANG), Periode R: 201905`);
-
-    const uniqueItemIds = Array.from(new Set(itemIds)).filter(
-      (id) => id && id.trim() !== ""
-    );
-
-    setExportProgress((prev) => ({
-      ...prev,
-      total: uniqueItemIds.length,
-      message: `Memulai pengambilan stock real... (0/${uniqueItemIds.length})`,
-    }));
-
-    for (let i = 0; i < uniqueItemIds.length; i += batchSize) {
-      const batch = uniqueItemIds.slice(i, i + batchSize);
-      console.log(
-        `📦 [EXPORT] Processing batch ${
-          Math.floor(i / batchSize) + 1
-        }: ${batch.join(", ")}`
-      );
-
-      const batchPromises = batch.map(async (itemId) => {
-        try {
-          const { stockReal, rawData } = await getRealStockFromAPI(itemId);
-          stockRealMap.set(itemId, { stockReal, rawData });
-          // Update progress untuk setiap item
-          setExportProgress((prev) => ({
-            ...prev,
-            current: prev.current + 1,
-            message: `Mengambil stock real... (${prev.current + 1}/${
-              uniqueItemIds.length
-            })`,
-          }));
-        } catch (error) {
-          console.error(
-            `❌ [EXPORT] Error dalam batch untuk ${itemId}:`,
-            error
-          );
-          stockRealMap.set(itemId, { stockReal: 0, rawData: null });
-
-          setExportProgress((prev) => ({
-            ...prev,
-            current: prev.current + 1,
-          }));
-        }
-      });
-
-      await Promise.all(batchPromises);
-
-      // Delay antara batch
-      if (i + batchSize < uniqueItemIds.length) {
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
-
-    console.log(
-      `✅ [EXPORT] Stock real berhasil diambil: ${stockRealMap.size} item`
-    );
-
-    // Log summary dengan tanggal sekarang
-    const zeroStockItems = Array.from(stockRealMap.entries())
-      .filter(([_, data]) => data.stockReal === 0)
-      .map(([itemId]) => itemId);
-
-    if (zeroStockItems.length > 0) {
-      console.warn(`⚠️ [EXPORT] Items dengan stock real = 0:`, zeroStockItems);
-    }
-
-    console.log(`📊 [EXPORT] SUMMARY - Tanggal: ${today}`, {
-      totalItems: uniqueItemIds.length,
-      successItems: stockRealMap.size,
-      zeroStockItems: zeroStockItems.length,
-      sampleData: Array.from(stockRealMap.entries())
-        .slice(0, 3)
-        .map(([id, data]) => ({
-          itemId: id,
-          stockReal: data.stockReal,
-          hasRawData: !!data.rawData,
-        })),
+    const response = await fetch(apiUrl, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache",
+      },
+      cache: "no-cache",
     });
 
-    return stockRealMap;
-  };
+    if (!response.ok) {
+      console.warn(
+        `❌ [EXPORT] HTTP error for ${itemId}: ${response.status}`
+      );
+      return { 
+        stockReal: 0, 
+        rawData: null,
+        pengeluaran: 0 // ⭐ TAMBAHAN: Default value
+      };
+    }
+
+    const result = await response.json();
+    console.log(`📊 [EXPORT] RAW API Response for ${itemId}:`, result);
+
+    // Handle response format untuk API stock/ppic
+    let dataArray = [];
+
+    if (result.data && Array.isArray(result.data)) {
+      dataArray = result.data;
+    } else if (Array.isArray(result)) {
+      dataArray = result;
+    } else if (result.stockData && Array.isArray(result.stockData)) {
+      dataArray = result.stockData;
+    } else {
+      console.warn(
+        `⚠️ [EXPORT] ${itemId}: Format response tidak dikenali`,
+        result
+      );
+      return { 
+        stockReal: 0, 
+        rawData: null,
+        pengeluaran: 0
+      };
+    }
+
+    if (dataArray.length > 0) {
+      // Mencari item dengan berbagai kemungkinan field identifier
+      const itemData = dataArray.find((item: any) => {
+        return (
+          item.KodeBarang === itemId ||
+          item.ItemID === itemId ||
+          item.itemid === itemId ||
+          item.kodeBarang === itemId ||
+          item.Kode_Barang === itemId ||
+          item.kode_barang === itemId
+        );
+      });
+
+      if (itemData) {
+        console.log(`✅ [EXPORT] Data ditemukan untuk ${itemId}:`, itemData);
+
+        // ⭐ FOKUS PADA SALDOAKHIR dari API response
+        const stockReal = parseFloat(itemData.SaldoAkhirFisik) || 0;
+
+        // ⭐ TAMBAHAN: Ambil data pengeluaran dari API response
+        const pengeluaran = parseFloat(itemData.Pengeluaran) || 0;
+
+        console.log(`📦 [EXPORT] Stock REAL untuk ${itemId}:`, {
+          stockReal,
+          SaldoAkhir: itemData.SaldoAkhir,
+          SaldoAkhirFisik: itemData.SaldoAkhirFisik,
+          TotalCommitted: itemData.TotalCommitted,
+          TotalReserved: itemData.TotalReserved,
+          // ⭐ TAMBAHAN: Log data pengeluaran
+          Pengeluaran: pengeluaran,
+          rawData: itemData,
+        });
+
+        return { 
+          stockReal, 
+          rawData: itemData,
+          pengeluaran // ⭐ TAMBAHAN: Return data pengeluaran
+        };
+      } else {
+        console.warn(
+          `⚠️ [EXPORT] ${itemId}: Tidak ditemukan di API response`
+        );
+        console.log(
+          `🔍 Available items in response:`,
+          dataArray.map((item: any) => ({
+            KodeBarang: item.KodeBarang,
+            ItemID: item.ItemID,
+            SaldoAkhir: item.SaldoAkhir,
+            TotalReserved: item.TotalReserved,
+            Pengeluaran: item.Pengeluaran, // ⭐ TAMBAHAN
+          }))
+        );
+      }
+    } else {
+      console.warn(
+        `⚠️ [EXPORT] ${itemId}: Tidak ada data array dalam response`
+      );
+    }
+
+    console.warn(`⚠️ [EXPORT] ${itemId}: Menggunakan fallback 0`);
+    return { 
+      stockReal: 0, 
+      rawData: null,
+      pengeluaran: 0
+    };
+  } catch (error) {
+    console.error(
+      `❌ [EXPORT] Error mengambil stock REAL untuk ${itemId}:`,
+      error
+    );
+    return { 
+      stockReal: 0, 
+      rawData: null,
+      pengeluaran: 0
+    };
+  }
+};
+
+// FUNGSI: Ambil stock real untuk multiple items dengan batch processing - TANGGAL SEKARANG
+// + TAMBAHAN: Juga ambil data pengeluaran dari API yang sama
+const getRealStocksFromAPI = async (
+  itemIds: string[]
+): Promise<Map<string, { 
+  stockReal: number; 
+  rawData: any;
+  pengeluaran: number; // ⭐ TAMBAHAN
+}>> => {
+  const stockRealMap = new Map<string, { 
+    stockReal: number; 
+    rawData: any;
+    pengeluaran: number;
+  }>();
+  const batchSize = 3;
+  const delay = 300;
+
+  // ⭐ PERBAIKAN: Dapatkan tanggal sekarang
+  const today = new Date().toISOString().split("T")[0];
+
+  console.log(
+    `🔄 [EXPORT] Mengambil stock real untuk ${itemIds.length} item dari API...`
+  );
+  console.log(`📅 [EXPORT] Tanggal: ${today} (SEKARANG), Periode R: 201905`);
+
+  const uniqueItemIds = Array.from(new Set(itemIds)).filter(
+    (id) => id && id.trim() !== ""
+  );
+
+  setExportProgress((prev) => ({
+    ...prev,
+    total: uniqueItemIds.length,
+    message: `Memulai pengambilan stock real... (0/${uniqueItemIds.length})`,
+  }));
+
+  for (let i = 0; i < uniqueItemIds.length; i += batchSize) {
+    const batch = uniqueItemIds.slice(i, i + batchSize);
+    console.log(
+      `📦 [EXPORT] Processing batch ${
+        Math.floor(i / batchSize) + 1
+      }: ${batch.join(", ")}`
+    );
+
+    const batchPromises = batch.map(async (itemId) => {
+      try {
+        // ⭐ PERUBAHAN: Sekarang fungsi mengembalikan data pengeluaran
+        const { stockReal, rawData, pengeluaran } = await getRealStockFromAPI(itemId);
+        stockRealMap.set(itemId, { 
+          stockReal, 
+          rawData, 
+          pengeluaran // ⭐ TAMBAHAN
+        });
+        
+        // Update progress untuk setiap item
+        setExportProgress((prev) => ({
+          ...prev,
+          current: prev.current + 1,
+          message: `Mengambil stock real... (${prev.current + 1}/${
+            uniqueItemIds.length
+          })`,
+        }));
+      } catch (error) {
+        console.error(
+          `❌ [EXPORT] Error dalam batch untuk ${itemId}:`,
+          error
+        );
+        stockRealMap.set(itemId, { 
+          stockReal: 0, 
+          rawData: null,
+          pengeluaran: 0
+        });
+
+        setExportProgress((prev) => ({
+          ...prev,
+          current: prev.current + 1,
+        }));
+      }
+    });
+
+    await Promise.all(batchPromises);
+
+    // Delay antara batch
+    if (i + batchSize < uniqueItemIds.length) {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+
+  console.log(
+    `✅ [EXPORT] Stock real berhasil diambil: ${stockRealMap.size} item`
+  );
+
+  // ⭐ TAMBAHAN: Log data pengeluaran untuk debugging
+  const itemsWithPengeluaran = Array.from(stockRealMap.entries())
+    .filter(([_, data]) => data.pengeluaran > 0);
+  
+  console.log(`📊 [PENGELUARAN] Items dengan pengeluaran > 0: ${itemsWithPengeluaran.length}`);
+  if (itemsWithPengeluaran.length > 0) {
+    console.log(`📋 [PENGELUARAN] Sample data:`, 
+      itemsWithPengeluaran.slice(0, 3).map(([id, data]) => ({
+        itemId: id,
+        pengeluaran: data.pengeluaran,
+        stockReal: data.stockReal
+      }))
+    );
+  }
+
+  // Log summary dengan tanggal sekarang
+  const zeroStockItems = Array.from(stockRealMap.entries())
+    .filter(([_, data]) => data.stockReal === 0)
+    .map(([itemId]) => itemId);
+
+  if (zeroStockItems.length > 0) {
+    console.warn(`⚠️ [EXPORT] Items dengan stock real = 0:`, zeroStockItems);
+  }
+
+  console.log(`📊 [EXPORT] SUMMARY - Tanggal: ${today}`, {
+    totalItems: uniqueItemIds.length,
+    successItems: stockRealMap.size,
+    zeroStockItems: zeroStockItems.length,
+    itemsWithPengeluaran: itemsWithPengeluaran.length,
+    totalPengeluaran: Array.from(stockRealMap.values()).reduce((sum, data) => sum + data.pengeluaran, 0),
+    sampleData: Array.from(stockRealMap.entries())
+      .slice(0, 3)
+      .map(([id, data]) => ({
+        itemId: id,
+        stockReal: data.stockReal,
+        pengeluaran: data.pengeluaran,
+        hasRawData: !!data.rawData,
+      })),
+  });
+
+  return stockRealMap;
+};
   // FUNGSI: Enhanced validation dengan detail API response - TANGGAL SEKARANG
   const validateStockDataEnhanced = async (itemIds: string[]) => {
     console.log("🔍 [ENHANCED VALIDATION] Memulai validasi data stock...");
@@ -3193,608 +3260,1075 @@ ${
     return validationResults;
   };
 
-  // FUNGSI: Validasi khusus untuk memastikan data sesuai
-  const validateStockCalculation = (
-    itemId: string,
-    stockRealMap: Map<string, any>,
-    reservedQtyMap: Map<string, number>
-  ) => {
-    const stockData = stockRealMap.get(itemId);
-    if (!stockData) return null;
+const exportSelectedToExcel = async (): Promise<void> => {
+  try {
+    setExportLoading(true);
+    setExportProgress({
+      visible: true,
+      current: 0,
+      total: 100,
+      message: "Memulai proses export...",
+    });
 
-    const stockReal = stockData.stockReal;
-    const stockOther =
-      stockData.rawData?.TotalReserved || reservedQtyMap.get(itemId) || 0;
-    const stockAvailable = stockReal - stockOther;
+    const selectedOrders = filteredOrders.filter(
+      (order) => order.selected && !order.committed
+    );
 
-    return {
-      itemId,
-      stockReal,
-      stockOther,
-      stockAvailable,
-      saldoAkhir: stockData.rawData?.SaldoAkhir,
-      totalReserved: stockData.rawData?.TotalReserved,
-      calculation: `Stock Available = ${stockReal} - ${stockOther} = ${stockAvailable}`,
+    if (selectedOrders.length === 0) {
+      alert("Tidak ada PO yang dipilih untuk di-export! 没有选择要导出的PO!");
+      return;
+    }
+
+    console.log(
+      `📊 [EXPORT] Memulai export ${selectedOrders.length} PO terpilih`
+    );
+
+    // Phase 1: Persiapan data
+    setExportProgress({
+      visible: true,
+      current: 5,
+      total: 100,
+      message: "Mempersiapkan data PO...",
+    });
+
+    const exportData: ExportData = {
+      stockSummary: [],
+      departmentSummary: [],
+      productionOrders: [],
     };
-  };
 
-  // FUNGSI: Export yang diperbaiki - Stock Real dengan Tanggal Sekarang VERSION 4.0
-  const exportSelectedToExcel = async (): Promise<void> => {
-    try {
-      setExportLoading(true);
-      setExportProgress({
-        visible: true,
-        current: 0,
-        total: 100,
-        message: "Memulai proses export...",
-      });
+    // Map untuk menggabungkan item dengan kode yang sama
+    const itemSummaryMap = new Map();
 
-      const selectedOrders = filteredOrders.filter(
-        (order: any) => order.selected && !order.committed
-      );
+    // Kumpulkan semua item ID dari semua PO terpilih
+    const allItemIds: string[] = [];
 
-      if (selectedOrders.length === 0) {
-        alert("Tidak ada PO yang dipilih untuk di-export! 没有选择要导出的PO!");
-        return;
-      }
+    // ⭐ PERBAIKAN: Gunakan tanggal sekarang
+    const today = new Date().toISOString().split("T")[0];
 
-      console.log(
-        `📊 [EXPORT] Memulai export ${selectedOrders.length} PO terpilih`
-      );
+    // ⭐ TAMBAHAN: Daftar item yang memiliki variant (hardcoded)
+    const itemsWithVariants = [
+      '07A025',
+      '07A025',
+      '01B001',
+      '01B001',
+      '03A040',
+      '01B023',
+      '01B023',
+      '03A040',
+      '01B045',
+      '01B045',
+      '01B030',
+      '01B030',
+      '09B076',
+      '09B076',
+      '03A059PENDEK',
+      '02A100',
+      '02A100',
+      '01B034BK',
+      '01B034BK',
+      '05P050BK',
+      '05P050BK',
+      '05P003BK',
+      '05P003BK',
+      '05P006BK',
+      '05P006BK',
+      '05A082BK',
+      '05A082BK',
+      '09A009BK',
+      '09A009BK',
+      '09A084BK',
+      '09A084BK',
+      '09A008BK',
+      '09A008BK',
+      '07A108BK',
+      '07A108BK',
+      '09A052BK',
+      '09A052BK',
+      '09A050BK',
+      '09A050BK',
+      '04A026BK',
+      '04A026BK',
+      '01B024BK',
+      '01B024BK',
+      '05P017BK',
+      '05P017BK',
+      '04A003BK',
+      '04A003BK',
+      '03A059PENDEK',
+      '09A064BK',
+      '09A064BK',
+      '04A027BK',
+      'LC-04A027BK',
+      '04A027BK',
+      'LC-04A027BK',
+      '01B057BK',
+      'LC-01B057BK',
+      '01B057BK',
+      'LC-01B057BK',
+      '09A069BK',
+      '09A069BK',
+      '09A059BK',
+      '09A059BK',
+      '05A081P',
+      '05A081P',
+      '07A009W',
+      '07A009W',
+      '04A023W',
+      '04A023W',
+      '09A084W',
+      '09A084W',
+      '04A015W',
+      '04A015W',
+      '04A013W',
+      '04A013W',
+      '04A030W',
+      '04A030W',
+      '09P008W',
+      '09P008W',
+      'LC-01B001',
+      'LC-01B001',
+      'LC-01B023',
+      // Tambahkan item lainnya yang memiliki variant
+    ];
 
-      // Phase 1: Persiapan data
-      setExportProgress({
-        visible: true,
-        current: 5,
-        total: 100,
-        message: "Mempersiapkan data PO...",
-      });
+    // Phase 2: Kumpulkan semua item IDs
+    setExportProgress({
+      visible: true,
+      current: 10,
+      total: 100,
+      message: "Mengumpulkan semua item ID...",
+    });
 
-      const exportData: ExportData = {
-        stockSummary: [],
-        departmentSummary: [],
-        productionOrders: [],
-      };
+    console.log("🔍 [EXPORT] Mengumpulkan semua item ID dari PO terpilih...");
+    for (let i = 0; i < selectedOrders.length; i++) {
+      const plan = selectedOrders[i];
 
-      // Map untuk menggabungkan item dengan kode yang sama
-      const itemSummaryMap = new Map();
+      if (plan.bom && plan.bom.flat) {
+        const componentsOnly = filterOnlyComponents(plan.bom.flat);
+        const itemIds = componentsOnly.map((item: BomItem) => item.ItemID);
+        allItemIds.push(...itemIds);
 
-      // Kumpulkan semua item ID dari semua PO terpilih
-      const allItemIds: string[] = [];
-
-      // ⭐ PERBAIKAN: Gunakan tanggal sekarang
-      const today = new Date().toISOString().split("T")[0];
-
-      // Phase 2: Kumpulkan semua item IDs
-      setExportProgress({
-        visible: true,
-        current: 10,
-        total: 100,
-        message: "Mengumpulkan semua item ID...",
-      });
-
-      console.log("🔍 [EXPORT] Mengumpulkan semua item ID dari PO terpilih...");
-      for (let i = 0; i < selectedOrders.length; i++) {
-        const plan = selectedOrders[i];
-
-        if (plan.bom && plan.bom.flat) {
-          const componentsOnly = filterOnlyComponents(plan.bom.flat);
-          const itemIds = componentsOnly.map((item: BomItem) => item.ItemID);
-          allItemIds.push(...itemIds);
-
-          console.log(
-            `   📦 PO ${plan.order.No_SPK}: ${itemIds.length} komponen`
-          );
-        }
-
-        // Update progress
-        const progress = 10 + Math.round((i / selectedOrders.length) * 15);
-        setExportProgress((prev) => ({
-          ...prev,
-          current: progress,
-          message: `Mengumpulkan data PO... (${i + 1}/${
-            selectedOrders.length
-          })`,
-        }));
-      }
-
-      // Hapus duplikat item IDs
-      const uniqueItemIds = Array.from(new Set(allItemIds)).filter(
-        (id) => id && id.trim() !== ""
-      );
-      console.log(`🔄 [EXPORT] Memproses ${uniqueItemIds.length} item unik`);
-
-      // Phase 3: Validasi data stock dengan enhanced validation
-      setExportProgress({
-        visible: true,
-        current: 30,
-        total: 100,
-        message: "Validasi data stock...",
-      });
-
-      const validationResults = await validateStockDataEnhanced(uniqueItemIds);
-      const itemsWithData = validationResults.filter(
-        (item) => item.hasRawData
-      ).length;
-      const itemsWithStock = validationResults.filter(
-        (item) => item.stockReal > 0
-      ).length;
-
-      if (itemsWithData === 0) {
-        const userConfirmed = confirm(
-          `⚠️ PERHATIAN: Validasi menunjukkan TIDAK ADA DATA dari API.\n\n` +
-            `• Item sample: ${validationResults
-              .map((v) => v.itemId)
-              .join(", ")}\n` +
-            `• Tanggal: ${today} (SEKARANG)\n` +
-            `• API: /api/stock/ppic\n\n`
-        );
-
-        if (!userConfirmed) {
-          setExportLoading(false);
-          setExportProgress({
-            visible: false,
-            current: 0,
-            total: 0,
-            message: "",
-          });
-          return;
-        }
-      } else if (itemsWithStock === 0) {
-        console.warn(
-          "⚠️ [EXPORT] Validasi: Data ada tapi semua stock real = 0"
+        console.log(
+          `   📦 PO ${plan.order.No_SPK}: ${itemIds.length} komponen`
         );
       }
 
-      // Phase 4: Ambil stock real dari API untuk semua item
-      setExportProgress({
-        visible: true,
-        current: 40,
-        total: 100,
-        message: `Mengambil stock real dari API untuk ${uniqueItemIds.length} item...`,
-      });
+      // Update progress
+      const progress = 10 + Math.round((i / selectedOrders.length) * 15);
+      setExportProgress((prev) => ({
+        ...prev,
+        current: progress,
+        message: `Mengumpulkan data PO... (${i + 1}/${selectedOrders.length})`,
+      }));
+    }
 
-      const stockRealMap = await getRealStocksFromAPI(uniqueItemIds);
+    // Hapus duplikat item IDs
+    const uniqueItemIds = Array.from(new Set(allItemIds)).filter(
+      (id) => id && id.trim() !== ""
+    );
+    console.log(`🔄 [EXPORT] Memproses ${uniqueItemIds.length} item unik`);
 
-      // Phase 5: Hitung reserved Qty dari PO lain
-      setExportProgress({
-        visible: true,
-        current: 70,
-        total: 100,
-        message: "Menghitung reserved quantity dari PO lain...",
-      });
+    // Phase 3: Validasi data stock dengan enhanced validation
+    setExportProgress({
+      visible: true,
+      current: 30,
+      total: 100,
+      message: "Validasi data stock...",
+    });
 
-      const reservedQtyMap = new Map<string, number>();
+    const validationResults = await validateStockDataEnhanced(uniqueItemIds);
+    const itemsWithData = validationResults.filter(
+      (item) => item.hasRawData
+    ).length;
+    const itemsWithStock = validationResults.filter(
+      (item) => item.stockReal > 0
+    ).length;
 
-      // Isi map dengan data dari stockReservations (PO lain yang sudah di-commit)
-      stockReservations.forEach((reservation) => {
-        if (reservation.status === "RESERVED") {
-          // Hanya hitung yang bukan dari PO yang sedang dipilih
-          const isFromSelectedPO = selectedOrders.some(
-            (order) => order.order.No_SPK === reservation.noSPK
-          );
-
-          if (!isFromSelectedPO) {
-            const currentReserved = reservedQtyMap.get(reservation.itemID) || 0;
-            reservedQtyMap.set(
-              reservation.itemID,
-              currentReserved + reservation.reservedQty
-            );
-          }
-        }
-      });
-
-      console.log(
-        "📋 [EXPORT] Data reserved dari PO lain:",
-        Object.fromEntries(reservedQtyMap)
+    if (itemsWithData === 0) {
+      const userConfirmed = confirm(
+        `⚠️ PERHATIAN: Validasi menunjukkan TIDAK ADA DATA dari API.\n\n` +
+          `• Item sample: ${validationResults
+            .map((v) => v.itemId)
+            .join(", ")}\n` +
+          `• Tanggal: ${today} (SEKARANG)\n` +
+          `• API: /api/stock/ppic\n\n`
       );
 
-      // Phase 6: Process setiap PO dan hitung kebutuhan material
-      setExportProgress({
-        visible: true,
-        current: 75,
-        total: 100,
-        message: "Memproses kebutuhan material...",
-      });
-
-      for (let i = 0; i < selectedOrders.length; i++) {
-        const plan = selectedOrders[i];
-
-        setExportProgress((prev) => ({
-          ...prev,
-          current: 75 + Math.round((i / selectedOrders.length) * 15),
-          message: `Memproses PO ${i + 1}/${selectedOrders.length}: ${
-            plan.order.No_SPK
-          }`,
-        }));
-
-        if (plan.bom && plan.bom.flat) {
-          const componentsOnly = filterOnlyComponents(plan.bom.flat);
-
-          // Handle perhitungan untuk PO Gabungan vs PO Biasa
-          if (plan.order.combinedItems && plan.order.combinedItems.length > 1) {
-            // ==================== PO GABUNGAN ====================
-            console.log(
-              `🔄 [EXPORT] Processing PO Gabungan: ${plan.order.No_SPK} dengan ${plan.order.combinedItems.length} items`
-            );
-
-            // Untuk setiap item dalam PO gabungan, hitung secara terpisah
-            for (const combinedItem of plan.order.combinedItems) {
-              console.log(
-                `   ↳ Item: ${combinedItem.Kode_Barang}, QTY: ${combinedItem.QTY}`
-              );
-
-              // Gunakan BOM yang sesuai untuk item ini
-              let itemBom;
-              if (
-                plan.bom.combinedBoms &&
-                plan.bom.combinedBoms[combinedItem.Kode_Barang]
-              ) {
-                itemBom = plan.bom.combinedBoms[combinedItem.Kode_Barang];
-              } else {
-                itemBom = plan.bom;
-              }
-
-              if (itemBom && itemBom.flat) {
-                const itemComponentsOnly = filterOnlyComponents(itemBom.flat);
-
-                // Hitung material needs untuk item ini dengan QTY-nya sendiri
-                const materialNeeds = calculateMaterialNeeds(
-                  itemComponentsOnly,
-                  combinedItem.QTY,
-                  [] // Tidak perlu stock data karena kita ambil langsung dari API
-                );
-
-                for (const item of materialNeeds.items) {
-                  const sumOfTotal: number = item.needed;
-
-                  // Gunakan TotalReserved dari API jika ada, fallback ke reservedQtyMap
-                  const stockRealData = stockRealMap.get(item.ItemID);
-                  const stockOtherFromAPI =
-                    stockRealData?.rawData?.TotalReserved;
-                  const stockOther: number =
-                    stockOtherFromAPI || reservedQtyMap.get(item.ItemID) || 0;
-
-                  // Stock Real langsung dari API
-                  const stockReal: number = stockRealData?.stockReal || 0;
-
-                  // Stock Available = Stock Real - Stock Other (BUKAN plus!)
-                  const stockAvailable: number = stockReal - stockOther;
-
-                  const remainingStock: number = stockAvailable - sumOfTotal;
-
-                  // Gabungkan item dengan kode yang sama
-                  const existingItem = itemSummaryMap.get(item.ItemID);
-
-                  console.log(`🧮 [CALCULATION] ${item.ItemID}:`, {
-                    stockReal,
-                    stockOther,
-                    stockAvailable,
-                    sumOfTotal,
-                    remainingStock,
-                    stockOtherFromAPI,
-                    reservedQty: reservedQtyMap.get(item.ItemID),
-                  });
-
-                  if (existingItem) {
-                    existingItem.sumOfTotal += sumOfTotal;
-                    existingItem.remainingStock =
-                      existingItem.stockAvailable - existingItem.sumOfTotal;
-                    existingItem.status =
-                      existingItem.remainingStock >= 0
-                        ? "CUKUP 充足"
-                        : "KURANG 不足";
-                    existingItem.sourcePOs.push({
-                      noSPK: plan.order.No_SPK,
-                      kodeBarang: combinedItem.Kode_Barang,
-                      namaPO: combinedItem.Nama_PO,
-                      qty: combinedItem.QTY,
-                      needed: sumOfTotal,
-                    });
-                  } else {
-                    // Item baru, tambahkan ke map
-                    itemSummaryMap.set(item.ItemID, {
-                      itemId: item.ItemID,
-                      itemName: item.ItemName,
-                      departemen: item.Departemen || "-",
-                      jenis: item.NamaJenis || "-",
-                      sumOfTotal: sumOfTotal,
-                      stockOther: stockOther,
-                      stockAvailable: stockAvailable,
-                      stockReal: stockReal, // STOCK REAL LANGSUNG DARI API
-                      remainingStock: remainingStock,
-                      status:
-                        remainingStock >= 0 ? "CUKUP 充足" : "KURANG 不足",
-                      sourcePOs: [
-                        {
-                          noSPK: plan.order.No_SPK,
-                          kodeBarang: combinedItem.Kode_Barang,
-                          namaPO: combinedItem.Nama_PO,
-                          qty: combinedItem.QTY,
-                          needed: sumOfTotal,
-                        },
-                      ],
-                    });
-
-                    console.log(
-                      `🆕 [EXPORT] ${item.ItemID}: StockReal=${stockReal}, StockOther=${stockOther}, SumTotal=${sumOfTotal}`
-                    );
-                  }
-                }
-              }
-            }
-          } else {
-            // ==================== PO BIASA ====================
-            const materialNeeds = calculateMaterialNeeds(
-              componentsOnly,
-              plan.order.QTY,
-              [] // Tidak perlu stock data karena kita ambil langsung dari API
-            );
-
-            for (const item of materialNeeds.items) {
-              const sumOfTotal: number = item.needed;
-
-              // Gunakan TotalReserved dari API jika ada, fallback ke reservedQtyMap
-              const stockRealData = stockRealMap.get(item.ItemID);
-              const stockOtherFromAPI = stockRealData?.rawData?.TotalReserved;
-              const stockOther: number =
-                stockOtherFromAPI || reservedQtyMap.get(item.ItemID) || 0;
-
-              // Stock Real langsung dari API
-              const stockReal: number = stockRealData?.stockReal || 0;
-
-              // Stock Available = Stock Real - Stock Other (BUKAN plus!)
-              const stockAvailable: number = stockReal - stockOther;
-
-              const remainingStock: number = stockAvailable - sumOfTotal;
-
-              // Gabungkan item dengan kode yang sama
-              const existingItem = itemSummaryMap.get(item.ItemID);
-
-              console.log(`🧮 [CALCULATION] ${item.ItemID}:`, {
-                stockReal,
-                stockOther,
-                stockAvailable,
-                sumOfTotal,
-                remainingStock,
-                stockOtherFromAPI,
-                reservedQty: reservedQtyMap.get(item.ItemID),
-              });
-
-              if (existingItem) {
-                existingItem.sumOfTotal += sumOfTotal;
-                existingItem.remainingStock =
-                  existingItem.stockAvailable - existingItem.sumOfTotal;
-                existingItem.status =
-                  existingItem.remainingStock >= 0
-                    ? "CUKUP 充足"
-                    : "KURANG 不足";
-                existingItem.sourcePOs.push({
-                  noSPK: plan.order.No_SPK,
-                  kodeBarang: plan.order.Kode_Barang,
-                  namaPO: plan.order.Nama_PO,
-                  qty: plan.order.QTY,
-                  needed: sumOfTotal,
-                });
-              } else {
-                // Item baru, tambahkan ke map
-                itemSummaryMap.set(item.ItemID, {
-                  itemId: item.ItemID,
-                  departemen: item.Departemen || "-",
-                  jenis: item.NamaJenis || "-",
-                  sumOfTotal: sumOfTotal,
-                  stockOther: stockOther,
-                  stockAvailable: stockAvailable,
-                  stockReal: stockReal, // STOCK REAL LANGSUNG DARI API
-                  remainingStock: remainingStock,
-                  status: remainingStock >= 0 ? "CUKUP 充足" : "KURANG 不足",
-                  sourcePOs: [
-                    {
-                      noSPK: plan.order.No_SPK,
-                      kodeBarang: plan.order.Kode_Barang,
-                      namaPO: plan.order.Nama_PO,
-                      qty: plan.order.QTY,
-                      needed: sumOfTotal,
-                    },
-                  ],
-                });
-
-                console.log(
-                  `🆕 [EXPORT] ${item.ItemID}: StockReal=${stockReal}, StockOther=${stockOther}, SumTotal=${sumOfTotal}`
-                );
-              }
-            }
-          }
-        }
-
-        // Small delay untuk memberikan feedback visual
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-
-      // Phase 7: Siapkan data untuk Excel
-      setExportProgress({
-        visible: true,
-        current: 92,
-        total: 100,
-        message: "Menyusun data untuk Excel...",
-      });
-
-      // Konversi map ke array untuk export
-      exportData.stockSummary = Array.from(itemSummaryMap.values()).map(
-        (item) => ({
-          "Kode Item 物料代码": item.itemId,
-          "Departemen 部门": item.departemen,
-          "Jenis 类型": item.jenis,
-          "Sum of Total 总需求 (PO)": item.sumOfTotal,
-          "Stock Other 其他库存 (Total PO lain)": item.stockOther,
-          "Stock Available 可用库存": item.stockAvailable,
-          "Stock Real 实际库存 (WinCP)": item.stockReal,
-          "Remaining Stock 剩余库存": item.remainingStock,
-          "Status 状态": item.status,
-          "Detail PO 订单详情": item.sourcePOs
-            .map(
-              (source: any) =>
-                `${source.noSPK} (${source.kodeBarang}): ${source.qty} unit → ${source.needed}`
-            )
-            .join("; "),
-        })
-      );
-
-      // Phase 8: Buat Excel file
-      setExportProgress({
-        visible: true,
-        current: 95,
-        total: 100,
-        message: "Membuat file Excel...",
-      });
-
-      const wb = XLSX.utils.book_new();
-
-      // Worksheet 1: Stock Summary
-      if (exportData.stockSummary.length > 0) {
-        const ws1 = XLSX.utils.json_to_sheet(exportData.stockSummary);
-        XLSX.utils.book_append_sheet(wb, ws1, "Stock Summary 库存汇总");
-
-        // Set column widths
-        if (!ws1["!cols"]) ws1["!cols"] = [];
-        ws1["!cols"] = [
-          { wch: 15 }, // Kode Item
-          { wch: 15 }, // Departemen
-          { wch: 15 }, // Jenis
-          { wch: 15 }, // Sum of Total
-          { wch: 15 }, // Stock Other
-          { wch: 15 }, // Stock Available
-          { wch: 15 }, // Stock Real
-          { wch: 15 }, // Remaining Stock
-          { wch: 12 }, // Status
-          { wch: 50 }, // Detail PO
-        ];
-      }
-      // Worksheet 4: Problem Items (Item dengan Stock Real = 0)
-      const problemItems = exportData.stockSummary
-        .filter(
-          (item) =>
-            item["Stock Real 实际库存"] === 0 &&
-            item["Sum of Total 总需求 (PO)"] > 0
-        )
-        .map((item) => ({
-          "Kode Item": item["Kode Item 物料代码"],
-          "Nama Item": item["Nama Item 物料名称"],
-          "Stock Real": item["Stock Real 实际库存"],
-          "Sum of Total": item["Sum of Total 总需求 (PO)"],
-          "Stock Other": item["Stock Other 其他库存 (Total PO lain)"],
-          Status: "PERLU PERHATIAN 需要注意",
-          "Detail PO": item["Detail PO 订单详情"],
-        }));
-// Phase 9: Generate dan download file - COMPREHENSIVE VERSION
-setExportProgress({
-  visible: true,
-  current: 98,
-  total: 100,
-  message: "Menyimpan file...",
-});
-
-// ⭐ VERSI TERBAIK: Nama file dengan informasi komprehensif
-const getCleanFileName = (text: string, maxLength: number = 40): string => {
-  return text
-  .replace(/[<>:"/\\|?*]/g, '') // Hapus karakter ilegal Windows
-  .replace(/[^a-zA-Z0-9\u4e00-\u9fa5\s_-]/g, '') // Hanya karakter aman
-  .replace(/\s+/g, ' ') // Normalize spasi
-  .trim()
-  .substring(0, maxLength)
-  .replace(/\s+/g, '_'); // Ganti spasi dengan underscore
-};
-const timestamp = new Date().toISOString().split("T")[0];
-
-let filename = "";
-if (selectedOrders.length === 1) {
-  const order = selectedOrders[0];
-  const noSPK = order.order.No_SPK || "NO_SPK";
-  const poName = order.order.Nama_PO || "NO_NAME";
-  const itemCode = order.order.Kode_Barang || "NO_CODE";
-  
-  const cleanSPK = getCleanFileName(noSPK, 15);
-  const cleanPOName = getCleanFileName(poName, 25);
-  const cleanItemCode = getCleanFileName(itemCode, 10);
-  
-  filename = `PO_${cleanSPK}_${cleanPOName}_${cleanItemCode}_${timestamp}.xlsx`;
-  
-  console.log(`📝 Export single PO: ${noSPK} - ${poName}`);
-} else {
-  const poCount = selectedOrders.length;
-  const totalQty = selectedOrders.reduce((sum, order) => sum + order.order.QTY, 0);
-  
-  // Ambil 2 PO pertama untuk representasi
-  const representativePOs = selectedOrders.slice(0, 2).map(order => 
-    getCleanFileName(order.order.No_SPK || "SPK", 10)
-  ).join('_');
-  
-  if (poCount === 2) {
-    filename = `PO_${representativePOs}_${totalQty}QTY_${timestamp}.xlsx`;
-  } else {
-    filename = `PO_${representativePOs}_+${poCount - 2}more_${totalQty}QTY_${timestamp}.xlsx`;
-  }
-  
-  console.log(`📝 Export ${poCount} POs, total QTY: ${totalQty}`);
-}
-
-// Final safety check
-if (!filename) {
-  filename = `Production_Export_${timestamp}.xlsx`;
-}
-
-console.log(`💾 File akan disimpan sebagai: ${filename}`);
-
-      // Tampilkan summary
-      const totalItems = exportData.stockSummary.length;
-      const problemItemsCount = problemItems.length;
-      const sufficientItems = exportData.stockSummary.filter(
-        (item) => item["Status 状态"] === "CUKUP 充足"
-      ).length;
-
-      setTimeout(() => {
-        alert(
-          `✅ Export berhasil!\nFile: ${filename}\n\n` +
-            `📊 SUMMARY:\n` +
-            `• Total Items: ${totalItems}\n` +
-            `• Stock Cukup: ${sufficientItems}\n` +
-            `• Problem Items: ${problemItemsCount}\n` +
-            `• PO Terpilih: ${selectedOrders.length}\n` +
-            `• Tanggal Stock: ${today} (SEKARANG)\n` +
-            `• Periode R: 201905\n\n` +
-            `📋 WORKSHEETS:\n` +
-            `• Stock Summary - Data kebutuhan material\n` +
-            `• Selected PO - Daftar PO yang diexport\n` +
-            `• Stock Real Verification - Validasi data stock\n` +
-            `• Problem Items - Item dengan stock real = 0\n` +
-            `• API Samples - Contoh response API\n` +
-            `• Keterangan - Penjelasan rumus dan cara baca\n\n` +
-            `🔄 DATA REAL-TIME:\n` +
-            `• Stock Real diambil langsung dari API /api/stock/ppic\n` +
-            `• Tanggal stock: ${today} (SEKARANG)\n` +
-            `• Periode R: 201905 (Tetap)\n` +
-            `• Waktu export: ${new Date().toLocaleString("id-ID")}`
-        );
-      }, 500);
-
-      // Delay sebentar sebelum menutup progress
-      setTimeout(() => {
+      if (!userConfirmed) {
+        setExportLoading(false);
         setExportProgress({
           visible: false,
           current: 0,
           total: 0,
           message: "",
         });
-      }, 2000);
-    } catch (error) {
-      console.error("❌ [EXPORT] Error dalam export:", error);
-      alert("Gagal mengekspor data. Silakan coba lagi. 导出失败，请重试");
-      setExportProgress({ visible: false, current: 0, total: 0, message: "" });
-    } finally {
-      setExportLoading(false);
+        return;
+      }
+    } else if (itemsWithStock === 0) {
+      console.warn("⚠️ [EXPORT] Validasi: Data ada tapi semua stock real = 0");
     }
-  };
 
+    // Phase 4: Ambil stock real dari API untuk semua item (termasuk pengeluaran)
+    setExportProgress({
+      visible: true,
+      current: 40,
+      total: 100,
+      message: `Mengambil stock real dari API untuk ${uniqueItemIds.length} item...`,
+    });
+
+    const stockRealMap = await getRealStocksFromAPI(uniqueItemIds);
+
+    // Phase 5: Hitung reserved Qty dari PO lain
+    setExportProgress({
+      visible: true,
+      current: 70,
+      total: 100,
+      message: "Menghitung reserved quantity dari PO lain...",
+    });
+
+    const reservedQtyMap = new Map<string, number>();
+
+    // Isi map dengan data dari stockReservations (PO lain yang sudah di-commit)
+    stockReservations.forEach((reservation) => {
+      if (reservation.status === "RESERVED") {
+        // Hanya hitung yang bukan dari PO yang sedang dipilih
+        const isFromSelectedPO = selectedOrders.some(
+          (order) => order.order.No_SPK === reservation.noSPK
+        );
+
+        if (!isFromSelectedPO) {
+          const currentReserved = reservedQtyMap.get(reservation.itemID) || 0;
+          reservedQtyMap.set(
+            reservation.itemID,
+            currentReserved + reservation.reservedQty
+          );
+        }
+      }
+    });
+
+    console.log(
+      "📋 [EXPORT] Data reserved dari PO lain:",
+      Object.fromEntries(reservedQtyMap)
+    );
+
+    // Phase 6: Process setiap PO dan hitung kebutuhan material + ambil data pengeluaran
+    setExportProgress({
+      visible: true,
+      current: 75,
+      total: 100,
+      message: "Memproses kebutuhan material...",
+    });
+
+    for (let i = 0; i < selectedOrders.length; i++) {
+      const plan = selectedOrders[i];
+
+      setExportProgress((prev) => ({
+        ...prev,
+        current: 75 + Math.round((i / selectedOrders.length) * 15),
+        message: `Memproses PO ${i + 1}/${selectedOrders.length}: ${
+          plan.order.No_SPK
+        }`,
+      }));
+
+      if (plan.bom && plan.bom.flat) {
+        const componentsOnly = filterOnlyComponents(plan.bom.flat);
+
+        // Handle perhitungan untuk PO Gabungan vs PO Biasa
+        if (plan.order.combinedItems && plan.order.combinedItems.length > 1) {
+          // ==================== PO GABUNGAN ====================
+          console.log(
+            `🔄 [EXPORT] Processing PO Gabungan: ${plan.order.No_SPK} dengan ${plan.order.combinedItems.length} items`
+          );
+
+          // Untuk setiap item dalam PO gabungan, hitung secara terpisah
+          for (const combinedItem of plan.order.combinedItems) {
+            console.log(
+              `   ↳ Item: ${combinedItem.Kode_Barang}, QTY: ${combinedItem.QTY}`
+            );
+
+            // Gunakan BOM yang sesuai untuk item ini
+            let itemBom;
+            if (
+              plan.bom.combinedBoms &&
+              plan.bom.combinedBoms[combinedItem.Kode_Barang]
+            ) {
+              itemBom = plan.bom.combinedBoms[combinedItem.Kode_Barang];
+            } else {
+              itemBom = plan.bom;
+            }
+
+            if (itemBom && itemBom.flat) {
+              const itemComponentsOnly = filterOnlyComponents(itemBom.flat);
+
+              // Hitung material needs untuk item ini dengan QTY-nya sendiri
+              const materialNeeds = calculateMaterialNeeds(
+                itemComponentsOnly,
+                combinedItem.QTY,
+                [] // Tidak perlu stock data karena kita ambil langsung dari API
+              );
+
+              for (const item of materialNeeds.items) {
+                const sumOfTotal: number = item.needed;
+
+                // Gunakan TotalReserved dari API jika ada, fallback ke reservedQtyMap
+                const stockRealData = stockRealMap.get(item.ItemID);
+                const stockOtherFromAPI = stockRealData?.rawData?.TotalReserved;
+                const stockOther: number =
+                  stockOtherFromAPI || reservedQtyMap.get(item.ItemID) || 0;
+
+                // Stock Real langsung dari API
+                const stockReal: number = stockRealData?.stockReal || 0;
+
+                // ⭐ TAMBAHAN: Data pengeluaran dari API
+                const pengeluaran: number = stockRealData?.pengeluaran || 0;
+
+                // ⭐ PERBAIKAN PENTING: Stock Available tidak boleh minus
+                // Stock Available = Stock Real - Stock Other, tapi minimum 0
+                const stockAvailable: number = Math.max(
+                  0,
+                  stockReal - stockOther
+                );
+
+                // ✅ PERBAIKAN: Remaining Stock = Stock Available - Sum of Total
+                // Hanya kurangkan sumOfTotal saja, karena stockOther sudah dikurangkan dalam stockAvailable
+                const remainingStock: number = stockAvailable - sumOfTotal;
+
+                // ⭐ TAMBAHAN: Cek apakah item memiliki variant
+                const hasVariant = itemsWithVariants.includes(item.ItemID);
+                const variantWarning = hasVariant
+                  ? "⚠️ ADA VARIANT 有变体"
+                  : "";
+
+                // Gabungkan item dengan kode yang sama
+                const existingItem = itemSummaryMap.get(item.ItemID);
+
+                console.log(`🧮 [CALCULATION FIXED] ${item.ItemID}:`, {
+                  stockReal,
+                  stockOther,
+                  stockAvailable,
+                  sumOfTotal,
+                  remainingStock,
+                  pengeluaran,
+                  stockOtherFromAPI,
+                  reservedQty: reservedQtyMap.get(item.ItemID),
+                  hasVariant,
+                });
+
+                if (existingItem) {
+                  existingItem.sumOfTotal += sumOfTotal;
+                  // ✅ PERBAIKAN: Update remaining stock dengan rumus yang benar
+                  existingItem.remainingStock =
+                    existingItem.stockAvailable - existingItem.sumOfTotal;
+                  existingItem.status =
+                    existingItem.remainingStock >= 0
+                      ? "CUKUP 充足"
+                      : "KURANG 不足";
+                  existingItem.sourcePOs.push({
+                    noSPK: plan.order.No_SPK,
+                    kodeBarang: combinedItem.Kode_Barang,
+                    namaPO: combinedItem.Nama_PO,
+                    qty: combinedItem.QTY,
+                    needed: sumOfTotal,
+                  });
+                } else {
+                  // Item baru, tambahkan ke map dengan data pengeluaran
+                  itemSummaryMap.set(item.ItemID, {
+                    itemId: item.ItemID,
+                    itemName: item.ItemName,
+                    departemen: item.Departemen || "-",
+                    jenis: item.NamaJenis || "-",
+                    sumOfTotal: sumOfTotal,
+                    stockOther: stockOther,
+                    stockAvailable: stockAvailable, // ⭐ TIDAK BOLEH MINUS
+                    stockReal: stockReal, // STOCK REAL LANGSUNG DARI API
+                    pengeluaran: pengeluaran, // ⭐ TAMBAHAN: Data pengeluaran
+                    remainingStock: remainingStock, // ✅ PERBAIKAN: Rumus yang benar
+                    status: remainingStock >= 0 ? "CUKUP 充足" : "KURANG 不足",
+                    hasVariant: hasVariant, // ⭐ TAMBAHAN: Flag untuk variant
+                    variantWarning: variantWarning, // ⭐ TAMBAHAN: Warning text
+                    sourcePOs: [
+                      {
+                        noSPK: plan.order.No_SPK,
+                        kodeBarang: combinedItem.Kode_Barang,
+                        namaPO: combinedItem.Nama_PO,
+                        qty: combinedItem.QTY,
+                        needed: sumOfTotal,
+                      },
+                    ],
+                  });
+
+                  console.log(
+                    `🆕 [EXPORT FIXED] ${item.ItemID}: StockReal=${stockReal}, StockAvailable=${stockAvailable}, RemainingStock=${remainingStock}, Pengeluaran=${pengeluaran}, SumTotal=${sumOfTotal}, HasVariant=${hasVariant}`
+                  );
+                }
+              }
+            }
+          }
+        } else {
+          // ==================== PO BIASA ====================
+          const materialNeeds = calculateMaterialNeeds(
+            componentsOnly,
+            plan.order.QTY,
+            [] // Tidak perlu stock data karena kita ambil langsung dari API
+          );
+
+          for (const item of materialNeeds.items) {
+            const sumOfTotal: number = item.needed;
+
+            // Gunakan TotalReserved dari API jika ada, fallback ke reservedQtyMap
+            const stockRealData = stockRealMap.get(item.ItemID);
+            const stockOtherFromAPI = stockRealData?.rawData?.TotalReserved;
+            const stockOther: number =
+              stockOtherFromAPI || reservedQtyMap.get(item.ItemID) || 0;
+
+            // Stock Real langsung dari API
+            const stockReal: number = stockRealData?.stockReal || 0;
+
+            // ⭐ TAMBAHAN: Data pengeluaran dari API
+            const pengeluaran: number = stockRealData?.pengeluaran || 0;
+
+            // ⭐ PERBAIKAN PENTING: Stock Available tidak boleh minus
+            // Stock Available = Stock Real - Stock Other, tapi minimum 0
+            const stockAvailable: number = Math.max(0, stockReal - stockOther);
+
+            // ✅ PERBAIKAN: Remaining Stock = Stock Available - Sum of Total
+            // Hanya kurangkan sumOfTotal saja, karena stockOther sudah dikurangkan dalam stockAvailable
+            const remainingStock: number = stockAvailable - sumOfTotal;
+
+            // ⭐ TAMBAHAN: Cek apakah item memiliki variant
+            const hasVariant = itemsWithVariants.includes(item.ItemID);
+            const variantWarning = hasVariant ? "⚠️ ADA VARIANT 有变体" : "";
+
+            // Gabungkan item dengan kode yang sama
+            const existingItem = itemSummaryMap.get(item.ItemID);
+
+            console.log(`🧮 [CALCULATION FIXED] ${item.ItemID}:`, {
+              stockReal,
+              stockOther,
+              stockAvailable,
+              sumOfTotal,
+              remainingStock,
+              pengeluaran,
+              stockOtherFromAPI,
+              reservedQty: reservedQtyMap.get(item.ItemID),
+              hasVariant,
+            });
+
+            if (existingItem) {
+              existingItem.sumOfTotal += sumOfTotal;
+              // ✅ PERBAIKAN: Update remaining stock dengan rumus yang benar
+              existingItem.remainingStock =
+                existingItem.stockAvailable - existingItem.sumOfTotal;
+              existingItem.status =
+                existingItem.remainingStock >= 0 ? "CUKUP 充足" : "KURANG 不足";
+              existingItem.sourcePOs.push({
+                noSPK: plan.order.No_SPK,
+                kodeBarang: plan.order.Kode_Barang,
+                namaPO: plan.order.Nama_PO,
+                qty: plan.order.QTY,
+                needed: sumOfTotal,
+              });
+            } else {
+              // Item baru, tambahkan ke map dengan data pengeluaran
+              itemSummaryMap.set(item.ItemID, {
+                itemId: item.ItemID,
+                itemName: item.ItemName,
+                departemen: item.Departemen || "-",
+                jenis: item.NamaJenis || "-",
+                sumOfTotal: sumOfTotal,
+                stockOther: stockOther,
+                stockAvailable: stockAvailable, // ⭐ TIDAK BOLEH MINUS
+                stockReal: stockReal, // STOCK REAL LANGSUNG DARI API
+                pengeluaran: pengeluaran, // ⭐ TAMBAHAN: Data pengeluaran
+                remainingStock: remainingStock, // ✅ PERBAIKAN: Rumus yang benar
+                status: remainingStock >= 0 ? "CUKUP 充足" : "KURANG 不足",
+                hasVariant: hasVariant, // ⭐ TAMBAHAN: Flag untuk variant
+                variantWarning: variantWarning, // ⭐ TAMBAHAN: Warning text
+                sourcePOs: [
+                  {
+                    noSPK: plan.order.No_SPK,
+                    kodeBarang: plan.order.Kode_Barang,
+                    namaPO: plan.order.Nama_PO,
+                    qty: plan.order.QTY,
+                    needed: sumOfTotal,
+                  },
+                ],
+              });
+
+              console.log(
+                `🆕 [EXPORT FIXED] ${item.ItemID}: StockReal=${stockReal}, StockAvailable=${stockAvailable}, RemainingStock=${remainingStock}, Pengeluaran=${pengeluaran}, SumTotal=${sumOfTotal}, HasVariant=${hasVariant}`
+              );
+            }
+          }
+        }
+      }
+
+      // Small delay untuk memberikan feedback visual
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    // Phase 7: Siapkan data untuk Excel dengan data pengeluaran
+    setExportProgress({
+      visible: true,
+      current: 92,
+      total: 100,
+      message: "Menyusun data untuk Excel...",
+    });
+
+    // Konversi map ke array untuk export dengan data pengeluaran
+    exportData.stockSummary = Array.from(itemSummaryMap.values()).map(
+      (item) => ({
+        "Kode Item 物料代码": item.itemId,
+        "Nama Item 物料名称": item.itemName || item.itemId,
+        "Departemen 部门": item.departemen,
+        "Jenis 类型": item.jenis,
+        "Warning 警告": item.variantWarning, // ⭐ TAMBAHAN: Kolom warning untuk variant
+        "Sum of Total 总需求 (PO)": item.sumOfTotal,
+        "Stock Other 其他库存 (Total PO lain)": item.stockOther,
+        "Stock Available 可用库存": item.stockAvailable, // ⭐ TIDAK BOLEH MINUS
+        "Stock Real 实际库存 (WinCP)": item.stockReal,
+        "Pengeluaran 支出": item.pengeluaran, // ⭐ TAMBAHAN: Data pengeluaran
+        "Remaining Stock 剩余库存": item.remainingStock, // ✅ PERBAIKAN: Rumus yang benar
+        "Status 状态": item.status,
+        "Detail PO 订单详情": item.sourcePOs
+          .map(
+            (source: any) =>
+              `${source.noSPK} (${source.kodeBarang}): ${source.qty} unit → ${source.needed}`
+          )
+          .join("; "),
+      })
+    );
+
+    // Phase 8: Buat Excel file
+    setExportProgress({
+      visible: true,
+      current: 95,
+      total: 100,
+      message: "Membuat file Excel...",
+    });
+
+    const wb = XLSX.utils.book_new();
+
+    // Worksheet 1: Stock Summary dengan data pengeluaran
+    if (exportData.stockSummary.length > 0) {
+      const ws1 = XLSX.utils.json_to_sheet(exportData.stockSummary);
+      XLSX.utils.book_append_sheet(wb, ws1, "Stock Summary 库存汇总");
+
+      // Set column widths
+      if (!ws1["!cols"]) ws1["!cols"] = [];
+      ws1["!cols"] = [
+        { wch: 15 }, // Kode Item
+        { wch: 20 }, // Nama Item
+        { wch: 15 }, // Departemen
+        { wch: 15 }, // Jenis
+        { wch: 20 }, // ⭐ TAMBAHAN: Warning untuk variant
+        { wch: 15 }, // Sum of Total
+        { wch: 15 }, // Stock Other
+        { wch: 15 }, // Stock Available
+        { wch: 15 }, // Stock Real
+        { wch: 15 }, // Pengeluaran ⭐ TAMBAHAN
+        { wch: 15 }, // Remaining Stock
+        { wch: 12 }, // Status
+        { wch: 50 }, // Detail PO
+      ];
+    }
+
+    // Worksheet 2: Selected PO
+    const selectedPOData = selectedOrders.map((order) => ({
+      "No SPK 生产订单号": order.order.No_SPK,
+      "Tanggal 日期": order.order.Tanggal_Order,
+      "Nama PO 生产订单名称": order.order.Nama_PO,
+      "Kode Barang 物料代码": order.order.Kode_Barang,
+      "QTY 数量": order.order.QTY,
+      "Status 状态": order.committed ? "Committed 已提交" : "Pending 待处理",
+    }));
+
+    if (selectedPOData.length > 0) {
+      const ws2 = XLSX.utils.json_to_sheet(selectedPOData);
+      XLSX.utils.book_append_sheet(wb, ws2, "Selected PO 已选PO");
+    }
+
+    // Worksheet 3: Problem Items (Item dengan kekurangan)
+    const problemItems = exportData.stockSummary
+      .filter(
+        (item) => item["Remaining Stock 剩余库存"] < 0 // ✅ PERBAIKAN: Gunakan Remaining Stock < 0
+      )
+      .map((item) => ({
+        "Kode Item 物料代码": item["Kode Item 物料代码"],
+        "Nama Item 物料名称": item["Nama Item 物料名称"],
+        "Warning 警告": item["Warning 警告"], // ⭐ TAMBAHAN: Warning untuk variant
+        "Stock Real 实际库存": item["Stock Real 实际库存 (WinCP)"],
+        "Stock Available 可用库存": item["Stock Available 可用库存"],
+        "Sum of Total 总需求": item["Sum of Total 总需求 (PO)"],
+        "Pengeluaran 支出": item["Pengeluaran 支出"],
+        "Kekurangan 短缺": Math.abs(item["Remaining Stock 剩余库存"]), // ⭐ Tampilkan nilai absolut dari Remaining Stock
+        "Status 状态": "PERLU PERHATIAN 需要注意",
+        "Detail PO 订单详情": item["Detail PO 订单详情"],
+      }));
+
+    if (problemItems.length > 0) {
+      const ws3 = XLSX.utils.json_to_sheet(problemItems);
+      XLSX.utils.book_append_sheet(wb, ws3, "Problem Items 问题项目");
+    }
+
+    // Worksheet 4: Data Pengeluaran Summary
+    const pengeluaranSummary = Array.from(itemSummaryMap.values())
+      .filter((item) => item.pengeluaran > 0)
+      .map((item) => ({
+        "Kode Item 物料代码": item.itemId,
+        "Nama Item 物料名称": item.itemName || item.itemId,
+        "Warning 警告": item.variantWarning, // ⭐ TAMBAHAN: Warning untuk variant
+        "Pengeluaran 支出": item.pengeluaran,
+        "Stock Real 实际库存": item.stockReal,
+        "Stock Available 可用库存": item.stockAvailable,
+        "Remaining Stock 剩余库存": item.remainingStock,
+        "Periode 期间": today,
+        "Departemen 部门": item.departemen,
+      }));
+
+    if (pengeluaranSummary.length > 0) {
+      const ws4 = XLSX.utils.json_to_sheet(pengeluaranSummary);
+      XLSX.utils.book_append_sheet(wb, ws4, "Data Pengeluaran 支出数据");
+    }
+
+    // ⭐ TAMBAHAN: Worksheet 6 - Items dengan Variant
+    const variantItems = Array.from(itemSummaryMap.values())
+      .filter((item) => item.hasVariant)
+      .map((item) => ({
+        "Kode Item 物料代码": item.itemId,
+        "Nama Item 物料名称": item.itemName || item.itemId,
+        "Departemen 部门": item.departemen,
+        "Jenis 类型": item.jenis,
+        "Sum of Total 总需求": item.sumOfTotal,
+        "Stock Real 实际库存": item.stockReal,
+        "Stock Available 可用库存": item.stockAvailable,
+        "Remaining Stock 剩余库存": item.remainingStock,
+        "Status 状态": item.status,
+        "Catatan 备注":
+          "ITEM MEMILIKI VARIANT 项目有变体 - PERHATIAN KHUSUS 需要特别注意",
+        "Detail PO 订单详情": item.sourcePOs
+          .map(
+            (source: any) =>
+              `${source.noSPK} (${source.kodeBarang}): ${source.qty} unit`
+          )
+          .join("; "),
+      }));
+
+    if (variantItems.length > 0) {
+      const ws6 = XLSX.utils.json_to_sheet(variantItems);
+      XLSX.utils.book_append_sheet(wb, ws6, "Items dengan Variant 有变体项目");
+    }
+
+    // ⭐ TAMBAHAN: Worksheet 5 - Keterangan dan Penjelasan
+    const keteranganData = [
+      // Header
+      {
+        "KOLOM 列": "PENJELASAN 说明",
+        "KETERANGAN 备注": "RUMUS PERHITUNGAN 计算公式",
+        "CONTOH 例子": "CATATAN 注意",
+      },
+
+      // Stock Summary Worksheet
+      {
+        "KOLOM 列": "📊 STOCK SUMMARY 库存汇总",
+        "KETERANGAN 备注": "Worksheet Utama 主工作表",
+        "CONTOH 例子": "Data kebutuhan material 物料需求数据",
+        "CATATAN 注意": "",
+      },
+
+      {
+        "KOLOM 列": "Kode Item 物料代码",
+        "KETERANGAN 备注": "Kode unik item/material 物料唯一代码",
+        "CONTOH 例子": "03A018, 05B123",
+        "CATATAN 注意": "Primary key 主键",
+      },
+      {
+        "KOLOM 列": "Nama Item 物料名称",
+        "KETERANGAN 备注": "Nama lengkap item/material 物料全名",
+        "CONTOH 例子": "BDHD-SZ G NATURAL",
+        "CATATAN 注意": "",
+      },
+      {
+        "KOLOM 列": "Departemen 部门",
+        "KETERANGAN 备注": "Departemen pemilik item 物料所属部门",
+        "CONTOH 例子": "PRODUKSI, GUDANG",
+        "CATATAN 注意": "",
+      },
+      {
+        "KOLOM 列": "Jenis 类型",
+        "KETERANGAN 备注": "Jenis/Kategori item 物料类型/分类",
+        "CONTOH 例子": "BAHAN BAKU, KOMPONEN",
+        "CATATAN 注意": "",
+      },
+
+      // ⭐ TAMBAHAN: Warning untuk variant
+      {
+        "KOLOM 列": "⚠️ Warning 警告",
+        "KETERANGAN 备注":
+          "Peringatan untuk item yang memiliki variant 有变体的项目警告",
+        "CONTOH 例子": "⚠️ ADA VARIANT 有变体",
+        "CATATAN 注意":
+          "Item ini memiliki beberapa variant, perlu pengecekan lebih lanjut 该项目有多个变体，需要进一步检查",
+      },
+
+      {
+        "KOLOM 列": "Sum of Total 总需求 (PO)",
+        "KETERANGAN 备注":
+          "Total kebutuhan material untuk semua PO terpilih 所有选定PO的总物料需求",
+        "CONTOH 例子": "1500",
+        "CATATAN 注意": "∑(Qty PO × Qty BOM per unit)",
+      },
+      {
+        "KOLOM 列": "Stock Other 其他库存 (Total PO lain)",
+        "KETERANGAN 备注":
+          "Total stock yang direserve oleh PO lain yang sudah di-commit 已提交的其他PO预留库存",
+        "CONTOH 例子": "500",
+        "CATATAN 注意": "Dari tabel stock_reservations",
+      },
+
+      {
+        "KOLOM 列": "Stock Real 实际库存 (WinCP)",
+        "KETERANGAN 备注":
+          "Stock fisik aktual dari sistem WinCP WinCP系统实际物理库存",
+        "CONTOH 例子": "2000",
+        "CATATAN 注意": "Dari API /api/stock/ppic field SaldoAkhirFisik",
+      },
+      {
+        "KOLOM 列": "Stock Available 可用库存",
+        "KETERANGAN 备注":
+          "Stock yang benar-benar tersedia untuk digunakan 实际可用库存",
+        "CONTOH 例子": "1500",
+        "CATATAN 注意":
+          "= MAX(0, Stock Real - Stock Other) → TIDAK BOLEH MINUS 不能为负",
+      },
+      {
+        "KOLOM 列": "Pengeluaran 支出",
+        "KETERANGAN 备注":
+          "Total pengeluaran material periode ini 本期物料支出总额",
+        "CONTOH 例子": "300",
+        "CATATAN 注意": "Dari API /api/stock/ppic field Pengeluaran",
+      },
+
+      {
+        "KOLOM 列": "Remaining Stock 剩余库存",
+        "KETERANGAN 备注":
+          "Sisa stock setelah dipakai untuk PO terpilih 选定PO使用后的剩余库存",
+        "CONTOH 例子": "-500",
+        "CATATAN 注意":
+          "= Stock Available - Sum of Total → BOLEH MINUS untuk analisis 可为负用于分析",
+      },
+
+      {
+        "KOLOM 列": "Status 状态",
+        "KETERANGAN 备注": "Status kecukupan stock 库存充足状态",
+        "CONTOH 例子": "CUKUP 充足 / KURANG 不足",
+        "CATATAN 注意": "Berdasarkan Remaining Stock 基于剩余库存",
+      },
+      {
+        "KOLOM 列": "Detail PO 订单详情",
+        "KETERANGAN 备注":
+          "Detail PO yang menggunakan item ini 使用此物料的PO详情",
+        "CONTOH 例子": "SPK001 (ITEM001): 100 unit → 500",
+        "CATATAN 注意": "",
+      },
+
+      // Rumus dan Perhitungan
+      {
+        "KOLOM 列": "🔢 RUMUS UTAMA 主要公式",
+        "KETERANGAN 备注": "",
+        "CONTOH 例子": "",
+        "CATATAN 注意": "",
+      },
+      {
+        "KOLOM 列": "Stock Available",
+        "KETERANGAN 备注": "= MAX(0, Stock Real - Stock Other)",
+        "CONTOH 例子": "MAX(0, 2000-500) = 1500",
+        "CATATAN 注意": "Tidak boleh minus 不能为负",
+      },
+      {
+        "KOLOM 列": "Remaining Stock",
+        "KETERANGAN 备注": "= Stock Available - Sum of Total",
+        "CONTOH 例子": "1500-2000 = -500",
+        "CATATAN 注意": "Boleh minus untuk analisis 可为负用于分析",
+      },
+      {
+        "KOLOM 列": "Status",
+        "KETERANGAN 备注": "= IF(Remaining Stock >= 0, 'CUKUP', 'KURANG')",
+        "CONTOH 例子": "-500 → 'KURANG'",
+        "CATATAN 注意": "",
+      },
+
+      // Sumber Data
+      {
+        "KOLOM 列": "📡 SUMBER DATA 数据源",
+        "KETERANGAN 备注": "",
+        "CONTOH 例子": "",
+        "CATATAN 注意": "",
+      },
+      {
+        "KOLOM 列": "Stock Real & Pengeluaran",
+        "KETERANGAN 备注": "API: /api/stock/ppic",
+        "CONTOH 例子": "SaldoAkhirFisik, Pengeluaran",
+        "CATATAN 注意": "Data real-time 实时数据",
+      },
+      {
+        "KOLOM 列": "Stock Other",
+        "KETERANGAN 备注": "Tabel: stock_reservations",
+        "CONTOH 例子": "PO yang sudah di-commit",
+        "CATATAN 注意": "Status: RESERVED",
+      },
+      {
+        "KOLOM 列": "Sum of Total",
+        "KETERANGAN 备注": "Perhitungan dari BOM + PO",
+        "CONTOH 例子": "Qty PO × Qty BOM",
+        "CATATAN 注意": "",
+      },
+
+      // Informasi Umum
+      {
+        "KOLOM 列": "ℹ️ INFORMASI UMUM 一般信息",
+        "KETERANGAN 备注": "",
+        "CONTOH 例子": "",
+        "CATATAN 注意": "",
+      },
+      {
+        "KOLOM 列": "Tanggal Data",
+        "KETERANGAN 备注": "Data diambil per tanggal 数据获取日期",
+        "CONTOH 例子": today,
+        "CATATAN 注意": "Hari ini (real-time) 今天(实时)",
+      },
+      {
+        "KOLOM 列": "Periode R",
+        "KETERANGAN 备注": "Periode referensi tetap 固定参考期间",
+        "CONTOH 例子": "201905",
+        "CATATAN 注意": "Tidak berubah 不变",
+      },
+      {
+        "KOLOM 列": "PO Terpilih",
+        "KETERANGAN 备注": "Jumlah PO yang diexport 导出的PO数量",
+        "CONTOH 例子": selectedOrders.length.toString(),
+        "CATATAN 注意": "",
+      },
+
+      // ⭐ TAMBAHAN: Informasi Variant
+      {
+        "KOLOM 列": "🟡 ITEM DENGAN VARIANT 有变体的项目",
+        "KETERANGAN 备注": "",
+        "CONTOH 例子": "",
+        "CATATAN 注意": "",
+      },
+      {
+        "KOLOM 列": "Warning Kuning",
+        "KETERANGAN 备注":
+          "Item yang memiliki beberapa variant/tipe 有多个变体/类型的项目",
+        "CONTOH 例子": "09B046, 09B047, 05A123",
+        "CATATAN 注意":
+          "Perlu pengecekan spesifikasi yang tepat 需要检查正确的规格",
+      },
+      {
+        "KOLOM 列": "Daftar Item Variant",
+        "KETERANGAN 备注":
+          "Item yang tercatat memiliki variant 记录有变体的项目",
+        "CONTOH 例子": itemsWithVariants.join(", "),
+        "CATATAN 注意": "Hardcoded dalam sistem 系统中硬编码",
+      },
+
+      // Catatan Penting
+      {
+        "KOLOM 列": "⚠️ CATATAN PENTING 重要提示",
+        "KETERANGAN 备注": "",
+        "CONTOH 例子": "",
+        "CATATAN 注意": "",
+      },
+      {
+        "KOLOM 列": "Stock Available",
+        "KETERANGAN 备注":
+          "TIDAK BOLEH MINUS - menunjukkan stock yang benar-benar bisa digunakan 不能为负-显示实际可用库存",
+        "CONTOH 例子": "",
+        "CATATAN 注意": "Gunakan untuk planning produksi 用于生产计划",
+      },
+      {
+        "KOLOM 列": "Remaining Stock",
+        "KETERANGAN 备注":
+          "BOLEH MINUS - untuk analisis kekurangan 可为负-用于短缺分析",
+        "CONTOH 例子": "-500 artinya kurang 500 unit",
+        "CATATAN 注意": "Gunakan untuk identifikasi problem 用于问题识别",
+      },
+      {
+        "KOLOM 列": "Problem Items",
+        "KETERANGAN 备注": "Item dengan Remaining Stock < 0 剩余库存<0的项目",
+        "CONTOH 例子": "",
+        "CATATAN 注意": "Perlu perhatian khusus 需要特别关注",
+      },
+      {
+        "KOLOM 列": "Items dengan Variant",
+        "KETERANGAN 备注":
+          "Item dengan warning kuning memiliki variant 黄色警告的项目有变体",
+        "CONTOH 例子": "",
+        "CATATAN 注意": "Perlu verifikasi spesifikasi 需要验证规格",
+      },
+      {
+        "KOLOM 列": "Warna Excel",
+        "KETERANGAN 备注":
+          "Rekomendasi: beri warna merah untuk Remaining Stock minus, kuning untuk variant Excel颜色推荐: 剩余库存为负时标红色，变体标黄色",
+        "CONTOH 例子": "",
+        "CATATAN 注意": "Mudah diidentifikasi 易于识别",
+      },
+    ];
+
+    // Worksheet Keterangan
+    const ws5 = XLSX.utils.json_to_sheet(keteranganData);
+    XLSX.utils.book_append_sheet(wb, ws5, "Keterangan 说明");
+
+    // Set column widths untuk worksheet keterangan
+    if (!ws5["!cols"]) ws5["!cols"] = [];
+    ws5["!cols"] = [
+      { wch: 25 }, // KOLOM
+      { wch: 40 }, // KETERANGAN
+      { wch: 20 }, // CONTOH
+      { wch: 25 }, // CATATAN
+    ];
+
+    // Phase 9: Generate dan download file
+    setExportProgress({
+      visible: true,
+      current: 98,
+      total: 100,
+      message: "Menyimpan file...",
+    });
+
+    // Generate filename
+    const getCleanFileName = (text: string, maxLength: number = 40): string => {
+      return text
+        .replace(/[<>:"/\\|?*]/g, "")
+        .replace(/[^a-zA-Z0-9\u4e00-\u9fa5\s_-]/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .substring(0, maxLength)
+        .replace(/\s+/g, "_");
+    };
+
+    const timestamp = new Date().toISOString().split("T")[0];
+    let filename = "";
+
+    if (selectedOrders.length === 1) {
+      const order = selectedOrders[0];
+      const noSPK = order.order.No_SPK || "NO_SPK";
+      const poName = order.order.Nama_PO || "NO_NAME";
+      const itemCode = order.order.Kode_Barang || "NO_CODE";
+
+      const cleanSPK = getCleanFileName(noSPK, 15);
+      const cleanPOName = getCleanFileName(poName, 25);
+      const cleanItemCode = getCleanFileName(itemCode, 10);
+
+      filename = `PO_${cleanSPK}_${cleanPOName}_${cleanItemCode}_${timestamp}.xlsx`;
+
+      console.log(`📝 Export single PO: ${noSPK} - ${poName}`);
+    } else {
+      const poCount = selectedOrders.length;
+      const totalQty = selectedOrders.reduce(
+        (sum, order) => sum + order.order.QTY,
+        0
+      );
+
+      const representativePOs = selectedOrders
+        .slice(0, 2)
+        .map((order) => getCleanFileName(order.order.No_SPK || "SPK", 10))
+        .join("_");
+
+      if (poCount === 2) {
+        filename = `PO_${representativePOs}_${totalQty}QTY_${timestamp}.xlsx`;
+      } else {
+        filename = `PO_${representativePOs}_+${
+          poCount - 2
+        }more_${totalQty}QTY_${timestamp}.xlsx`;
+      }
+
+      console.log(`📝 Export ${poCount} POs, total QTY: ${totalQty}`);
+    }
+
+    if (!filename) {
+      filename = `Production_Export_${timestamp}.xlsx`;
+    }
+
+    console.log(`💾 File akan disimpan sebagai: ${filename}`);
+
+    // Generate Excel file
+    XLSX.writeFile(wb, filename);
+
+    // Tampilkan summary dengan data pengeluaran
+    const totalItems = exportData.stockSummary.length;
+    const problemItemsCount = problemItems.length;
+    const sufficientItems = exportData.stockSummary.filter(
+      (item) => item["Status 状态"] === "CUKUP 充足"
+    ).length;
+    const itemsWithVariantCount = Array.from(itemSummaryMap.values()).filter(
+      (item) => item.hasVariant
+    ).length;
+    const totalPengeluaran = exportData.stockSummary.reduce(
+      (sum, item) => sum + item["Pengeluaran 支出"],
+      0
+    );
+    const itemsWithPengeluaran = exportData.stockSummary.filter(
+      (item) => item["Pengeluaran 支出"] > 0
+    ).length;
+
+    // Hitung total stock available yang benar-benar bisa digunakan
+    const totalStockAvailable = exportData.stockSummary.reduce(
+      (sum, item) => sum + item["Stock Available 可用库存"],
+      0
+    );
+
+    setTimeout(() => {
+      alert(
+        `✅ Export berhasil!\nFile: ${filename}\n\n` +
+          `📊 SUMMARY:\n` +
+          `• Total Items: ${totalItems}\n` +
+          `• Stock Cukup: ${sufficientItems}\n` +
+          `• Problem Items: ${problemItemsCount}\n` +
+          `• Items dengan Variant: ${itemsWithVariantCount} ⚠️\n` +
+          `• PO Terpilih: ${selectedOrders.length}\n` +
+          `• Items dengan Pengeluaran: ${itemsWithPengeluaran}\n` +
+          `• Total Pengeluaran: ${totalPengeluaran.toLocaleString()}\n` +
+          `• Total Stock Available: ${totalStockAvailable.toLocaleString()}\n` +
+          `• Tanggal Stock: ${today} (SEKARANG)\n` +
+          `• Periode R: 201905\n\n` +
+          `📋 WORKSHEETS:\n` +
+          `• Stock Summary - Data kebutuhan material + Pengeluaran + Warning Variant\n` +
+          `• Selected PO - Daftar PO yang diexport\n` +
+          `• Problem Items - Item dengan Remaining Stock < 0\n` +
+          `• Data Pengeluaran - Summary data pengeluaran\n` +
+          `• Items dengan Variant - Item yang memiliki variant\n` +
+          `• Keterangan - Penjelasan kolom dan rumus\n\n` +
+          `🔄 DATA REAL-TIME:\n` +
+          `• Stock Real & Pengeluaran diambil langsung dari API /api/stock/ppic\n` +
+          `• Stock Available TIDAK BOLEH MINUS (minimal 0)\n` +
+          `• Remaining Stock BOLEH MINUS untuk analisis\n` +
+          `• Warning Kuning untuk item dengan variant\n` +
+          `• Tanggal: ${today} (SEKARANG)\n` +
+          `• Periode R: 201905 (Tetap)\n` +
+          `• Waktu export: ${new Date().toLocaleString("id-ID")}`
+      );
+    }, 500);
+
+    // Delay sebentar sebelum menutup progress
+    setTimeout(() => {
+      setExportProgress({
+        visible: false,
+        current: 0,
+        total: 0,
+        message: "",
+      });
+    }, 2000);
+  } catch (error) {
+    console.error("❌ [EXPORT] Error dalam export:", error);
+    alert("Gagal mengekspor data. Silakan coba lagi. 导出失败，请重试");
+    setExportProgress({ visible: false, current: 0, total: 0, message: "" });
+  } finally {
+    setExportLoading(false);
+  }
+};
   // ==================== FUNGSI UTILITY TAMBAHAN ====================
 
   const OrderRow = ({
@@ -4412,14 +4946,14 @@ console.log(`💾 File akan disimpan sebagai: ${filename}`);
 
   useEffect(() => {
     refreshAllData();
-  }, []);
+  }, [refreshAllData]);
 
   // Sinkronkan setiap kali committedPOs berubah
   useEffect(() => {
     if (committedPOs.length > 0 || orders.length > 0) {
       syncCommitStatus();
     }
-  }, [committedPOs]);
+  }, [committedPOs, orders.length, syncCommitStatus]);
 
   // Statistik untuk penggabungan PO
   const combinedStats = useMemo(() => {
@@ -4830,8 +5364,4 @@ console.log(`💾 File akan disimpan sebagai: ${filename}`);
       </div>
     </div>
   );
-}
-
-function setOrders(arg0: (prev: any[]) => ({ bom: { flat: any[]; }; } | { stock: StockItem[]; stockLastUpdated: string; bom: { flat: any[]; }; })[]) {
-  throw new Error("Function not implemented.");
 }

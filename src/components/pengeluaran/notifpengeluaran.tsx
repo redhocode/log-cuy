@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react"; // Added useCallback
 import { DataTable } from "../data-table";
 import { columns as getColumns } from "./columns";
 import Loading from "@/app/loading";
@@ -22,7 +22,7 @@ export default function PengeluaranPage() {
   const [data, setData] = useState<pengeluaran[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRows, setSelectedRows] = useState<pengeluaran[]>([]);
-//   const [loadingNotification, setLoadingNotification] = useState<boolean>(false);
+  //   const [loadingNotification, setLoadingNotification] = useState<boolean>(false);
   const [tgl1, setTgl1] = useState<string>(
     new Date().toISOString().split("T")[0]
   );
@@ -50,7 +50,8 @@ export default function PengeluaranPage() {
     }
   };
 
-  const fetchData = async () => {
+  // Wrap fetchData with useCallback to prevent infinite re-renders
+  const fetchData = useCallback(async () => {
     setLoading(true);
     const url = new URL("/api/pengeluaran", window.location.origin);
     const finalTgl1 = tgl1 || new Date().toISOString().split("T")[0];
@@ -76,7 +77,7 @@ export default function PengeluaranPage() {
         const header = `📦 *Laporan Pengeluaran Hari Ini* (${today})\n\n`;
         const body = filtered
           .map(
-            (item:pengeluaran, index:number) =>
+            (item: pengeluaran, index: number) =>
               `📋 ${index + 1}.\n` +
               `🛒 Barang: ${item.KodeBarang}\n` +
               `🔢 Jumlah: ${item.Jumlah} ${item.Satuan}\n` +
@@ -92,28 +93,30 @@ export default function PengeluaranPage() {
     } finally {
       setLoading(false);
     }
+  }, [tgl1, tgl2]); // Add dependencies that are used inside
+
+  const handleSendTelegram = async () => {
+    if (data.length === 0) return;
+
+    const header = `📦 *Laporan Pengeluaran*\n📅 Tanggal: ${tgl1} s/d ${tgl2}\n\n`;
+    const body = data
+      .map(
+        (item, index) =>
+          `📋 ${index + 1}.\n` +
+          `🛒 Barang: ${item.KodeBarang}\n` +
+          `🔢 Jumlah: ${item.Jumlah} ${item.Satuan}\n` +
+          `📍 Tujuan: ${item.PembeliPeneima}\n` +
+          `📅 Tanggal: ${item.TanggalSuratJalan}\n`
+      )
+      .join("\n");
+
+    await sendTelegramMessage(header + body);
   };
-const handleSendTelegram = async () => {
-  if (data.length === 0) return;
 
-  const header = `📦 *Laporan Pengeluaran*\n📅 Tanggal: ${tgl1} s/d ${tgl2}\n\n`;
-  const body = data
-    .map(
-      (item, index) =>
-        `📋 ${index + 1}.\n` +
-        `🛒 Barang: ${item.KodeBarang}\n` +
-        `🔢 Jumlah: ${item.Jumlah} ${item.Satuan}\n` +
-        `📍 Tujuan: ${item.PembeliPeneima}\n` +
-        `📅 Tanggal: ${item.TanggalSuratJalan}\n`
-    )
-    .join("\n");
-
-  await sendTelegramMessage(header + body);
-}
- 
+  // Fixed useEffect with proper dependencies
   useEffect(() => {
     fetchData();
-  }, [tgl1, tgl2]);
+  }, [fetchData]); // Added fetchData as dependency
 
   if (loading) return <Loading />;
 
