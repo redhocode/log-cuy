@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 // components/cekkodelc.tsx
 "use client";
 
@@ -843,8 +844,7 @@ function TableRow({
   const [localBomComparison, setLocalBomComparison] =
     useState<BomComparisonResult | null>(null);
 
-  const hasBoth = pair.lcItem && pair.nonLcItem;
-  const hasOnlyLC = pair.lcItem && !pair.nonLcItem;
+
 
   const handleShowBom = async (itemId: string, e: React.MouseEvent) => {
     e.stopPropagation();
