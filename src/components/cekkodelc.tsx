@@ -845,7 +845,6 @@ function TableRow({
     useState<BomComparisonResult | null>(null);
 
 
-
   const handleShowBom = async (itemId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (selectedItemForBom === itemId) {
