@@ -24,19 +24,25 @@ interface StockItem {
   kategori: string;
   totalkgs: string;
 }
+
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
+import { itemImport } from "./itemImport";
 
 const StockPergudang: React.FC = () => {
   const [data, setData] = useState<StockItem[]>([]);
   const [filteredData, setFilteredData] = useState<StockItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [filterOption, setFilterOption] = useState<string>("all");
+  const [qtyFilter, setQtyFilter] = useState<string>("all");
+
   const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split("T")[0] // default hari ini
+    new Date().toISOString().split("T")[0]
   );
+
   const [cacheData, setCacheData] = useState<{ [key: string]: StockItem[] }>(
     {}
   );
@@ -44,7 +50,7 @@ const StockPergudang: React.FC = () => {
   const debounceTimeout = useRef<any>(null);
   const periodeR = "201905";
 
-  // fungsi hitung stockAkhir
+  // Hitung stock akhir per item
   const getStockAkhirPerItem = (data: any[]) => {
     const stockAkhirMap: { [key: string]: number } = {};
     const uniqueItemsMap: { [key: string]: any } = {};
@@ -53,11 +59,7 @@ const StockPergudang: React.FC = () => {
       const { itemid, totalkgs } = item;
       const total = parseFloat(totalkgs) || 0;
 
-      if (stockAkhirMap[itemid]) {
-        stockAkhirMap[itemid] += total;
-      } else {
-        stockAkhirMap[itemid] = total;
-      }
+      stockAkhirMap[itemid] = (stockAkhirMap[itemid] || 0) + total;
 
       if (!uniqueItemsMap[itemid]) {
         uniqueItemsMap[itemid] = item;
@@ -70,27 +72,58 @@ const StockPergudang: React.FC = () => {
     }));
   };
 
-  // filter sesuai combo box
-  const applyFilter = useCallback((data: StockItem[], option: string) => {
-    if (option === "utama") {
-      return data.filter((item) => itemGudangUtama.includes(item.itemid));
-    } else if (option === "injeksi") {
-      return data.filter((item) => itemGudangInjeksi.includes(item.itemid));
-    }
-    return data; // default semua
-  }, []);
+  // FILTER UTAMA
+  const applyFilter = useCallback(
+    (rawData: StockItem[]) => {
+      let result = [...rawData];
 
-  // fetch data dari API → SELALU ambil semua item (%)
+      // Filter Gudang
+      if (filterOption === "utama") {
+        result = result.filter((item) => itemGudangUtama.includes(item.itemid));
+      } else if (filterOption === "injeksi") {
+        result = result.filter((item) =>
+          itemGudangInjeksi.includes(item.itemid)
+        );
+      } else if (filterOption === "import") {
+        result = result.filter((item) => itemImport.includes(item.itemid));
+      }
+
+      // Hitung stockAkhir setelah gudang difilter
+      result = getStockAkhirPerItem(result);
+
+      // Filter Qty
+      if (qtyFilter === "zero") {
+        result = result.filter((item) => item.stockAkhir === 0);
+      } else if (qtyFilter === "more") {
+        result = result.filter((item) => item.stockAkhir > 0);
+      }
+
+      // Filter Search
+      if (searchQuery.trim() !== "") {
+        result = result.filter(
+          (item) =>
+            item.itemid.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            item.itemname.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            item.kategori.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+      }
+
+      return result;
+    },
+    [filterOption, qtyFilter, searchQuery]
+  );
+
+  // Fetch Data
   const fetchData = useCallback(async () => {
-    // cek cache dulu
     if (cacheData[selectedDate]) {
       setData(cacheData[selectedDate]);
-      setFilteredData(applyFilter(cacheData[selectedDate], filterOption));
+      setFilteredData(applyFilter(cacheData[selectedDate]));
       setLoading(false);
       return;
     }
 
     setLoading(true);
+
     try {
       const response = await fetch(
         `/api/stock?periodeR=${periodeR}&loc=%&item=%&tgl=${selectedDate}&company=0&tipestock=0&jenisbarang=0&kategori=%&minus=0`
@@ -102,11 +135,11 @@ const StockPergudang: React.FC = () => {
       }
 
       const result = await response.json();
+
       if (result.data) {
         setData(result.data);
-        setFilteredData(applyFilter(result.data, filterOption));
+        setFilteredData(applyFilter(result.data));
 
-        // simpan ke cache frontend
         setCacheData((prev) => ({
           ...prev,
           [selectedDate]: result.data,
@@ -119,68 +152,70 @@ const StockPergudang: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedDate, cacheData, filterOption, applyFilter]);
+  }, [selectedDate, applyFilter, cacheData]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  // kalau filterOption berubah → filter ulang data
+  // Trigger filtering ulang saat filter berubah
   useEffect(() => {
-    setFilteredData(applyFilter(data, filterOption));
-  }, [filterOption, data, applyFilter]);
+    setFilteredData(applyFilter(data));
+  }, [filterOption, qtyFilter, searchQuery, data, applyFilter]);
 
-  // hitung stock akhir dari data terfilter
-  const dataWithStockAkhir = getStockAkhirPerItem(filteredData).filter(
-    (item) => item.stockAkhir >= 0 // buang data minus
-  );
-
-  // handle search
-  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const query = event.target.value;
-    setSearchQuery(query);
-
-    if (debounceTimeout.current) {
-      clearTimeout(debounceTimeout.current);
-    }
-
-    debounceTimeout.current = setTimeout(() => {
-      const filtered = applyFilter(data, filterOption).filter(
-        (item) =>
-          item.itemid.toLowerCase().includes(query.toLowerCase()) ||
-          item.itemname.toLowerCase().includes(query.toLowerCase()) ||
-          item.kategori.toLowerCase().includes(query.toLowerCase())
-      );
-      setFilteredData(filtered);
-    }, 300);
-  };
-
+  // EXPORT
+  // EXPORT
+  // EXPORT
   const handleExport = () => {
-    // pilih data yang sudah difilter
-    const exportData = dataWithStockAkhir.map((item) => ({
+    const exportData = filteredData.map((item) => ({
       ItemID: item.itemid,
       ItemName: item.itemname,
       Kategori: item.kategori,
       StockAkhir: item.stockAkhir,
     }));
 
-    // buat worksheet dan workbook
-    const ws = XLSX.utils.json_to_sheet(exportData);
+    // 1. Buat worksheet kosong
+    const ws = XLSX.utils.aoa_to_sheet([]);
+
+    // 2. Header + tanggal export
+    const header = [
+      ["LAPORAN STOCK PER GUDANG"],
+      [`Tanggal Export: ${new Date().toLocaleString()}`],
+      [`Tanggal Data: ${selectedDate}`],
+      [], // baris kosong
+    ];
+
+    XLSX.utils.sheet_add_aoa(ws, header, { origin: "A1" });
+
+    // 3. Tambahkan data JSON mulai dari baris ke-5 (A5)
+    XLSX.utils.sheet_add_json(ws, exportData, {
+      origin: "A5",
+      skipHeader: false, // tampilkan header kolom otomatis
+    });
+
+    // Auto column width
+    const colWidths = Object.keys(exportData[0] || {}).map((key) => ({
+      wch: Math.max(key.length, 15),
+    }));
+    ws["!cols"] = colWidths;
+
+    // 4. Build workbook
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Stock");
 
-    // nama file sesuai gudang
     const gudang =
       filterOption === "utama"
         ? "Gudang_Utama"
         : filterOption === "injeksi"
         ? "Gudang_Injeksi"
+        : filterOption === "import"
+        ? "Item_Import"
         : "Semua_Gudang";
 
     const fileName = `Laporan_Stock_${gudang}_${selectedDate}.xlsx`;
 
-    // simpan file
     const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+
     saveAs(
       new Blob([excelBuffer], { type: "application/octet-stream" }),
       fileName
@@ -188,6 +223,7 @@ const StockPergudang: React.FC = () => {
   };
 
   if (loading) return <Loading />;
+
   if (error) return <div>Error: {error}</div>;
 
   return (
@@ -205,11 +241,27 @@ const StockPergudang: React.FC = () => {
             <SelectItem value="all">Semua</SelectItem>
             <SelectItem value="utama">Gudang Utama</SelectItem>
             <SelectItem value="injeksi">Gudang Injeksi</SelectItem>
+            <SelectItem value="import">Item Import</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
-      {/* Input tanggal */}
+      {/* Filter Qty */}
+      <div className="mb-4 flex items-center gap-2">
+        <label className="text-sm font-medium">Filter Qty:</label>
+        <Select value={qtyFilter} onValueChange={setQtyFilter}>
+          <SelectTrigger className="w-[200px]">
+            <SelectValue placeholder="Filter Qty" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Semua</SelectItem>
+            <SelectItem value="zero">Qty = 0</SelectItem>
+            <SelectItem value="more">Qty {">"} 0</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Tanggal */}
       <div className="mb-4 flex items-center gap-2">
         <label className="text-sm font-medium">Pilih Tanggal:</label>
         <Input
@@ -220,17 +272,18 @@ const StockPergudang: React.FC = () => {
         />
       </div>
 
-      {/* Search box */}
+      {/* Search */}
       <div className="mb-4">
         <Input
           type="text"
           placeholder="Search..."
           value={searchQuery}
-          onChange={handleSearchChange}
+          onChange={(e) => setSearchQuery(e.target.value)}
           className="w-[300px]"
         />
       </div>
-      {/* Tombol Export */}
+
+      {/* Export */}
       <div className="mb-4">
         <button
           onClick={handleExport}
@@ -241,7 +294,7 @@ const StockPergudang: React.FC = () => {
       </div>
 
       {/* Table */}
-      <DataTable columns={columns(() => {})} data={dataWithStockAkhir} />
+      <DataTable columns={columns(() => {})} data={filteredData} />
     </div>
   );
 };
