@@ -1,7 +1,5 @@
 "use client";
-/*@typescript-eslint/no-explicit-any*/
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { ColumnDef } from "@tanstack/react-table";
 import { ArrowUpDown } from "lucide-react";
@@ -9,7 +7,7 @@ import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 
 interface ColumnsProps {
-  setSelectedRows: React.Dispatch<React.SetStateAction<any[]>>; // Update with your correct type
+  setSelectedRows: React.Dispatch<React.SetStateAction<any[]>>;
 }
 
 export const columns = (
@@ -76,11 +74,31 @@ export const columns = (
         variant="ghost"
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
       >
-        Nama
+        Nama Item
         <ArrowUpDown className="ml-2 h-4 w-4" />
       </Button>
     ),
   },
-  { accessorKey: "stockAkhir", header: "Qty" },
-  { accessorKey: "kategori", header: "Kategori" },
+  {
+    accessorKey: "stockAkhir", // Ini sudah totalkgs yang di-sum
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      >
+        Total Kgs
+        <ArrowUpDown className="ml-2 h-4 w-4" />
+      </Button>
+    ),
+    cell: ({ row }) => {
+      const value = row.getValue("stockAkhir") as number;
+      return (
+        <div className="text-right font-medium">{value.toFixed(2)} kg</div>
+      );
+    },
+  },
+  {
+    accessorKey: "kategori",
+    header: "Kategori",
+  },
 ];

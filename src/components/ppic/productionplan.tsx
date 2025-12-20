@@ -3053,7 +3053,7 @@ export default function ProductionPlanPage() {
       let itemsWithVariantCount = 0;
       let totalStockAvailable = 0;
 
-      const stockSummary = [];
+      const stockSummary: { "Kode Item 物料代码": any; "Nama Item 物料名称": any; "Sum of Total 总需求 (PO)": any; "Stock Available 可用库存": any; "Remaining Stock 剩余库存": number; "Status 状态": string; "Warning 警告": string; }[] = [];
 
       // Kumpulkan data dari semua PO yang dipilih
       for (const order of selectedOrders) {
@@ -3290,7 +3290,7 @@ export default function ProductionPlanPage() {
       XLSX.utils.book_append_sheet(wb, ws1, "Selected PO 已选PO");
 
       // Worksheet 2: Material Summary
-      const materialSummary = [];
+      const materialSummary: any[] = [];
       for (const order of selectedOrders) {
         if (order.bom && order.stock) {
           const materialNeeds = calculateMaterialNeeds(
