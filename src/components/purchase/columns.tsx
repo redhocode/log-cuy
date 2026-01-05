@@ -76,5 +76,6 @@ export const columns: ColumnDef<PurchaseType>[] = [
   { accessorKey: "Price", header: "Price" },
   // { accessorKey: "TotalDt", header: "Total Item" },
   { accessorKey: "Satuan", header: "Satuan" },
+  { accessorKey: "Kategori", header: "Kategori" },
   { accessorKey: "username", header: "User Name" },
 ];
