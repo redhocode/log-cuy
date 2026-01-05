@@ -137,6 +137,7 @@ export async function GET(request: Request) {
         dt.[ItemID],
         dt.[Bags],
         dt.[Kgs],
+        kt.[NamaJenis] as Kategori,
         dt.[UserName] 
       FROM [cp].[dbo].[taPRProdHd] AS hd
       INNER JOIN [cp].[dbo].[taPRProdDt] AS dt 
@@ -147,6 +148,10 @@ export async function GET(request: Request) {
         ON hd.[LocID] = g.[LocID]
       INNER JOIN [cp].[dbo].[taDeptPROrder] AS d 
         ON hd.[DeptID] = d.[PRDeptID]
+      INNER JOIN [cp].[dbo].[taGoods] AS k
+        ON dt.[ItemID] = k.[ItemID]
+      INNER JOIN [cp].[dbo].[taKindofGoods] AS kt
+        ON k.[KodeJenis] = kt.[KodeJenis]
       WHERE hd.[ProdType] IN ('IN','SP','MO','PL','AS') 
         AND dt.[ItemType] IN ('B','H')
     `;

@@ -26,11 +26,14 @@ export async function GET(request: Request) {
         dt.[ItemID],
         dt.[Bags],
         dt.[Kgs],
+        kr.[NamaJenis] as Kategori,
         dt.[username]
       FROM [cp].[dbo].[taMoveHD] AS hd
       INNER JOIN [cp].[dbo].[taMoveDT]
       AS dt ON hd.[MoveID] = dt.[MoveID]
       AND hd.[MoveType] = dt.[MoveType]
+      INNER JOIN [cp].[dbo].[taGoods] AS i ON dt.[ItemID] = i.[ItemID]
+      INNER JOIN [cp].[dbo].[taKindofGoods] AS kr ON kr.[KodeJenis] = i.[KodeJenis]
       WHERE hd.[MoveType] = 'R'
     `;
 
