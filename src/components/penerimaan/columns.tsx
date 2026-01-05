@@ -70,5 +70,6 @@ export const columns: ColumnDef<PenerimaanType>[] = [
   { accessorKey: "Bags", header: "Bags" },
   { accessorKey: "Kgs", header: "Qty" },
   { accessorKey: "satuan", header: "Satuan" },
+  { accessorKey: "Kategori", header: "Kategori" },
   { accessorKey: "username", header: "User Name" },
 ];
