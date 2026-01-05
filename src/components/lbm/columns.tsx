@@ -68,6 +68,7 @@ export const columns: ColumnDef<LbmType>[] = [
   { accessorKey: "Bags", header: "Bags" },
   { accessorKey: "Kgs", header: "Kgs" },
   { accessorKey: "HPPPrice", header: "HPP" },
+  { accessorKey: "Kategori", header: "Kategori" },
   { accessorKey: "username", header: "User Name" },
  
 ];

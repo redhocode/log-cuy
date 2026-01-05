@@ -99,6 +99,7 @@ export const columns = (
   { accessorKey: "ItemID", header: "ItemID" },
   { accessorKey: "Bags", header: "Bags" },
   { accessorKey: "Kgs", header: "Qty" },
+  { accessorKey: "Kategori", header: "Kategori" },
   { accessorKey: "UserName", header: "User Name" },
   // { accessorKey: "UserDateTime", header: "User DateTime" },
 ];
