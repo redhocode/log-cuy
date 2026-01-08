@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "./ui/card";
+import NumberPage from "@/app/dashboard/number/page";
 
 const DiskLogAbsensi = () => {
   const [isProcessing, setIsProcessing] = useState(false); // Menyimpan status eksekusi query
@@ -98,9 +99,10 @@ const DiskLogAbsensi = () => {
                   onClick={handleExecuteSQL}
                   disabled={isProcessing} // Menonaktifkan tombol saat query sedang diproses
                   className="w-full"
-                >
+                  >
                   {isProcessing ? "Executing..." : "Execute SQL Query"}
                 </Button>
+                  <NumberPage/>
 
                 {/* Menampilkan status success atau error setelah eksekusi query */}
                 {statusMessage && (

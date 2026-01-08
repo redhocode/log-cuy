@@ -27,14 +27,15 @@ import { useEffect } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import Link from "next/link";
 import { Label } from "./ui/label";
-const masterItems = [
+const masterItems = [ 
   { href: "/dashboard/", label: "Stock Gudang", icon: BellDot },
   { href: "/dashboard/bom", label: "BOM", icon: Package2 },
   { href: "/dashboard/pengeluaran", label: "Laporan Exim", icon: BellDot },
   { href: "/dashboard/barang", label: "Master Barang", icon: Package2 },
   { href: "/dashboard/cekppn", label: "Hitung PPN", icon: Package2 },
   { href: "/dashboard/supplier", label: "Supplier", icon: User2 },
-  { href: "/dashboard/absensi", label: "Disk log Ansensi", icon: TimerReset },
+  { href: "/dashboard/absensi", label: "Ripair", icon: TimerReset },
+  // {href: "/dashboard/number", label: "Fix Number", icon: Package2 },
   // { href: "/dashboard/qr", label: "QR Code", icon: Package2 },
   // { href: "/dashboard/qr/cetak", label: "Cetak QR", icon: Package2 },
   // { href: "/laporan", label: "Input laporan excel", icon: Package2 },
