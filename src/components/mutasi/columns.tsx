@@ -68,7 +68,9 @@ export const columns: ColumnDef<MutasiType>[] = [
   { accessorKey: "ItemID", header: "ItemID" },
   { accessorKey: "Bags", header: "Bags" },
   { accessorKey: "Kgs", header: "Kgs" },
+  { accessorKey: "Kategori", header: "Kategori" },
   { accessorKey: "username", header: "User Name" },
+
  // { accessorKey: "userdatetime", header: "User DateTime" },
 
 ];
