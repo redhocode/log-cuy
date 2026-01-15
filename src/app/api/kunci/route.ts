@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // ./src/app/api/kunci/route.ts - DIPERBAIKI
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
