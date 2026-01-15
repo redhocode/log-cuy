@@ -1,4 +1,5 @@
 
+
 export type ProduksiType = {
   ProdID: string;
   ProdType: string;
@@ -563,4 +564,11 @@ export interface UncommitPOResponse {
   releasedMaterials?: number;
   releasedQty?: number;
   error?: string;
+}
+
+export interface kunciType{
+  Form_Name: string;
+  LockDate: Date;
+  Form_Alias: string;
+  
 }
