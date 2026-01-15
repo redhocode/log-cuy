@@ -1,6 +1,6 @@
 "use client";
 import { useRouter, usePathname } from "next/navigation";
-import {  Package2, Import, User2, ChevronUp, Annoyed, User,BellDot,TimerReset } from "lucide-react";
+import {  Package2, Import, User2, ChevronUp, Annoyed, User,BellDot,TimerReset,LockKeyhole} from "lucide-react";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +35,7 @@ const masterItems = [
   { href: "/dashboard/cekppn", label: "Hitung PPN", icon: Package2 },
   { href: "/dashboard/supplier", label: "Supplier", icon: User2 },
   { href: "/dashboard/absensi", label: "Ripair", icon: TimerReset },
+  {href: "/dashboard/kunci", label: "Kunci", icon: LockKeyhole },
   // {href: "/dashboard/number", label: "Fix Number", icon: Package2 },
   // { href: "/dashboard/qr", label: "QR Code", icon: Package2 },
   // { href: "/dashboard/qr/cetak", label: "Cetak QR", icon: Package2 },
