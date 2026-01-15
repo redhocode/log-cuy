@@ -568,7 +568,7 @@ export interface UncommitPOResponse {
 
 export interface kunciType{
   Form_Name: string;
-  LockDate: Date;
+  LockDate: Date | null;
   Form_Alias: string;
-  
+  name: string;
 }
