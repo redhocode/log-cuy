@@ -35,7 +35,7 @@ const masterItems = [
   { href: "/dashboard/cekppn", label: "Hitung PPN", icon: Package2 },
   { href: "/dashboard/supplier", label: "Supplier", icon: User2 },
   { href: "/dashboard/absensi", label: "Ripair", icon: TimerReset },
-  {href: "/dashboard/kunci", label: "Kunci", icon: LockKeyhole },
+  // {href: "/dashboard/kunci", label: "Kunci", icon: LockKeyhole },
   // {href: "/dashboard/number", label: "Fix Number", icon: Package2 },
   // { href: "/dashboard/qr", label: "QR Code", icon: Package2 },
   // { href: "/dashboard/qr/cetak", label: "Cetak QR", icon: Package2 },
