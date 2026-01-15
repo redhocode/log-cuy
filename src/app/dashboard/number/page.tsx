@@ -51,7 +51,7 @@ export default function NumberPage() {
   const COLUMNS = ["Jurnal"];
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
+    <div className="p-6 max-w-6xl mx-auto space-y-6 h-auto">
       <Card>
         <CardHeader>
           <CardTitle>Number Counter</CardTitle>

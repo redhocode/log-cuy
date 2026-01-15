@@ -159,7 +159,7 @@ export default function KunciPage() {
      RENDER
   ======================= */
   return (
-    <div className="container mx-auto py-8 px-4">
+    <div className="container mx-auto py-8 px-4 h-auto">
       <div className="flex justify-between mb-6">
         <h1 className="text-3xl font-bold">Manajemen Kunci Form</h1>
         <Button onClick={fetchData} variant="outline" disabled={loading}>

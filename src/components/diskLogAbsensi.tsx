@@ -34,7 +34,6 @@ const DiskLogAbsensi = () => {
       setIsPasswordEntered(true);
       setStatusMessage(null);
       toast.success("Password correct! Access granted.");
-      // Set tab aktif ke "execute" setelah password benar
       setActiveTab("execute");
     } else {
       toast.error("Incorrect password!");
@@ -45,13 +44,12 @@ const DiskLogAbsensi = () => {
 
   const handleExecuteSQL = async () => {
     if (!isPasswordCorrect) {
-      toast.error("Please enter the correct password to execute the query.");
+      toast.error("Please enter the correct password.");
       return;
     }
 
     setIsProcessing(true);
     setStatusMessage(null);
-
     const loadingToast = toast.loading("Executing query...");
 
     try {
@@ -75,7 +73,10 @@ const DiskLogAbsensi = () => {
   };
 
   return (
-    <Card className="h-auto min-h-[20rem] mb-5">
+    <div className="h-screen p-4 mb-4 -mt-8">
+
+    <Card className="h-full flex flex-col">
+      {/* HEADER (FIXED) */}
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Database className="h-5 w-5" />
@@ -86,9 +87,10 @@ const DiskLogAbsensi = () => {
         </CardDescription>
       </CardHeader>
 
-      <CardContent>
+      {/* CONTENT (SCROLL HERE) */}
+      <CardContent className="flex-1 overflow-auto">
         {!isPasswordEntered ? (
-          <div className="flex flex-col space-y-4">
+          <div className="flex flex-col gap-4">
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <div className="relative">
@@ -106,118 +108,93 @@ const DiskLogAbsensi = () => {
                 />
               </div>
             </div>
-            <Button onClick={handlePasswordSubmit} className="w-full">
-              Submit Password
+
+            <Button onClick={handlePasswordSubmit}>Submit Password</Button>
+          </div>
+        ) : isPasswordCorrect ? (
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className="w-full"
+          >
+            <TabsList className="grid grid-cols-3 mb-4">
+              <TabsTrigger value="execute" className="flex gap-2">
+                <Database className="h-4 w-4" />
+                Execute
+              </TabsTrigger>
+              <TabsTrigger value="numberPage" className="flex gap-2">
+                <Hash className="h-4 w-4" />
+                Number
+              </TabsTrigger>
+              <TabsTrigger value="kunciPage" className="flex gap-2">
+                <Key className="h-4 w-4" />
+                Kunci
+              </TabsTrigger>
+            </TabsList>
+
+            {/* EXECUTE TAB */}
+            <TabsContent value="execute" className="mt-0">
+              <div className="rounded-lg border p-4 space-y-4">
+                <h3 className="font-medium">SQL Query Execution</h3>
+                <p className="text-sm text-muted-foreground">
+                  Menjalankan query maintenance database.
+                </p>
+
+                <Button
+                  onClick={handleExecuteSQL}
+                  disabled={isProcessing}
+                  className="w-full"
+                >
+                  {isProcessing ? "Executing..." : "Execute SQL Query"}
+                </Button>
+
+                {statusMessage && (
+                  <div
+                    className={`p-3 rounded-md text-center font-medium ${
+                      statusMessage === "Success"
+                        ? "bg-green-50 text-green-700 border"
+                        : "bg-red-50 text-red-700 border"
+                    }`}
+                  >
+                    {statusMessage}
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+
+            {/* NUMBER TAB */}
+            <TabsContent value="numberPage" className="mt-0">
+              <div className="rounded-lg border p-4">
+                <NumberPage />
+              </div>
+            </TabsContent>
+
+            {/* KUNCI TAB */}
+            <TabsContent value="kunciPage" className="mt-0">
+              <div className="rounded-lg border p-4">
+                <KunciPage />
+              </div>
+            </TabsContent>
+          </Tabs>
+        ) : (
+          <div className="space-y-4 max-w-md">
+            <div className="text-red-500 p-4 bg-red-50 rounded-lg border">
+              Incorrect password. Please try again.
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsPasswordEntered(false);
+                setPassword("");
+              }}
+            >
+              Try Again
             </Button>
           </div>
-        ) : (
-          <>
-            {isPasswordCorrect ? (
-              <Tabs
-                defaultValue="execute"
-                className="w-full"
-                value={activeTab}
-                onValueChange={setActiveTab}
-              >
-                <TabsList className="grid grid-cols-3 mb-4">
-                  <TabsTrigger
-                    value="execute"
-                    className="flex items-center gap-2"
-                  >
-                    <Database className="h-4 w-4" />
-                    Execute Query
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="numberPage"
-                    className="flex items-center gap-2"
-                  >
-                    <Hash className="h-4 w-4" />
-                    Number Page
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="kunciPage"
-                    className="flex items-center gap-2"
-                  >
-                    <Key className="h-4 w-4" />
-                    Kunci Page
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="execute" className="space-y-4">
-                  <div className="rounded-lg border p-4">
-                    <h3 className="font-medium mb-2">SQL Query Execution</h3>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Menjalankan query untuk mengubah recovery model dan
-                      mengecilkan file log database.
-                    </p>
-                    <Button
-                      onClick={handleExecuteSQL}
-                      disabled={isProcessing}
-                      className="w-full"
-                      variant={isProcessing ? "secondary" : "default"}
-                    >
-                      {isProcessing ? (
-                        <>
-                          <span className="mr-2 h-3 w-3 animate-spin rounded-full border-2 border-b-transparent" />
-                          Executing...
-                        </>
-                      ) : (
-                        "Execute SQL Query"
-                      )}
-                    </Button>
-
-                    {statusMessage && (
-                      <div
-                        className={`mt-4 p-3 rounded-md text-center font-medium ${
-                          statusMessage === "Success"
-                            ? "bg-green-50 text-green-700 border border-green-200"
-                            : "bg-red-50 text-red-700 border border-red-200"
-                        }`}
-                      >
-                        {statusMessage === "Success"
-                          ? "✓ Query executed successfully"
-                          : "✗ Query execution failed"}
-                      </div>
-                    )}
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="numberPage">
-                  <div className="rounded-lg border p-4">
-                    <h3 className="font-medium mb-2">
-                      Number Page Configuration
-                    </h3>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Konfigurasi dan pengaturan halaman number.
-                    </p>
-                    <NumberPage />
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="kunciPage">
-                 <KunciPage/>
-                </TabsContent>
-              </Tabs>
-            ) : (
-              <div className="text-center space-y-4">
-                <div className="text-red-500 p-4 bg-red-50 rounded-lg border border-red-200">
-                  Incorrect password. Please try again.
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setIsPasswordEntered(false);
-                    setPassword("");
-                  }}
-                >
-                  Try Again
-                </Button>
-              </div>
-            )}
-          </>
         )}
       </CardContent>
 
+      {/* FOOTER (FIXED) */}
       <CardFooter>
         <p className="text-sm text-muted-foreground text-center w-full">
           Menjalankan query ini akan merubah recovery model dan mengecilkan file
@@ -226,6 +203,7 @@ const DiskLogAbsensi = () => {
         </p>
       </CardFooter>
     </Card>
+    </div>
   );
 };
 
