@@ -13,17 +13,15 @@ export async function GET(request: Request) {
     const pool = await getPool();
 
     let query = `
-      SELECT DISTINCT
+      SELECT TOP (20)
         hd.[OrderID] AS No_SPK,
         hd.[OrderDate] AS Tanggal_Order,
         hd.[Remark] AS Nama_PO,
         dt.[itemID] AS Kode_Barang,
         dt.[Kgs] AS QTY
-      FROM [cp].[dbo].[taPROrder] AS hd
-      INNER JOIN [cp].[dbo].[taPROrderDt] AS dt
+      FROM [cp].[dbo].[taSOHD] AS hd
+      INNER JOIN [cp].[dbo].[taSODT] AS dt
         ON hd.[OrderID] = dt.[OrderID]
-        AND hd.[OrderType] = dt.[OrderType]
-      WHERE hd.[OrderID] LIKE 'AS%'
     `;
 
     if (startDate && endDate) {
