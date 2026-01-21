@@ -3255,44 +3255,101 @@ export default function ProductionPlanPage() {
   };
 
   // FUNGSI: Export to Excel (disederhanakan untuk contoh)
-  const exportSelectedToExcel = async (): Promise<void> => {
-    try {
-      setExportLoading(true);
-      setExportProgress({
-        visible: true,
-        current: 0,
-        total: 100,
-        message: "Memulai proses export...",
-      });
+ const exportSelectedToExcel = async (): Promise<void> => {
+  try {
+    setExportLoading(true);
+    setExportProgress({
+      visible: true,
+      current: 0,
+      total: 100,
+      message: "Memulai proses export...",
+    });
 
-      const selectedOrders = filteredOrders.filter(
-        (order) => order.selected && !order.committed
-      );
+    const selectedOrders = filteredOrders.filter(
+      (order) => order.selected && !order.committed
+    );
 
-      if (selectedOrders.length === 0) {
-        alert("Tidak ada PO yang dipilih untuk di-export! 没有选择要导出的PO!");
-        return;
+    if (selectedOrders.length === 0) {
+      alert("Tidak ada PO yang dipilih untuk di-export! 没有选择要导出的PO!");
+      return;
+    }
+
+    // Simulasi proses export
+    const wb = XLSX.utils.book_new();
+
+    // ==================== WORKSHEET 1: DETAIL PO ====================
+    // PERBAIKAN: Tampilkan SEMUA item dalam PO gabungan
+    const selectedPOData = selectedOrders.flatMap((order) => {
+      const isCombinedPO = order.order.combinedItems && order.order.combinedItems.length > 1;
+      
+      if (isCombinedPO) {
+        // Untuk PO gabungan, tampilkan setiap item sebagai baris terpisah
+        return order.order.combinedItems!.map((item, idx) => ({
+          "No SPK 生产订单号": order.order.No_SPK,
+          "Tanggal 日期": order.order.Tanggal_Order,
+          "Nama PO 生产订单名称": item.Nama_PO,
+          "Kode Barang 物料代码": item.Kode_Barang,
+          "QTY 数量": item.QTY,
+          "Jenis 类型": "Bagian PO Gabungan 合并PO部分",
+          "Urutan 顺序": idx + 1,
+          "Total Items dalam PO 总数": order.order.combinedItems!.length
+        }));
+      } else {
+        // Untuk PO biasa
+        return [{
+          "No SPK 生产订单号": order.order.No_SPK,
+          "Tanggal 日期": order.order.Tanggal_Order,
+          "Nama PO 生产订单名称": order.order.Nama_PO,
+          "Kode Barang 物料代码": order.order.Kode_Barang,
+          "QTY 数量": order.order.QTY,
+          "Jenis 类型": "PO Biasa 普通PO",
+          "Urutan 顺序": 1,
+          "Total Items dalam PO 总数": 1
+        }];
       }
+    });
 
-      // Simulasi proses export
-      const wb = XLSX.utils.book_new();
+    const ws1 = XLSX.utils.json_to_sheet(selectedPOData);
+    XLSX.utils.book_append_sheet(wb, ws1, "Detail PO PO详情");
 
-      // Worksheet 1: Selected PO
-      const selectedPOData = selectedOrders.map((order) => ({
-        "No SPK 生产订单号": order.order.No_SPK,
-        "Tanggal 日期": order.order.Tanggal_Order,
-        "Nama PO 生产订单名称": order.order.Nama_PO,
-        "Kode Barang 物料代码": order.order.Kode_Barang,
-        "QTY 数量": order.order.QTY,
-      }));
+    // ==================== WORKSHEET 2: MATERIAL SUMMARY ====================
+    // PERBAIKAN: Hitung kebutuhan material untuk SEMUA item yang dipilih
+    const materialSummary: any[] = [];
+    
+    for (const order of selectedOrders) {
+      if (order.bom && order.stock) {
+        const isCombinedPO = order.order.combinedItems && order.order.combinedItems.length > 1;
+        
+        if (isCombinedPO) {
+          // Untuk PO gabungan, hitung kebutuhan per item
+          for (const combinedItem of order.order.combinedItems!) {
+            // Hitung material needs untuk item ini
+            const materialNeeds = calculateMaterialNeeds(
+              order.bom.flat,
+              combinedItem.QTY, // Gunakan QTY dari item individual
+              order.stock
+            );
 
-      const ws1 = XLSX.utils.json_to_sheet(selectedPOData);
-      XLSX.utils.book_append_sheet(wb, ws1, "Selected PO 已选PO");
-
-      // Worksheet 2: Material Summary
-      const materialSummary: any[] = [];
-      for (const order of selectedOrders) {
-        if (order.bom && order.stock) {
+            materialNeeds.items.forEach((item: any) => {
+              materialSummary.push({
+                "No SPK 生产订单号": order.order.No_SPK,
+                "Sumber PO 来源PO": combinedItem.Kode_Barang,
+                "Nama Sumber PO 来源PO名称": combinedItem.Nama_PO,
+                "Kode Item 物料代码": item.ItemID,
+                "Nama Item 物料名称": item.ItemName,
+                "Departemen 部门": item.Departemen || "-",
+                "Qty Per Unit 每单位数量": item.Qty,
+                "QTY PO 订单数量": combinedItem.QTY,
+                "Total Butuh 总需求": item.needed,
+                "Stok Tersedia 可用库存": item.availableStock,
+                "Kekurangan 短缺": item.shortage,
+                "Status 状态": item.shortage > 0 ? "KURANG 不足" : "CUKUP 充足",
+                "Jenis PO PO类型": "Gabungan 合并"
+              });
+            });
+          }
+        } else {
+          // Untuk PO biasa
           const materialNeeds = calculateMaterialNeeds(
             order.bom.flat,
             order.order.QTY,
@@ -3301,50 +3358,142 @@ export default function ProductionPlanPage() {
 
           materialNeeds.items.forEach((item: any) => {
             materialSummary.push({
+              "No SPK 生产订单号": order.order.No_SPK,
+              "Sumber PO 来源PO": order.order.Kode_Barang,
+              "Nama Sumber PO 来源PO名称": order.order.Nama_PO,
               "Kode Item 物料代码": item.ItemID,
               "Nama Item 物料名称": item.ItemName,
               "Departemen 部门": item.Departemen || "-",
               "Qty Per Unit 每单位数量": item.Qty,
+              "QTY PO 订单数量": order.order.QTY,
               "Total Butuh 总需求": item.needed,
               "Stok Tersedia 可用库存": item.availableStock,
               "Kekurangan 短缺": item.shortage,
               "Status 状态": item.shortage > 0 ? "KURANG 不足" : "CUKUP 充足",
-              "Sumber PO PO来源": order.order.No_SPK,
+              "Jenis PO PO类型": "Biasa 普通"
             });
           });
         }
       }
-
-      const ws2 = XLSX.utils.json_to_sheet(materialSummary);
-      XLSX.utils.book_append_sheet(wb, ws2, "Material Summary 物料汇总");
-
-      // Generate filename
-      const timestamp = new Date().toISOString().split("T")[0];
-      const filename = `Production_Export_${timestamp}.xlsx`;
-
-      // Generate Excel file
-      XLSX.writeFile(wb, filename);
-
-      setTimeout(() => {
-        setExportProgress({
-          visible: false,
-          current: 0,
-          total: 0,
-          message: "",
-        });
-
-        alert(
-          `✅ Export berhasil!\nFile: ${filename}\n\nTotal PO: ${selectedOrders.length}\nTotal Materials: ${materialSummary.length}`
-        );
-      }, 1000);
-    } catch (error) {
-      console.error("❌ [EXPORT] Error dalam export:", error);
-      alert("Gagal mengekspor data. Silakan coba lagi. 导出失败，请重试");
-      setExportProgress({ visible: false, current: 0, total: 0, message: "" });
-    } finally {
-      setExportLoading(false);
     }
-  };
+
+    const ws2 = XLSX.utils.json_to_sheet(materialSummary);
+    XLSX.utils.book_append_sheet(wb, ws2, "Material Summary 物料汇总");
+
+    // ==================== WORKSHEET 3: AGGREGATED MATERIAL NEEDS ====================
+    // Gabungkan material yang sama dari berbagai PO
+    const materialMap = new Map<string, any>();
+    
+    materialSummary.forEach((item) => {
+      const key = item["Kode Item 物料代码"];
+      const existing = materialMap.get(key);
+      
+      if (existing) {
+        existing["Total Butuh 总需求"] += item["Total Butuh 总需求"];
+        existing["Stok Tersedia 可用库存"] = item["Stok Tersedia 可用库存"]; // Ambil stok terakhir
+        existing["Kekurangan 短缺"] = Math.max(
+          0,
+          existing["Total Butuh 总需求"] - existing["Stok Tersedia 可用库存"]
+        );
+        existing["Sumber PO Count PO来源数"] += 1;
+        
+        // Tambahkan sumber PO ke daftar
+        if (!existing["Sumber PO List 来源PO列表"].includes(item["Sumber PO 来源PO"])) {
+          existing["Sumber PO List 来源PO列表"].push(item["Sumber PO 来源PO"]);
+        }
+      } else {
+        materialMap.set(key, {
+          "Kode Item 物料代码": item["Kode Item 物料代码"],
+          "Nama Item 物料名称": item["Nama Item 物料名称"],
+          "Departemen 部门": item["Departemen 部门"],
+          "Total Butuh 总需求": item["Total Butuh 总需求"],
+          "Stok Tersedia 可用库存": item["Stok Tersedia 可用库存"],
+          "Kekurangan 短缺": item["Kekurangan 短缺"],
+          "Status 状态": item["Kekurangan 短缺"] > 0 ? "KURANG 不足" : "CUKUP 充足",
+          "Sumber PO Count PO来源数": 1,
+          "Sumber PO List 来源PO列表": [item["Sumber PO 来源PO"]]
+        });
+      }
+    });
+
+    const aggregatedData = Array.from(materialMap.values()).map(item => ({
+      ...item,
+      "Sumber PO List 来源PO列表": item["Sumber PO List 来源PO列表"].join(", ")
+    }));
+
+    const ws3 = XLSX.utils.json_to_sheet(aggregatedData);
+    XLSX.utils.book_append_sheet(wb, ws3, "Aggregated Summary 聚合汇总");
+
+    // ==================== WORKSHEET 4: STATISTICS ====================
+    const statisticsData = [
+      {
+        "Kategori 类别": "Total PO Dipilih 选择的PO总数",
+        "Nilai 值": selectedOrders.length
+      },
+      {
+        "Kategori 类别": "Total Items PO PO项目总数",
+        "Nilai 值": selectedPOData.length
+      },
+      {
+        "Kategori 类别": "Total Material Items 物料项目总数",
+        "Nilai 值": materialSummary.length
+      },
+      {
+        "Kategori 类别": "Unique Material Items 唯一物料项目",
+        "Nilai 值": aggregatedData.length
+      },
+      {
+        "Kategori 类别": "Total Kebutuhan 总需求",
+        "Nilai 值": aggregatedData.reduce((sum, item) => sum + item["Total Butuh 总需求"], 0)
+      },
+      {
+        "Kategori 类别": "Total Kekurangan 总短缺",
+        "Nilai 值": aggregatedData.reduce((sum, item) => sum + item["Kekurangan 短缺"], 0)
+      },
+      {
+        "Kategori 类别": "Items dengan Stok Cukup 库存充足项目",
+        "Nilai 值": aggregatedData.filter(item => item["Kekurangan 短缺"] === 0).length
+      },
+      {
+        "Kategori 类别": "Items dengan Stok Kurang 库存不足项目",
+        "Nilai 值": aggregatedData.filter(item => item["Kekurangan 短缺"] > 0).length
+      }
+    ];
+
+    const ws4 = XLSX.utils.json_to_sheet(statisticsData);
+    XLSX.utils.book_append_sheet(wb, ws4, "Statistics 统计");
+
+    // Generate filename
+    const timestamp = new Date().toISOString().split("T")[0];
+    const filename = `Production_Export_${timestamp}_${selectedOrders.length}_PO.xlsx`;
+
+    // Generate Excel file
+    XLSX.writeFile(wb, filename);
+
+    setTimeout(() => {
+      setExportProgress({
+        visible: false,
+        current: 0,
+        total: 0,
+        message: "",
+      });
+
+      alert(
+        `✅ Export berhasil!\nFile: ${filename}\n\n` +
+        `Total PO: ${selectedOrders.length}\n` +
+        `Total Items PO: ${selectedPOData.length}\n` +
+        `Total Materials: ${materialSummary.length}\n` +
+        `Unique Materials: ${aggregatedData.length}`
+      );
+    }, 1000);
+  } catch (error) {
+    console.error("❌ [EXPORT] Error dalam export:", error);
+    alert("Gagal mengekspor data. Silakan coba lagi. 导出失败，请重试");
+    setExportProgress({ visible: false, current: 0, total: 0, message: "" });
+  } finally {
+    setExportLoading(false);
+  }
+};
 
   // ==================== FUNGSI UTILITY TAMBAHAN ====================
 

@@ -19,9 +19,11 @@ export async function GET(request: Request) {
         hd.[Remark] AS Nama_PO,
         dt.[itemID] AS Kode_Barang,
         dt.[Kgs] AS QTY
-      FROM [cp].[dbo].[taSOHD] AS hd
-      INNER JOIN [cp].[dbo].[taSODT] AS dt
+      FROM [cp].[dbo].[taPROrder] AS hd
+      INNER JOIN [cp].[dbo].[taPROrderDt] AS dt
         ON hd.[OrderID] = dt.[OrderID]
+        AND hd.[OrderType] = dt.[OrderType]
+      WHERE hd.[OrderID] LIKE 'AS%'
     `;
 
     if (startDate && endDate) {
