@@ -1979,7 +1979,7 @@ export default function ProductionPlanPage() {
 
   // FUNGSI: Gabungkan PO dengan No_SPK yang sama - FIXED VERSION
   const combineDuplicatePOs = (
-    orders: ProductionOrder[]
+    orders: ProductionOrder[],
   ): ProductionOrder[] => {
     const poMap = new Map<string, ProductionOrder>();
 
@@ -2079,22 +2079,30 @@ export default function ProductionPlanPage() {
   };
 
   // ==================== FUNGSI SINKRONISASI COMMIT ====================
-
   const syncCommitStatus = useCallback(() => {
+    console.log("🔄 Syncing commit status...");
+
     setOrders((prevOrders) =>
       prevOrders.map((order) => {
+        // Cari commit yang aktif untuk SPK ini
         const committedPO = committedPOs.find(
-          (po) => po.noSPK === order.order.No_SPK && po.status === "COMMITTED"
+          (po) => po.noSPK === order.order.No_SPK && po.status === "COMMITTED",
         );
 
         const shouldBeCommitted = !!committedPO;
         const currentCommitID = order.CommitID;
         const newCommitID = committedPO?.CommitID;
 
+        // Jika status berbeda, update
         if (
           order.committed !== shouldBeCommitted ||
           currentCommitID !== newCommitID
         ) {
+          console.log(`📝 Updating commit status for ${order.order.No_SPK}:`, {
+            from: { committed: order.committed, CommitID: currentCommitID },
+            to: { committed: shouldBeCommitted, CommitID: newCommitID },
+          });
+
           return {
             ...order,
             committed: shouldBeCommitted,
@@ -2104,36 +2112,44 @@ export default function ProductionPlanPage() {
         }
 
         return order;
-      })
+      }),
     );
-  }, [committedPOs]);
-
+  }, [committedPOs]); // Hanya depend on committedPOs
   const loadCommittedPOs = async (): Promise<void> => {
-    try {
-      const response = await fetch("/api/ppic/committed-pos");
+  try {
+    console.log("📡 Loading committed POs...");
+    
+    const response = await fetch("/api/ppic/committed-pos", {
+      cache: 'no-store' // Pastikan tidak cache di production
+    });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-
-      if (result.success) {
-        const newCommittedPOs = result.data.committedPOs || [];
-        const newReservations = result.data.reservations || [];
-
-        setCommittedPOs(newCommittedPOs);
-        setStockReservations(newReservations);
-
-        setTimeout(() => {
-          syncCommitStatus();
-          forceRefreshUI();
-        }, 100);
-      }
-    } catch (error) {
-      console.error("Error loadCommittedPOs:", error);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
-  };
+
+    const result = await response.json();
+
+    if (result.success) {
+      const newCommittedPOs = result.data.committedPOs || [];
+      const newReservations = result.data.reservations || [];
+
+      console.log(`✅ Loaded ${newCommittedPOs.length} committed POs`);
+      
+      // Update state sekaligus
+      setCommittedPOs(newCommittedPOs);
+      setStockReservations(newReservations);
+
+      // Sinkronkan status setelah data selesai di-load
+      setTimeout(() => {
+        syncCommitStatus();
+      }, 100);
+    } else {
+      console.error("❌ API response not successful:", result);
+    }
+  } catch (error) {
+    console.error("❌ Error loading committed POs:", error);
+  }
+};
 
   const refreshAllData = useCallback(async (): Promise<void> => {
     try {
@@ -2162,7 +2178,7 @@ export default function ProductionPlanPage() {
   };
 
   const handleItemsPerPageChange = (
-    e: React.ChangeEvent<HTMLSelectElement>
+    e: React.ChangeEvent<HTMLSelectElement>,
   ) => {
     const newItemsPerPage = parseInt(e.target.value);
     setItemsPerPage(newItemsPerPage);
@@ -2194,10 +2210,10 @@ export default function ProductionPlanPage() {
       // Buat production plans
       const productionPlans: ProductionPlan[] = combinedOrders.map((order) => {
         const existingOrder = orders.find(
-          (o) => o.order.No_SPK === order.No_SPK
+          (o) => o.order.No_SPK === order.No_SPK,
         );
         const committedPO = committedPOs.find(
-          (po) => po.noSPK === order.No_SPK && po.status === "COMMITTED"
+          (po) => po.noSPK === order.No_SPK && po.status === "COMMITTED",
         );
 
         const isCommitted = existingOrder?.committed ?? !!committedPO;
@@ -2267,13 +2283,13 @@ export default function ProductionPlanPage() {
       try {
         setOrders((prev) =>
           prev.map((item, i) =>
-            i === globalIndex ? { ...item, loading: true } : item
-          )
+            i === globalIndex ? { ...item, loading: true } : item,
+          ),
         );
 
         const updatedStock = await fetchStockForItemsWithCommitment(
           plan.bom.flat.map((item) => item.ItemID),
-          plan.order.Tanggal_Order
+          plan.order.Tanggal_Order,
         );
 
         setOrders((prev) =>
@@ -2285,15 +2301,15 @@ export default function ProductionPlanPage() {
                   loading: false,
                   stockLastUpdated: new Date().toISOString(),
                 }
-              : item
-          )
+              : item,
+          ),
         );
       } catch (error) {
         console.error(`Gagal refresh stok:`, error);
         setOrders((prev) =>
           prev.map((item, i) =>
-            i === globalIndex ? { ...item, loading: false } : item
-          )
+            i === globalIndex ? { ...item, loading: false } : item,
+          ),
         );
       }
     }
@@ -2320,7 +2336,7 @@ export default function ProductionPlanPage() {
       // Refresh data stock untuk semua item
       const refreshedStock = await fetchStockForItemsWithCommitment(
         uniqueItemIds,
-        new Date().toISOString().split("T")[0]
+        new Date().toISOString().split("T")[0],
       );
 
       // Update orders dengan data stock yang baru
@@ -2329,7 +2345,7 @@ export default function ProductionPlanPage() {
           if (order.bom) {
             const orderItemIds = order.bom.flat.map((item) => item.ItemID);
             const relevantStock = refreshedStock.filter((stock) =>
-              orderItemIds.includes(stock.itemid)
+              orderItemIds.includes(stock.itemid),
             );
 
             return {
@@ -2339,7 +2355,7 @@ export default function ProductionPlanPage() {
             };
           }
           return order;
-        })
+        }),
       );
 
       console.log("✅ ReservedQty data refreshed successfully");
@@ -2359,7 +2375,7 @@ export default function ProductionPlanPage() {
     }
 
     const alreadyCommitted = committedPOs.find(
-      (po) => po.noSPK === plan.order.No_SPK && po.status === "COMMITTED"
+      (po) => po.noSPK === plan.order.No_SPK && po.status === "COMMITTED",
     );
 
     if (alreadyCommitted) {
@@ -2372,19 +2388,9 @@ export default function ProductionPlanPage() {
     try {
       const materialUsage: MaterialUsageItem[] = [];
 
-      // PERBAIKAN: Ambil SEMUA kebutuhan material, termasuk yang stoknya minus
       if (plan.order.combinedItems && plan.order.combinedItems.length > 1) {
-        // ==================== PO GABUNGAN ====================
-        console.log(
-          `🔄 Processing PO Gabungan: ${plan.order.No_SPK} dengan ${plan.order.combinedItems.length} items`
-        );
-
+        // PO GABUNGAN
         for (const combinedItem of plan.order.combinedItems) {
-          console.log(
-            `   ↳ Item: ${combinedItem.Kode_Barang}, QTY: ${combinedItem.QTY}`
-          );
-
-          // Gunakan BOM yang sesuai untuk item ini
           let bomForThisItem: BomItem[] = [];
           if (
             plan.bom.combinedBoms &&
@@ -2400,19 +2406,13 @@ export default function ProductionPlanPage() {
 
           componentsOnly.forEach((bomItem) => {
             if (bomItem.Level > 0) {
-              // PERBAIKAN PENTING: Hitung kebutuhan berdasarkan QTY individual item
               const needed = bomItem.Qty * combinedItem.QTY;
               const availableStock =
                 plan.stock?.find((s) => s.itemid === bomItem.ItemID)
                   ?.stockAkhir || 0;
-
-              // ⭐ PERUBAHAN PENTING: Selalu gunakan needed (bukan Math.min)
-              // Ini akan mengambil semua kebutuhan, meskipun stok minus
-              const usedQty = needed; // ⭐ SELALU AMBIL SEMUA KEBUTUHAN
-
+              const usedQty = needed;
               const stockAfter = availableStock - usedQty;
 
-              // ⭐ TAMBAHKAN SEMUA MATERIAL, MESKIPUN STOK MINUS
               materialUsage.push({
                 itemId: bomItem.ItemID,
                 itemName: bomItem.ItemName,
@@ -2420,36 +2420,24 @@ export default function ProductionPlanPage() {
                 totalNeeded: needed,
                 stockBefore: availableStock,
                 stockAfter: stockAfter,
-                qtyUsed: usedQty, // ⭐ SELALU usedQty = needed
+                qtyUsed: usedQty,
                 departemen: bomItem.Departemen,
                 level: bomItem.Level,
               });
-
-              console.log(
-                `   📦 Material: ${bomItem.ItemID}, Needed: ${needed}, Available: ${availableStock}, Used: ${usedQty}`
-              );
             }
           });
         }
       } else {
-        // ==================== PO BIASA ====================
-        console.log(
-          `🔄 Processing PO Biasa: ${plan.order.No_SPK}, QTY: ${plan.order.QTY}`
-        );
-
+        // PO BIASA
         plan.bom.flat.forEach((bomItem) => {
           if (bomItem.Level > 0) {
             const needed = bomItem.Qty * plan.order.QTY;
             const availableStock =
               plan.stock?.find((s) => s.itemid === bomItem.ItemID)
                 ?.stockAkhir || 0;
-
-            // ⭐ PERUBAHAN PENTING: Selalu gunakan needed (bukan Math.min)
-            const usedQty = needed; // ⭐ SELALU AMBIL SEMUA KEBUTUHAN
-
+            const usedQty = needed;
             const stockAfter = availableStock - usedQty;
 
-            // ⭐ TAMBAHKAN SEMUA MATERIAL, MESKIPUN STOK MINUS
             materialUsage.push({
               itemId: bomItem.ItemID,
               itemName: bomItem.ItemName,
@@ -2457,57 +2445,32 @@ export default function ProductionPlanPage() {
               totalNeeded: needed,
               stockBefore: availableStock,
               stockAfter: stockAfter,
-              qtyUsed: usedQty, // ⭐ SELALU usedQty = needed
+              qtyUsed: usedQty,
               departemen: bomItem.Departemen,
               level: bomItem.Level,
             });
-
-            console.log(
-              `   📦 Material: ${bomItem.ItemID}, Needed: ${needed}, Available: ${availableStock}, Used: ${usedQty}`
-            );
           }
         });
       }
 
-      // Debug: Tampilkan semua material yang akan di-commit
-      console.log(`📋 Total materials untuk commit: ${materialUsage.length}`);
-      materialUsage.forEach((material, idx) => {
-        console.log(
-          `   ${idx + 1}. ${material.itemId}: ${
-            material.qtyUsed
-          } units (Stock: ${material.stockBefore})`
-        );
-      });
-
-      // Hitung statistik
-      const materialsWithStock = materialUsage.filter(
-        (m) => m.stockBefore >= m.qtyUsed
-      ).length;
+      // Konfirmasi jika ada stok minus
       const materialsWithShortage = materialUsage.filter(
-        (m) => m.stockBefore < m.qtyUsed
+        (m) => m.stockBefore < m.qtyUsed,
       ).length;
-      const totalNeeded = materialUsage.reduce((sum, m) => sum + m.qtyUsed, 0);
 
-      console.log(`📊 Statistik Commit: 
-      - Total Materials: ${materialUsage.length}
-      - Stok Cukup: ${materialsWithStock}
-      - Stok Kurang: ${materialsWithShortage}
-      - Total Qty: ${totalNeeded}`);
-
-      // Konfirmasi commit untuk material yang stoknya minus
       if (materialsWithShortage > 0) {
         const shortageMaterials = materialUsage
           .filter((m) => m.stockBefore < m.qtyUsed)
           .map(
             (m) =>
-              `• ${m.itemId}: Butuh ${m.qtyUsed}, Stok ${
-                m.stockBefore
-              } (Kurang ${m.qtyUsed - m.stockBefore})`
+              `• ${m.itemId}: Butuh ${m.qtyUsed}, Stok ${m.stockBefore} (Kurang ${
+                m.qtyUsed - m.stockBefore
+              })`,
           )
           .join("\n");
 
         const userConfirmed = confirm(
-          `⚠️ PERHATIAN: Ada ${materialsWithShortage} material dengan stok tidak cukup:\n\n${shortageMaterials}\n\nApakah Anda yakin tetap ingin commit PO? Stok akan dicatat sebagai minus.`
+          `⚠️ PERHATIAN: Ada ${materialsWithShortage} material dengan stok tidak cukup:\n\n${shortageMaterials}\n\nApakah Anda yakin tetap ingin commit PO? Stok akan dicatat sebagai minus.`,
         );
 
         if (!userConfirmed) {
@@ -2527,7 +2490,7 @@ export default function ProductionPlanPage() {
           kodeBarang: plan.order.Kode_Barang,
           namaPO: plan.order.Nama_PO,
           qty: plan.order.QTY,
-          userID: "current_user", // Ganti dengan user ID yang sesuai
+          userID: "system", // Gunakan user ID yang sesuai
           materialUsage: materialUsage,
           isCombinedPO:
             plan.order.combinedItems && plan.order.combinedItems.length > 1,
@@ -2536,8 +2499,7 @@ export default function ProductionPlanPage() {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
       }
 
       const result = await response.json();
@@ -2546,6 +2508,7 @@ export default function ProductionPlanPage() {
         throw new Error(result.error || "Unknown error from server");
       }
 
+      // Update state secara ATOMIC
       const newCommittedPO: CommittedPO = {
         CommitID: result.CommitID,
         noSPK: plan.order.No_SPK,
@@ -2553,15 +2516,16 @@ export default function ProductionPlanPage() {
         namaPO: plan.order.Nama_PO,
         qty: plan.order.QTY,
         tanggalCommit: new Date().toISOString(),
-        userID: "current_user",
+        userID: "system",
         status: "COMMITTED",
-        totalMaterials: materialUsage.length, // ⭐ SEKARANG SEMUA MATERIAL
+        totalMaterials: materialUsage.length,
         totalQtyReserved: materialUsage.reduce(
           (sum, item) => sum + item.qtyUsed,
-          0
+          0,
         ),
       };
 
+      // Update semua state dalam satu batch untuk menghindari race condition
       setCommittedPOs((prev) => [...prev, newCommittedPO]);
 
       setOrders((prev) =>
@@ -2573,30 +2537,20 @@ export default function ProductionPlanPage() {
                 CommitID: result.CommitID,
                 selected: false,
               }
-            : item
-        )
+            : item,
+        ),
       );
 
+      // Force refresh UI
       setTimeout(() => {
         forceRefreshUI();
+        alert(
+          `✅ PO berhasil di-commit!\nCommit ID: ${result.CommitID}\n${materialUsage.length} material di-reserve`,
+        );
       }, 100);
-
-      alert(
-        `✅ PO berhasil di-commit!\nCommit ID: ${result.CommitID}\n${
-          materialUsage.length
-        } material di-reserve\n\nDetail:\n- Material dengan stok cukup: ${materialsWithStock}\n- Material dengan stok kurang: ${materialsWithShortage}\n- Total quantity reserved: ${totalNeeded.toLocaleString()}`
-      );
-
-      setTimeout(async () => {
-        await loadCommittedPOs();
-      }, 500);
     } catch (error: any) {
       console.error(`❌ Gagal commit PO ${plan.order.No_SPK}:`, error);
-      const errorMessage = error.message || "Unknown error occurred";
-      alert(`❌ Gagal commit PO: ${errorMessage}`);
-
-      // Tampilkan detail error di console untuk debugging
-      console.error("Error details:", error);
+      alert(`❌ Gagal commit PO: ${error.message || "Unknown error"}`);
     } finally {
       setCommitting(null);
     }
@@ -2609,11 +2563,13 @@ export default function ProductionPlanPage() {
 
     if (
       !confirm(
-        `Apakah Anda yakin ingin uncommit PO ${plan.order.No_SPK}? Stok akan dikembalikan.`
+        `Apakah Anda yakin ingin uncommit PO ${plan.order.No_SPK}? Stok akan dikembalikan.`,
       )
     ) {
       return;
     }
+
+    setCommitting(plan.order.No_SPK);
 
     try {
       const response = await fetch("/api/ppic/uncommit-po", {
@@ -2623,64 +2579,70 @@ export default function ProductionPlanPage() {
         },
         body: JSON.stringify({
           noSPK: plan.order.No_SPK,
-          userID: "current_user",
+          userID: "system",
         }),
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+      }
 
       const result = await response.json();
 
       if (!result.success) {
-        throw new Error(result.error);
+        throw new Error(result.error || "Unknown error from server");
       }
 
+      // Update state secara ATOMIC
       setOrders((prev) =>
-        prev.map((item, i) =>
-          i === globalIndex
+        prev.map((item) =>
+          item.order.No_SPK === plan.order.No_SPK
             ? {
                 ...item,
                 committed: false,
                 CommitID: undefined,
                 selected: false,
               }
-            : item
-        )
+            : item,
+        ),
       );
 
       setCommittedPOs((prev) =>
         prev.filter(
-          (po) => po.noSPK !== plan.order.No_SPK || po.status !== "COMMITTED"
-        )
+          (po) =>
+            !(po.noSPK === plan.order.No_SPK && po.status === "COMMITTED"),
+        ),
       );
 
-      forceRefreshUI();
+      // Force refresh UI
+      setTimeout(() => {
+        forceRefreshUI();
+        alert("✅ PO berhasil di-uncommit! Stok telah dikembalikan.");
+      }, 100);
+    } catch (error: any) {
+      console.error(`❌ Gagal uncommit PO ${plan.order.No_SPK}:`, error);
+      alert(`❌ Gagal uncommit PO: ${error.message || "Unknown error"}`);
 
-      alert("PO berhasil di-uncommit! Stok telah dikembalikan.");
-
-      setTimeout(async () => {
-        await loadCommittedPOs();
-      }, 500);
-    } catch (error) {
-      console.error(`Gagal uncommit PO ${plan.order.No_SPK}:`, error);
+      // Rollback state jika gagal
       setOrders((prev) =>
-        prev.map((item, i) =>
-          i === globalIndex
+        prev.map((item) =>
+          item.order.No_SPK === plan.order.No_SPK
             ? {
                 ...item,
                 committed: true,
               }
-            : item
-        )
+            : item,
+        ),
       );
-
-      alert("Gagal uncommit PO. Silakan coba lagi.");
+    } finally {
+      setCommitting(null);
     }
   };
-
   // FUNGSI: Reset semua committed PO
   const resetCommittedPOs = async () => {
     if (
       !confirm(
-        "Apakah Anda yakin ingin mereset SEMUA PO yang sudah di-commit? Tindakan ini akan mengembalikan semua stok yang di-reserve."
+        "Apakah Anda yakin ingin mereset SEMUA PO yang sudah di-commit? Tindakan ini akan mengembalikan semua stok yang di-reserve.",
       )
     ) {
       return;
@@ -2688,7 +2650,7 @@ export default function ProductionPlanPage() {
 
     try {
       const committedPOsToReset = committedPOs.filter(
-        (po) => po.status === "COMMITTED"
+        (po) => po.status === "COMMITTED",
       );
 
       for (const po of committedPOsToReset) {
@@ -2715,7 +2677,7 @@ export default function ProductionPlanPage() {
           committed: false,
           CommitID: undefined,
           selected: false,
-        }))
+        })),
       );
 
       setCommittedPOs((prev) => prev.filter((po) => po.status !== "COMMITTED"));
@@ -2733,13 +2695,13 @@ export default function ProductionPlanPage() {
   const loadBomWithStock = async (
     index: number,
     kodeBarang: string,
-    orderDate: string
+    orderDate: string,
   ) => {
     try {
       setOrders((prev) =>
         prev.map((item, i) =>
-          i === index ? { ...item, loading: true, error: undefined } : item
-        )
+          i === index ? { ...item, loading: true, error: undefined } : item,
+        ),
       );
 
       const allKodeBarang = getAllKodeBarang(kodeBarang);
@@ -2755,7 +2717,7 @@ export default function ProductionPlanPage() {
         try {
           const bomResponse = await axios.get(
             `/api/bom/ppic?itemid=${encodeURIComponent(kb)}`,
-            { timeout: 10000 }
+            { timeout: 10000 },
           );
 
           if (bomResponse.data && bomResponse.data.flat) {
@@ -2766,7 +2728,7 @@ export default function ProductionPlanPage() {
             };
 
             const itemIds = bomResponse.data.flat.map(
-              (item: BomItem) => item.ItemID
+              (item: BomItem) => item.ItemID,
             );
             allItemIds = [...allItemIds, ...itemIds];
           } else {
@@ -2782,8 +2744,8 @@ export default function ProductionPlanPage() {
       if (Object.keys(combinedBoms).length === 0) {
         throw new Error(
           `Gagal memuat BOM untuk semua kode barang: ${allKodeBarang.join(
-            ", "
-          )}`
+            ", ",
+          )}`,
         );
       }
 
@@ -2795,7 +2757,7 @@ export default function ProductionPlanPage() {
       try {
         stockData = await fetchStockForItemsWithCommitment(
           allItemIds,
-          orderDate
+          orderDate,
         );
       } catch (stockError) {
         console.error(`Gagal mengambil stok:`, stockError);
@@ -2827,8 +2789,8 @@ export default function ProductionPlanPage() {
                     ? `Beberapa BOM gagal dimuat: ${failedBoms.join(", ")}`
                     : undefined,
               }
-            : item
-        )
+            : item,
+        ),
       );
     } catch (err: unknown) {
       console.error(`Error untuk ${kodeBarang}:`, err);
@@ -2843,8 +2805,8 @@ export default function ProductionPlanPage() {
                     ? `Gagal memuat data: ${err.message}`
                     : "Gagal memuat data: Unknown error",
               }
-            : item
-        )
+            : item,
+        ),
       );
     }
   };
@@ -2852,7 +2814,7 @@ export default function ProductionPlanPage() {
   const toggleOrder = async (
     index: number,
     kodeBarang: string,
-    orderDate: string
+    orderDate: string,
   ) => {
     const globalIndex = (currentPage - 1) * itemsPerPage + index;
     const order = filteredOrders[globalIndex];
@@ -2860,8 +2822,8 @@ export default function ProductionPlanPage() {
     if (order.expanded) {
       setOrders((prev) =>
         prev.map((item, i) =>
-          i === globalIndex ? { ...item, expanded: false } : item
-        )
+          i === globalIndex ? { ...item, expanded: false } : item,
+        ),
       );
     } else {
       if (!order.bom && !order.loading) {
@@ -2874,8 +2836,8 @@ export default function ProductionPlanPage() {
 
         setOrders((prev) =>
           prev.map((item, i) =>
-            i === globalIndex ? { ...item, expanded: true } : item
-          )
+            i === globalIndex ? { ...item, expanded: true } : item,
+          ),
         );
       }
     }
@@ -2889,8 +2851,8 @@ export default function ProductionPlanPage() {
     if (newSelected && !order.bom && !order.loadingBom && !order.committed) {
       setOrders((prev) =>
         prev.map((item, i) =>
-          i === globalIndex ? { ...item, loadingBom: true } : item
-        )
+          i === globalIndex ? { ...item, loadingBom: true } : item,
+        ),
       );
 
       try {
@@ -2903,7 +2865,7 @@ export default function ProductionPlanPage() {
         for (const kb of allKodeBarang) {
           try {
             const bomResponse = await axios.get(
-              `/api/bom/ppic?itemid=${encodeURIComponent(kb)}`
+              `/api/bom/ppic?itemid=${encodeURIComponent(kb)}`,
             );
             const treeStructure = buildTreeStructure(bomResponse.data.flat);
             combinedBoms[kb] = {
@@ -2912,7 +2874,7 @@ export default function ProductionPlanPage() {
             };
 
             const itemIds = bomResponse.data.flat.map(
-              (item: BomItem) => item.ItemID
+              (item: BomItem) => item.ItemID,
             );
             allItemIds = [...allItemIds, ...itemIds];
           } catch (err) {
@@ -2924,7 +2886,7 @@ export default function ProductionPlanPage() {
 
         const stockData = await fetchStockForItemsWithCommitment(
           allItemIds,
-          order.order.Tanggal_Order
+          order.order.Tanggal_Order,
         );
 
         const finalBom = combineBoms(combinedBoms);
@@ -2941,8 +2903,8 @@ export default function ProductionPlanPage() {
                   viewMode: "table",
                   stockLastUpdated: new Date().toISOString(),
                 }
-              : item
-          )
+              : item,
+          ),
         );
       } catch (err: unknown) {
         console.error(`Error loading BOM:`, err);
@@ -2958,15 +2920,15 @@ export default function ProductionPlanPage() {
                       ? `Gagal load BOM: ${err.message}`
                       : "Gagal load BOM: Unknown error",
                 }
-              : item
-          )
+              : item,
+          ),
         );
       }
     } else {
       setOrders((prev) =>
         prev.map((item, i) =>
-          i === globalIndex ? { ...item, selected: newSelected } : item
-        )
+          i === globalIndex ? { ...item, selected: newSelected } : item,
+        ),
       );
     }
   };
@@ -2980,14 +2942,14 @@ export default function ProductionPlanPage() {
               ...item,
               viewMode: item.viewMode === "table" ? "tree" : "table",
             }
-          : item
-      )
+          : item,
+      ),
     );
   };
 
   const toggleSelectAll = () => {
     const allSelected = paginatedOrders.every(
-      (order) => order.selected && !order.committed
+      (order) => order.selected && !order.committed,
     );
     const newSelected = !allSelected;
 
@@ -3000,20 +2962,20 @@ export default function ProductionPlanPage() {
           return { ...order, selected: newSelected };
         }
         return order;
-      })
+      }),
     );
   };
 
   const toggleSelectAllGlobal = () => {
     const allSelected = filteredOrders.every(
-      (order) => order.selected && !order.committed
+      (order) => order.selected && !order.committed,
     );
     const newSelected = !allSelected;
 
     setOrders((prev) =>
       prev.map((order) =>
-        !order.committed ? { ...order, selected: newSelected } : order
-      )
+        !order.committed ? { ...order, selected: newSelected } : order,
+      ),
     );
   };
 
@@ -3023,7 +2985,7 @@ export default function ProductionPlanPage() {
       setExportLoading(true);
 
       const selectedOrders = filteredOrders.filter(
-        (order) => order.selected && !order.committed
+        (order) => order.selected && !order.committed,
       );
 
       if (selectedOrders.length === 0) {
@@ -3032,7 +2994,7 @@ export default function ProductionPlanPage() {
       }
 
       console.log(
-        `📊 [PREVIEW] Memulai preview ${selectedOrders.length} PO terpilih`
+        `📊 [PREVIEW] Memulai preview ${selectedOrders.length} PO terpilih`,
       );
 
       // Phase 1: Persiapan data
@@ -3053,7 +3015,15 @@ export default function ProductionPlanPage() {
       let itemsWithVariantCount = 0;
       let totalStockAvailable = 0;
 
-      const stockSummary: { "Kode Item 物料代码": any; "Nama Item 物料名称": any; "Sum of Total 总需求 (PO)": any; "Stock Available 可用库存": any; "Remaining Stock 剩余库存": number; "Status 状态": string; "Warning 警告": string; }[] = [];
+      const stockSummary: {
+        "Kode Item 物料代码": any;
+        "Nama Item 物料名称": any;
+        "Sum of Total 总需求 (PO)": any;
+        "Stock Available 可用库存": any;
+        "Remaining Stock 剩余库存": number;
+        "Status 状态": string;
+        "Warning 警告": string;
+      }[] = [];
 
       // Kumpulkan data dari semua PO yang dipilih
       for (const order of selectedOrders) {
@@ -3061,7 +3031,7 @@ export default function ProductionPlanPage() {
           const materialNeeds = calculateMaterialNeeds(
             order.bom.flat,
             order.order.QTY,
-            order.stock
+            order.stock,
           );
 
           materialNeeds.items.forEach((item: any) => {
@@ -3090,7 +3060,7 @@ export default function ProductionPlanPage() {
       }
 
       const problemItems = stockSummary.filter(
-        (item) => item["Remaining Stock 剩余库存"] < 0
+        (item) => item["Remaining Stock 剩余库存"] < 0,
       );
 
       const previewData: ExportPreviewData = {
@@ -3255,246 +3225,536 @@ export default function ProductionPlanPage() {
   };
 
   // FUNGSI: Export to Excel (disederhanakan untuk contoh)
- const exportSelectedToExcel = async (): Promise<void> => {
-  try {
-    setExportLoading(true);
-    setExportProgress({
-      visible: true,
-      current: 0,
-      total: 100,
-      message: "Memulai proses export...",
-    });
+  // ==================== FUNGSI EXPORT YANG DIPERBAIKI ====================
+  const exportSelectedToExcel = async (): Promise<void> => {
+    try {
+      setExportLoading(true);
+      setExportProgress({
+        visible: true,
+        current: 0,
+        total: 100,
+        message: "Memulai proses export...",
+      });
 
-    const selectedOrders = filteredOrders.filter(
-      (order) => order.selected && !order.committed
-    );
+      const selectedOrders = filteredOrders.filter(
+        (order) => order.selected && !order.committed,
+      );
 
-    if (selectedOrders.length === 0) {
-      alert("Tidak ada PO yang dipilih untuk di-export! 没有选择要导出的PO!");
-      return;
-    }
-
-    // Simulasi proses export
-    const wb = XLSX.utils.book_new();
-
-    // ==================== WORKSHEET 1: DETAIL PO ====================
-    // PERBAIKAN: Tampilkan SEMUA item dalam PO gabungan
-    const selectedPOData = selectedOrders.flatMap((order) => {
-      const isCombinedPO = order.order.combinedItems && order.order.combinedItems.length > 1;
-      
-      if (isCombinedPO) {
-        // Untuk PO gabungan, tampilkan setiap item sebagai baris terpisah
-        return order.order.combinedItems!.map((item, idx) => ({
-          "No SPK 生产订单号": order.order.No_SPK,
-          "Tanggal 日期": order.order.Tanggal_Order,
-          "Nama PO 生产订单名称": item.Nama_PO,
-          "Kode Barang 物料代码": item.Kode_Barang,
-          "QTY 数量": item.QTY,
-          "Jenis 类型": "Bagian PO Gabungan 合并PO部分",
-          "Urutan 顺序": idx + 1,
-          "Total Items dalam PO 总数": order.order.combinedItems!.length
-        }));
-      } else {
-        // Untuk PO biasa
-        return [{
-          "No SPK 生产订单号": order.order.No_SPK,
-          "Tanggal 日期": order.order.Tanggal_Order,
-          "Nama PO 生产订单名称": order.order.Nama_PO,
-          "Kode Barang 物料代码": order.order.Kode_Barang,
-          "QTY 数量": order.order.QTY,
-          "Jenis 类型": "PO Biasa 普通PO",
-          "Urutan 顺序": 1,
-          "Total Items dalam PO 总数": 1
-        }];
+      if (selectedOrders.length === 0) {
+        alert("Tidak ada PO yang dipilih untuk di-export! 没有选择要导出的PO!");
+        return;
       }
-    });
 
-    const ws1 = XLSX.utils.json_to_sheet(selectedPOData);
-    XLSX.utils.book_append_sheet(wb, ws1, "Detail PO PO详情");
+      // Simulasi proses export
+      const wb = XLSX.utils.book_new();
 
-    // ==================== WORKSHEET 2: MATERIAL SUMMARY ====================
-    // PERBAIKAN: Hitung kebutuhan material untuk SEMUA item yang dipilih
-    const materialSummary: any[] = [];
-    
-    for (const order of selectedOrders) {
-      if (order.bom && order.stock) {
-        const isCombinedPO = order.order.combinedItems && order.order.combinedItems.length > 1;
-        
+      // ==================== WORKSHEET 1: DETAIL PO ====================
+      // PERBAIKAN: Tampilkan SEMUA item dalam PO gabungan
+      const selectedPOData = selectedOrders.flatMap((order) => {
+        const isCombinedPO =
+          order.order.combinedItems && order.order.combinedItems.length > 1;
+
         if (isCombinedPO) {
-          // Untuk PO gabungan, hitung kebutuhan per item
-          for (const combinedItem of order.order.combinedItems!) {
-            // Hitung material needs untuk item ini
-            const materialNeeds = calculateMaterialNeeds(
-              order.bom.flat,
-              combinedItem.QTY, // Gunakan QTY dari item individual
-              order.stock
-            );
+          // Untuk PO gabungan, tampilkan setiap item sebagai baris terpisah
+          return order.order.combinedItems!.map((item, idx) => ({
+            "No SPK 生产订单号": order.order.No_SPK,
+            "Tanggal 日期": order.order.Tanggal_Order,
+            "Nama PO 生产订单名称": item.Nama_PO,
+            "Kode Barang 物料代码": item.Kode_Barang,
+            "QTY 数量": item.QTY,
+            "Jenis 类型": "Bagian PO Gabungan 合并PO部分",
+            "Urutan 顺序": idx + 1,
+            "Total Items dalam PO 总数": order.order.combinedItems!.length,
+          }));
+        } else {
+          // Untuk PO biasa
+          return [
+            {
+              "No SPK 生产订单号": order.order.No_SPK,
+              "Tanggal 日期": order.order.Tanggal_Order,
+              "Nama PO 生产订单名称": order.order.Nama_PO,
+              "Kode Barang 物料代码": order.order.Kode_Barang,
+              "QTY 数量": order.order.QTY,
+              "Jenis 类型": "PO Biasa 普通PO",
+              "Urutan 顺序": 1,
+              "Total Items dalam PO 总数": 1,
+            },
+          ];
+        }
+      });
 
-            materialNeeds.items.forEach((item: any) => {
-              materialSummary.push({
+      const ws1 = XLSX.utils.json_to_sheet(selectedPOData);
+      XLSX.utils.book_append_sheet(wb, ws1, "Detail PO PO详情");
+
+      // ==================== WORKSHEET 2: FULL BOM STRUCTURE (SEMUA LEVEL) ====================
+      // PERBAIKAN BARU: Tampilkan SEMUA level BOM, termasuk barang jadi (Level 0) dan semua komponen
+      const fullBomData: any[] = [];
+
+      for (const order of selectedOrders) {
+        if (order.bom && order.stock) {
+          const isCombinedPO =
+            order.order.combinedItems && order.order.combinedItems.length > 1;
+
+          if (isCombinedPO) {
+            // Untuk PO gabungan, tampilkan BOM untuk setiap item
+            for (const combinedItem of order.order.combinedItems!) {
+              // Gunakan BOM yang sesuai untuk item ini
+              let bomForThisItem: BomItem[] = [];
+              if (
+                order.bom.combinedBoms &&
+                order.bom.combinedBoms[combinedItem.Kode_Barang]
+              ) {
+                bomForThisItem =
+                  order.bom.combinedBoms[combinedItem.Kode_Barang].flat;
+              } else {
+                bomForThisItem = order.bom.flat;
+              }
+
+              // Tampilkan SEMUA level, tidak hanya komponen
+              bomForThisItem.forEach((item) => {
+                // Untuk barang jadi (Level 0), hitung kebutuhan = QTY PO
+                // Untuk komponen (Level > 0), hitung kebutuhan = item.Qty * combinedItem.QTY
+                const needed =
+                  item.Level === 0
+                    ? combinedItem.QTY
+                    : item.Qty * combinedItem.QTY;
+
+                // Cari stok hanya untuk komponen (Level > 0)
+                const stockItem = order.stock?.find(
+                  (s) => s.itemid === item.ItemID,
+                );
+                const availableStock =
+                  item.Level > 0 ? stockItem?.stockAkhir || 0 : "-";
+                const shortage =
+                  item.Level > 0
+                    ? Math.max(0, needed - (stockItem?.stockAkhir || 0))
+                    : "-";
+
+                fullBomData.push({
+                  "No SPK 生产订单号": order.order.No_SPK,
+                  "Sumber PO 来源PO": combinedItem.Kode_Barang,
+                  "Nama Sumber PO 来源PO名称": combinedItem.Nama_PO,
+                  "Level 层级": item.Level,
+                  "Tipe 类型":
+                    item.Level === 0 ? "Barang Jadi 成品" : "Komponen 组件",
+                  "Kode Item 物料代码": item.ItemID,
+                  "Nama Item 物料名称": item.ItemName,
+                  "Departemen 部门": item.Departemen || "-",
+                  "Jenis 类别": item.NamaJenis || "-",
+                  "Qty Per Unit 每单位数量": item.Level === 0 ? 1 : item.Qty,
+                  "QTY PO 订单数量": combinedItem.QTY,
+                  "Total Butuh 总需求": needed,
+                  "Stok Tersedia 可用库存": availableStock,
+                  "Kekurangan 短缺": shortage,
+                  "Status 状态":
+                    item.Level === 0
+                      ? "PRODUKSI 生产"
+                      : shortage === "-"
+                        ? "-"
+                        : shortage > 0
+                          ? "KURANG 不足"
+                          : "CUKUP 充足",
+                });
+              });
+            }
+          } else {
+            // Untuk PO biasa, tampilkan SEMUA level BOM
+            order.bom.flat.forEach((item) => {
+              // Untuk barang jadi (Level 0), hitung kebutuhan = QTY PO
+              // Untuk komponen (Level > 0), hitung kebutuhan = item.Qty * order.order.QTY
+              const needed =
+                item.Level === 0 ? order.order.QTY : item.Qty * order.order.QTY;
+
+              // Cari stok hanya untuk komponen (Level > 0)
+              const stockItem = order.stock?.find(
+                (s) => s.itemid === item.ItemID,
+              );
+              const availableStock =
+                item.Level > 0 ? stockItem?.stockAkhir || 0 : "-";
+              const shortage =
+                item.Level > 0
+                  ? Math.max(0, needed - (stockItem?.stockAkhir || 0))
+                  : "-";
+
+              fullBomData.push({
                 "No SPK 生产订单号": order.order.No_SPK,
-                "Sumber PO 来源PO": combinedItem.Kode_Barang,
-                "Nama Sumber PO 来源PO名称": combinedItem.Nama_PO,
+                "Sumber PO 来源PO": order.order.Kode_Barang,
+                "Nama Sumber PO 来源PO名称": order.order.Nama_PO,
+                "Level 层级": item.Level,
+                "Tipe 类型":
+                  item.Level === 0 ? "Barang Jadi 成品" : "Komponen 组件",
                 "Kode Item 物料代码": item.ItemID,
                 "Nama Item 物料名称": item.ItemName,
                 "Departemen 部门": item.Departemen || "-",
-                "Qty Per Unit 每单位数量": item.Qty,
-                "QTY PO 订单数量": combinedItem.QTY,
-                "Total Butuh 总需求": item.needed,
-                "Stok Tersedia 可用库存": item.availableStock,
-                "Kekurangan 短缺": item.shortage,
-                "Status 状态": item.shortage > 0 ? "KURANG 不足" : "CUKUP 充足",
-                "Jenis PO PO类型": "Gabungan 合并"
+                "Jenis 类别": item.NamaJenis || "-",
+                "Qty Per Unit 每单位数量": item.Level === 0 ? 1 : item.Qty,
+                "QTY PO 订单数量": order.order.QTY,
+                "Total Butuh 总需求": needed,
+                "Stok Tersedia 可用库存": availableStock,
+                "Kekurangan 短缺": shortage,
+                "Status 状态":
+                  item.Level === 0
+                    ? "PRODUKSI 生产"
+                    : shortage === "-"
+                      ? "-"
+                      : shortage > 0
+                        ? "KURANG 不足"
+                        : "CUKUP 充足",
               });
             });
           }
-        } else {
-          // Untuk PO biasa
-          const materialNeeds = calculateMaterialNeeds(
-            order.bom.flat,
-            order.order.QTY,
-            order.stock
-          );
+        }
+      }
 
-          materialNeeds.items.forEach((item: any) => {
-            materialSummary.push({
-              "No SPK 生产订单号": order.order.No_SPK,
-              "Sumber PO 来源PO": order.order.Kode_Barang,
-              "Nama Sumber PO 来源PO名称": order.order.Nama_PO,
-              "Kode Item 物料代码": item.ItemID,
-              "Nama Item 物料名称": item.ItemName,
-              "Departemen 部门": item.Departemen || "-",
-              "Qty Per Unit 每单位数量": item.Qty,
-              "QTY PO 订单数量": order.order.QTY,
-              "Total Butuh 总需求": item.needed,
-              "Stok Tersedia 可用库存": item.availableStock,
-              "Kekurangan 短缺": item.shortage,
-              "Status 状态": item.shortage > 0 ? "KURANG 不足" : "CUKUP 充足",
-              "Jenis PO PO类型": "Biasa 普通"
+      const ws2 = XLSX.utils.json_to_sheet(fullBomData);
+      XLSX.utils.book_append_sheet(wb, ws2, "Full BOM Structure BOM完整结构");
+
+      // ==================== WORKSHEET 3: MATERIAL SUMMARY (HANYA KOMPONEN) ====================
+      // PERBAIKAN: Hitung kebutuhan material untuk SEMUA item yang dipilih (hanya komponen)
+      const materialSummary: any[] = [];
+
+      for (const order of selectedOrders) {
+        if (order.bom && order.stock) {
+          const isCombinedPO =
+            order.order.combinedItems && order.order.combinedItems.length > 1;
+
+          if (isCombinedPO) {
+            // Untuk PO gabungan, hitung kebutuhan per item
+            for (const combinedItem of order.order.combinedItems!) {
+              // Gunakan BOM yang sesuai untuk item ini
+              let bomForThisItem: BomItem[] = [];
+              if (
+                order.bom.combinedBoms &&
+                order.bom.combinedBoms[combinedItem.Kode_Barang]
+              ) {
+                bomForThisItem =
+                  order.bom.combinedBoms[combinedItem.Kode_Barang].flat;
+              } else {
+                bomForThisItem = order.bom.flat;
+              }
+
+              // Filter hanya komponen (Level > 0)
+              const componentsOnly = bomForThisItem.filter(
+                (item) => item.Level > 0,
+              );
+
+              componentsOnly.forEach((item) => {
+                const needed = item.Qty * combinedItem.QTY;
+                const stockItem = order.stock?.find(
+                  (s) => s.itemid === item.ItemID,
+                );
+                const availableStock = stockItem?.stockAkhir || 0;
+                const shortage = Math.max(0, needed - availableStock);
+
+                materialSummary.push({
+                  "No SPK 生产订单号": order.order.No_SPK,
+                  "Sumber PO 来源PO": combinedItem.Kode_Barang,
+                  "Nama Sumber PO 来源PO名称": combinedItem.Nama_PO,
+                  "Kode Item 物料代码": item.ItemID,
+                  "Nama Item 物料名称": item.ItemName,
+                  "Departemen 部门": item.Departemen || "-",
+                  "Level 层级": item.Level,
+                  "Qty Per Unit 每单位数量": item.Qty,
+                  "QTY PO 订单数量": combinedItem.QTY,
+                  "Total Butuh 总需求": needed,
+                  "Stok Tersedia 可用库存": availableStock,
+                  "Kekurangan 短缺": shortage,
+                  "Status 状态": shortage > 0 ? "KURANG 不足" : "CUKUP 充足",
+                  "Jenis PO PO类型": "Gabungan 合并",
+                });
+              });
+            }
+          } else {
+            // Untuk PO biasa
+            // Filter hanya komponen (Level > 0)
+            const componentsOnly = order.bom.flat.filter(
+              (item) => item.Level > 0,
+            );
+
+            componentsOnly.forEach((item) => {
+              const needed = item.Qty * order.order.QTY;
+              const stockItem = order.stock?.find(
+                (s) => s.itemid === item.ItemID,
+              );
+              const availableStock = stockItem?.stockAkhir || 0;
+              const shortage = Math.max(0, needed - availableStock);
+
+              materialSummary.push({
+                "No SPK 生产订单号": order.order.No_SPK,
+                "Sumber PO 来源PO": order.order.Kode_Barang,
+                "Nama Sumber PO 来源PO名称": order.order.Nama_PO,
+                "Kode Item 物料代码": item.ItemID,
+                "Nama Item 物料名称": item.ItemName,
+                "Departemen 部门": item.Departemen || "-",
+                "Level 层级": item.Level,
+                "Qty Per Unit 每单位数量": item.Qty,
+                "QTY PO 订单数量": order.order.QTY,
+                "Total Butuh 总需求": needed,
+                "Stok Tersedia 可用库存": availableStock,
+                "Kekurangan 短缺": shortage,
+                "Status 状态": shortage > 0 ? "KURANG 不足" : "CUKUP 充足",
+                "Jenis PO PO类型": "Biasa 普通",
+              });
             });
+          }
+        }
+      }
+
+      const ws3 = XLSX.utils.json_to_sheet(materialSummary);
+      XLSX.utils.book_append_sheet(wb, ws3, "Material Summary 物料汇总");
+
+      // ==================== WORKSHEET 4: AGGREGATED MATERIAL NEEDS ====================
+      // Gabungkan material yang sama dari berbagai PO (hanya komponen)
+      const materialMap = new Map<string, any>();
+
+      materialSummary.forEach((item) => {
+        const key = item["Kode Item 物料代码"];
+        const existing = materialMap.get(key);
+
+        if (existing) {
+          existing["Total Butuh 总需求"] += item["Total Butuh 总需求"];
+          existing["Stok Tersedia 可用库存"] = item["Stok Tersedia 可用库存"]; // Ambil stok terakhir
+          existing["Kekurangan 短缺"] = Math.max(
+            0,
+            existing["Total Butuh 总需求"] - existing["Stok Tersedia 可用库存"],
+          );
+          existing["Sumber PO Count PO来源数"] += 1;
+
+          // Tambahkan sumber PO ke daftar
+          if (
+            !existing["Sumber PO List 来源PO列表"].includes(
+              item["Sumber PO 来源PO"],
+            )
+          ) {
+            existing["Sumber PO List 来源PO列表"].push(
+              item["Sumber PO 来源PO"],
+            );
+          }
+        } else {
+          materialMap.set(key, {
+            "Kode Item 物料代码": item["Kode Item 物料代码"],
+            "Nama Item 物料名称": item["Nama Item 物料名称"],
+            "Departemen 部门": item["Departemen 部门"],
+            "Level 层级": item["Level 层级"],
+            "Total Butuh 总需求": item["Total Butuh 总需求"],
+            "Stok Tersedia 可用库存": item["Stok Tersedia 可用库存"],
+            "Kekurangan 短缺": item["Kekurangan 短缺"],
+            "Status 状态":
+              item["Kekurangan 短缺"] > 0 ? "KURANG 不足" : "CUKUP 充足",
+            "Sumber PO Count PO来源数": 1,
+            "Sumber PO List 来源PO列表": [item["Sumber PO 来源PO"]],
           });
         }
-      }
-    }
-
-    const ws2 = XLSX.utils.json_to_sheet(materialSummary);
-    XLSX.utils.book_append_sheet(wb, ws2, "Material Summary 物料汇总");
-
-    // ==================== WORKSHEET 3: AGGREGATED MATERIAL NEEDS ====================
-    // Gabungkan material yang sama dari berbagai PO
-    const materialMap = new Map<string, any>();
-    
-    materialSummary.forEach((item) => {
-      const key = item["Kode Item 物料代码"];
-      const existing = materialMap.get(key);
-      
-      if (existing) {
-        existing["Total Butuh 总需求"] += item["Total Butuh 总需求"];
-        existing["Stok Tersedia 可用库存"] = item["Stok Tersedia 可用库存"]; // Ambil stok terakhir
-        existing["Kekurangan 短缺"] = Math.max(
-          0,
-          existing["Total Butuh 总需求"] - existing["Stok Tersedia 可用库存"]
-        );
-        existing["Sumber PO Count PO来源数"] += 1;
-        
-        // Tambahkan sumber PO ke daftar
-        if (!existing["Sumber PO List 来源PO列表"].includes(item["Sumber PO 来源PO"])) {
-          existing["Sumber PO List 来源PO列表"].push(item["Sumber PO 来源PO"]);
-        }
-      } else {
-        materialMap.set(key, {
-          "Kode Item 物料代码": item["Kode Item 物料代码"],
-          "Nama Item 物料名称": item["Nama Item 物料名称"],
-          "Departemen 部门": item["Departemen 部门"],
-          "Total Butuh 总需求": item["Total Butuh 总需求"],
-          "Stok Tersedia 可用库存": item["Stok Tersedia 可用库存"],
-          "Kekurangan 短缺": item["Kekurangan 短缺"],
-          "Status 状态": item["Kekurangan 短缺"] > 0 ? "KURANG 不足" : "CUKUP 充足",
-          "Sumber PO Count PO来源数": 1,
-          "Sumber PO List 来源PO列表": [item["Sumber PO 来源PO"]]
-        });
-      }
-    });
-
-    const aggregatedData = Array.from(materialMap.values()).map(item => ({
-      ...item,
-      "Sumber PO List 来源PO列表": item["Sumber PO List 来源PO列表"].join(", ")
-    }));
-
-    const ws3 = XLSX.utils.json_to_sheet(aggregatedData);
-    XLSX.utils.book_append_sheet(wb, ws3, "Aggregated Summary 聚合汇总");
-
-    // ==================== WORKSHEET 4: STATISTICS ====================
-    const statisticsData = [
-      {
-        "Kategori 类别": "Total PO Dipilih 选择的PO总数",
-        "Nilai 值": selectedOrders.length
-      },
-      {
-        "Kategori 类别": "Total Items PO PO项目总数",
-        "Nilai 值": selectedPOData.length
-      },
-      {
-        "Kategori 类别": "Total Material Items 物料项目总数",
-        "Nilai 值": materialSummary.length
-      },
-      {
-        "Kategori 类别": "Unique Material Items 唯一物料项目",
-        "Nilai 值": aggregatedData.length
-      },
-      {
-        "Kategori 类别": "Total Kebutuhan 总需求",
-        "Nilai 值": aggregatedData.reduce((sum, item) => sum + item["Total Butuh 总需求"], 0)
-      },
-      {
-        "Kategori 类别": "Total Kekurangan 总短缺",
-        "Nilai 值": aggregatedData.reduce((sum, item) => sum + item["Kekurangan 短缺"], 0)
-      },
-      {
-        "Kategori 类别": "Items dengan Stok Cukup 库存充足项目",
-        "Nilai 值": aggregatedData.filter(item => item["Kekurangan 短缺"] === 0).length
-      },
-      {
-        "Kategori 类别": "Items dengan Stok Kurang 库存不足项目",
-        "Nilai 值": aggregatedData.filter(item => item["Kekurangan 短缺"] > 0).length
-      }
-    ];
-
-    const ws4 = XLSX.utils.json_to_sheet(statisticsData);
-    XLSX.utils.book_append_sheet(wb, ws4, "Statistics 统计");
-
-    // Generate filename
-    const timestamp = new Date().toISOString().split("T")[0];
-    const filename = `Production_Export_${timestamp}_${selectedOrders.length}_PO.xlsx`;
-
-    // Generate Excel file
-    XLSX.writeFile(wb, filename);
-
-    setTimeout(() => {
-      setExportProgress({
-        visible: false,
-        current: 0,
-        total: 0,
-        message: "",
       });
 
-      alert(
-        `✅ Export berhasil!\nFile: ${filename}\n\n` +
-        `Total PO: ${selectedOrders.length}\n` +
-        `Total Items PO: ${selectedPOData.length}\n` +
-        `Total Materials: ${materialSummary.length}\n` +
-        `Unique Materials: ${aggregatedData.length}`
-      );
-    }, 1000);
-  } catch (error) {
-    console.error("❌ [EXPORT] Error dalam export:", error);
-    alert("Gagal mengekspor data. Silakan coba lagi. 导出失败，请重试");
-    setExportProgress({ visible: false, current: 0, total: 0, message: "" });
-  } finally {
-    setExportLoading(false);
-  }
-};
+      const aggregatedData = Array.from(materialMap.values()).map((item) => ({
+        ...item,
+        "Sumber PO List 来源PO列表":
+          item["Sumber PO List 来源PO列表"].join(", "),
+      }));
 
+      const ws4 = XLSX.utils.json_to_sheet(aggregatedData);
+      XLSX.utils.book_append_sheet(wb, ws4, "Aggregated Summary 聚合汇总");
+
+      // ==================== WORKSHEET 5: STATISTICS ====================
+      // Hitung statistik untuk semua level BOM
+      const totalAllBomItems = fullBomData.length;
+      const totalFinishedGoods = fullBomData.filter(
+        (item) => item["Level 层级"] === 0,
+      ).length;
+      const totalComponents = fullBomData.filter(
+        (item) => item["Level 层级"] > 0,
+      ).length;
+
+      const statisticsData = [
+        {
+          "Kategori 类别": "Total PO Dipilih 选择的PO总数",
+          "Nilai 值": selectedOrders.length,
+        },
+        {
+          "Kategori 类别": "Total Items PO PO项目总数",
+          "Nilai 值": selectedPOData.length,
+        },
+        {
+          "Kategori 类别": "Total Semua Item BOM 所有BOM项目总数",
+          "Nilai 值": totalAllBomItems,
+        },
+        {
+          "Kategori 类别": "Barang Jadi 成品数",
+          "Nilai 值": totalFinishedGoods,
+        },
+        {
+          "Kategori 类别": "Komponen 组件数",
+          "Nilai 值": totalComponents,
+        },
+        {
+          "Kategori 类别": "Total Material Items (Komponen) 物料项目总数",
+          "Nilai 值": materialSummary.length,
+        },
+        {
+          "Kategori 类别": "Unique Material Items 唯一物料项目",
+          "Nilai 值": aggregatedData.length,
+        },
+        {
+          "Kategori 类别": "Total Kebutuhan Material 物料总需求",
+          "Nilai 值": aggregatedData.reduce(
+            (sum, item) => sum + item["Total Butuh 总需求"],
+            0,
+          ),
+        },
+        {
+          "Kategori 类别": "Total Kekurangan Material 物料总短缺",
+          "Nilai 值": aggregatedData.reduce(
+            (sum, item) => sum + item["Kekurangan 短缺"],
+            0,
+          ),
+        },
+        {
+          "Kategori 类别": "Items dengan Stok Cukup 库存充足项目",
+          "Nilai 值": aggregatedData.filter(
+            (item) => item["Kekurangan 短缺"] === 0,
+          ).length,
+        },
+        {
+          "Kategori 类别": "Items dengan Stok Kurang 库存不足项目",
+          "Nilai 值": aggregatedData.filter(
+            (item) => item["Kekurangan 短缺"] > 0,
+          ).length,
+        },
+        {
+          "Kategori 类别": "Total QTY dari Semua PO 所有PO总数量",
+          "Nilai 值": selectedPOData.reduce(
+            (sum, item) => sum + item["QTY 数量"],
+            0,
+          ),
+        },
+      ];
+
+      const ws5 = XLSX.utils.json_to_sheet(statisticsData);
+      XLSX.utils.book_append_sheet(wb, ws5, "Statistics 统计");
+
+      // ==================== WORKSHEET 6: BOM TREE STRUCTURE ====================
+      // Tambahkan struktur tree BOM untuk referensi visual
+      const bomTreeData: any[] = [];
+
+      for (const order of selectedOrders) {
+        if (order.bom && order.stock) {
+          const isCombinedPO =
+            order.order.combinedItems && order.order.combinedItems.length > 1;
+
+          if (isCombinedPO) {
+            // Untuk PO gabungan
+            for (const combinedItem of order.order.combinedItems!) {
+              let treeBom: BomItem[] = [];
+
+              if (
+                order.bom.combinedBoms &&
+                order.bom.combinedBoms[combinedItem.Kode_Barang]
+              ) {
+                treeBom = order.bom.combinedBoms[combinedItem.Kode_Barang].tree;
+              } else {
+                treeBom = order.bom.tree;
+              }
+
+              // Fungsi rekursif untuk menelusuri tree
+              const traverseTree = (node: BomItem, depth: number) => {
+                const indent = "  ".repeat(depth);
+                const isFinishedGood = depth === 0;
+
+                bomTreeData.push({
+                  "No SPK 生产订单号": order.order.No_SPK,
+                  "PO Item 订单项目": combinedItem.Kode_Barang,
+                  "Level 层级": depth,
+                  "Struktur 结构": `${indent}${isFinishedGood ? "📦 " : "├ "}${node.ItemID}`,
+                  "Nama Item 物料名称": node.ItemName,
+                  "Tipe 类型": isFinishedGood
+                    ? "成品 Finished Good"
+                    : `Komponen Level ${depth} Component`,
+                  "Qty per Unit 每单位数量": node.Qty,
+                  "Total QTY Needed 总需求": isFinishedGood
+                    ? combinedItem.QTY
+                    : node.Qty * combinedItem.QTY,
+                });
+
+                // Rekursif untuk children
+                if (node.children && node.children.length > 0) {
+                  node.children.forEach((child) =>
+                    traverseTree(child, depth + 1),
+                  );
+                }
+              };
+
+              treeBom.forEach((node) => traverseTree(node, 0));
+            }
+          } else {
+            // Untuk PO biasa
+            const traverseTree = (node: BomItem, depth: number) => {
+              const indent = "  ".repeat(depth);
+              const isFinishedGood = depth === 0;
+
+              bomTreeData.push({
+                "No SPK 生产订单号": order.order.No_SPK,
+                "PO Item 订单项目": order.order.Kode_Barang,
+                "Level 层级": depth,
+                "Struktur 结构": `${indent}${isFinishedGood ? "📦 " : "├ "}${node.ItemID}`,
+                "Nama Item 物料名称": node.ItemName,
+                "Tipe 类型": isFinishedGood
+                  ? "成品 Finished Good"
+                  : `Komponen Level ${depth} Component`,
+                "Qty per Unit 每单位数量": node.Qty,
+                "Total QTY Needed 总需求": isFinishedGood
+                  ? order.order.QTY
+                  : node.Qty * order.order.QTY,
+              });
+
+              // Rekursif untuk children
+              if (node.children && node.children.length > 0) {
+                node.children.forEach((child) =>
+                  traverseTree(child, depth + 1),
+                );
+              }
+            };
+
+            order.bom.tree.forEach((node) => traverseTree(node, 0));
+          }
+        }
+      }
+
+      const ws6 = XLSX.utils.json_to_sheet(bomTreeData);
+      XLSX.utils.book_append_sheet(wb, ws6, "BOM Tree Structure BOM树状结构");
+
+      // Generate filename
+      const timestamp = new Date().toISOString().split("T")[0];
+      const filename = `Production_Export_${timestamp}_${selectedOrders.length}_PO.xlsx`;
+
+      // Generate Excel file
+      XLSX.writeFile(wb, filename);
+
+      setTimeout(() => {
+        setExportProgress({
+          visible: false,
+          current: 0,
+          total: 0,
+          message: "",
+        });
+
+        alert(
+          `✅ Export berhasil!\nFile: ${filename}\n\n` +
+            `Total PO: ${selectedOrders.length}\n` +
+            `Total Items PO: ${selectedPOData.length}\n` +
+            `Total All BOM Items: ${totalAllBomItems}\n` +
+            `Barang Jadi: ${totalFinishedGoods}\n` +
+            `Komponen: ${totalComponents}`,
+        );
+      }, 1000);
+    } catch (error) {
+      console.error("❌ [EXPORT] Error dalam export:", error);
+      alert("Gagal mengekspor data. Silakan coba lagi. 导出失败，请重试");
+      setExportProgress({ visible: false, current: 0, total: 0, message: "" });
+    } finally {
+      setExportLoading(false);
+    }
+  };
   // ==================== FUNGSI UTILITY TAMBAHAN ====================
 
   const OrderRow = ({
@@ -3517,14 +3777,14 @@ export default function ProductionPlanPage() {
         return calculateMaterialNeedsForCombinedPO(
           plan.bom,
           plan.order.combinedItems, // Kirim semua item gabungan
-          plan.stock
+          plan.stock,
         );
       } else {
         // Untuk PO biasa
         return calculateMaterialNeeds(
           plan.bom.flat,
           plan.order.QTY,
-          plan.stock
+          plan.stock,
         );
       }
     }, [
@@ -3567,7 +3827,7 @@ export default function ProductionPlanPage() {
                 toggleOrder(
                   index,
                   plan.order.Kode_Barang,
-                  plan.order.Tanggal_Order
+                  plan.order.Tanggal_Order,
                 )
               }
               disabled={plan.loading}
@@ -3784,7 +4044,7 @@ export default function ProductionPlanPage() {
                           {" "}
                           | Stok diperbarui 库存更新:{" "}
                           {new Date(plan.stockLastUpdated).toLocaleString(
-                            "id-ID"
+                            "id-ID",
                           )}
                         </span>
                       )}
@@ -3928,7 +4188,7 @@ export default function ProductionPlanPage() {
                             ? calculateMaterialNeedsForCombinedPO(
                                 plan.bom,
                                 [item],
-                                plan.stock
+                                plan.stock,
                               )
                             : null;
 
@@ -4011,7 +4271,7 @@ export default function ProductionPlanPage() {
     const startIndex = (currentPage - 1) * itemsPerPage + 1;
     const endIndex = Math.min(
       currentPage * itemsPerPage,
-      filteredOrders.length
+      filteredOrders.length,
     );
 
     const getPageNumbers = () => {
@@ -4020,7 +4280,7 @@ export default function ProductionPlanPage() {
 
       let startPage = Math.max(
         1,
-        currentPage - Math.floor(maxVisiblePages / 2)
+        currentPage - Math.floor(maxVisiblePages / 2),
       );
       const endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
 
@@ -4102,17 +4362,26 @@ export default function ProductionPlanPage() {
 
   // ==================== USE EFFECT ====================
 
+  // useEffect(() => {
+  //   refreshAllData();
+  // }, [refreshAllData]);
+
+  // // Sinkronkan setiap kali committedPOs berubah
+  // useEffect(() => {
+  //   if (committedPOs.length > 0 || orders.length > 0) {
+  //     syncCommitStatus();
+  //   }
+  // }, [committedPOs, orders.length, syncCommitStatus]);
+  // Ganti useEffect yang ada dengan ini:
   useEffect(() => {
     refreshAllData();
-  }, [refreshAllData]);
+  }, []); // Empty dependency array, hanya dijalankan sekali saat mount
 
-  // Sinkronkan setiap kali committedPOs berubah
   useEffect(() => {
-    if (committedPOs.length > 0 || orders.length > 0) {
+    if (committedPOs.length > 0) {
       syncCommitStatus();
     }
-  }, [committedPOs, orders.length, syncCommitStatus]);
-
+  }, [committedPOs, syncCommitStatus]); // Hanya jalankan saat committedPOs berubah
   // Statistik untuk penggabungan PO
   const combinedStats = useMemo(() => {
     const totalOriginalOrders = filteredOrders.reduce((total, order) => {
@@ -4121,7 +4390,7 @@ export default function ProductionPlanPage() {
 
     const combinedCount = filteredOrders.filter(
       (order) =>
-        order.order.combinedItems && order.order.combinedItems.length > 1
+        order.order.combinedItems && order.order.combinedItems.length > 1,
     ).length;
 
     return {
@@ -4529,8 +4798,8 @@ export default function ProductionPlanPage() {
               {searchQuery
                 ? `Tidak ditemukan PO dengan kata kunci "${searchQuery}" 未找到包含关键词"${searchQuery}"的PO`
                 : dateFilter.startDate || dateFilter.endDate
-                ? "Tidak ada data sesuai filter tanggal yang dipilih 没有符合所选日期筛选条件的数据"
-                : "Data order produksi tidak ditemukan 未找到生产订单数据"}
+                  ? "Tidak ada data sesuai filter tanggal yang dipilih 没有符合所选日期筛选条件的数据"
+                  : "Data order produksi tidak ditemukan 未找到生产订单数据"}
             </p>
             {searchQuery && (
               <button
