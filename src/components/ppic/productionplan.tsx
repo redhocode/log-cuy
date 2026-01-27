@@ -3010,8 +3010,8 @@ const previewExport = async (): Promise<void> => {
       // Cek berbagai kemungkinan penulisan INJEKSI-BB
       return (
         deptString.includes("INJEKSI-BB") ||
-        deptString.includes("injeksi") ||
-        deptString.includes("inj")
+        deptString.includes("injeksi-bb") 
+        // deptString.includes("inj")
       );
     };
 
