@@ -420,7 +420,13 @@ const ExportPreviewModal: React.FC<{
 const filterOnlyComponents = (bomItems: BomItem[]): BomItem[] => {
   return bomItems.filter((item) => item.Level > 0);
 };
-
+const filterOutINJECTIONDepartments = (bomItems: BomItem[]): BomItem[] => {
+  return bomItems.filter((item) => {
+    const dept = item.Departemen?.toLowerCase() || '';
+    // Filter out items with "INJEKSI-BB" in department name
+    return !dept.includes('INJEKSI-BB');
+  });
+};
 // FUNGSI: Build tree structure dari flat BOM
 const buildTreeStructure = (flatBom: BomItem[]): BomItem[] => {
   if (!flatBom || flatBom.length === 0) return [];
@@ -2116,40 +2122,40 @@ export default function ProductionPlanPage() {
     );
   }, [committedPOs]); // Hanya depend on committedPOs
   const loadCommittedPOs = async (): Promise<void> => {
-  try {
-    console.log("📡 Loading committed POs...");
-    
-    const response = await fetch("/api/ppic/committed-pos", {
-      cache: 'no-store' // Pastikan tidak cache di production
-    });
+    try {
+      console.log("📡 Loading committed POs...");
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const response = await fetch("/api/ppic/committed-pos", {
+        cache: "no-store", // Pastikan tidak cache di production
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        const newCommittedPOs = result.data.committedPOs || [];
+        const newReservations = result.data.reservations || [];
+
+        console.log(`✅ Loaded ${newCommittedPOs.length} committed POs`);
+
+        // Update state sekaligus
+        setCommittedPOs(newCommittedPOs);
+        setStockReservations(newReservations);
+
+        // Sinkronkan status setelah data selesai di-load
+        setTimeout(() => {
+          syncCommitStatus();
+        }, 100);
+      } else {
+        console.error("❌ API response not successful:", result);
+      }
+    } catch (error) {
+      console.error("❌ Error loading committed POs:", error);
     }
-
-    const result = await response.json();
-
-    if (result.success) {
-      const newCommittedPOs = result.data.committedPOs || [];
-      const newReservations = result.data.reservations || [];
-
-      console.log(`✅ Loaded ${newCommittedPOs.length} committed POs`);
-      
-      // Update state sekaligus
-      setCommittedPOs(newCommittedPOs);
-      setStockReservations(newReservations);
-
-      // Sinkronkan status setelah data selesai di-load
-      setTimeout(() => {
-        syncCommitStatus();
-      }, 100);
-    } else {
-      console.error("❌ API response not successful:", result);
-    }
-  } catch (error) {
-    console.error("❌ Error loading committed POs:", error);
-  }
-};
+  };
 
   const refreshAllData = useCallback(async (): Promise<void> => {
     try {
@@ -2979,127 +2985,265 @@ export default function ProductionPlanPage() {
     );
   };
 
-  // ==================== FUNGSI PREVIEW EXPORT ====================
-  const previewExport = async (): Promise<void> => {
-    try {
-      setExportLoading(true);
+const previewExport = async (): Promise<void> => {
+  try {
+    setExportLoading(true);
 
-      const selectedOrders = filteredOrders.filter(
-        (order) => order.selected && !order.committed,
+    const selectedOrders = filteredOrders.filter(
+      (order) => order.selected && !order.committed,
+    );
+
+    if (selectedOrders.length === 0) {
+      alert("Tidak ada PO yang dipilih untuk di-export! 没有选择要导出的PO!");
+      return;
+    }
+
+    console.log(
+      `📊 [PREVIEW] Memulai preview ${selectedOrders.length} PO terpilih`,
+    );
+
+    // Fungsi filter INJEKSI-BB yang lebih kuat
+    const isINJECTIONDepartment = (departemen?: string): boolean => {
+      if (!departemen) return false;
+      // Normalisasi: ubah ke string, hilangkan spasi, lowercase
+      const deptString = String(departemen).trim().toLowerCase();
+      // Cek berbagai kemungkinan penulisan INJEKSI-BB
+      return (
+        deptString.includes("INJEKSI-BB") ||
+        deptString.includes("injeksi") ||
+        deptString.includes("inj")
       );
+    };
 
-      if (selectedOrders.length === 0) {
-        alert("Tidak ada PO yang dipilih untuk di-export! 没有选择要导出的PO!");
-        return;
-      }
+    setExportProgress({
+      visible: true,
+      current: 5,
+      total: 100,
+      message: "Mempersiapkan data untuk preview...",
+    });
 
-      console.log(
-        `📊 [PREVIEW] Memulai preview ${selectedOrders.length} PO terpilih`,
-      );
+    const today = new Date().toISOString().split("T")[0];
 
-      // Phase 1: Persiapan data
-      setExportProgress({
-        visible: true,
-        current: 5,
-        total: 100,
-        message: "Mempersiapkan data untuk preview...",
-      });
+    let totalItems = 0;
+    let sufficientItems = 0;
+    let problemItemsCount = 0;
+    let itemsWithVariantCount = 0;
+    let totalStockAvailable = 0;
+    let INJECTIONItemsRemoved = 0;
 
-      // Buat data preview sederhana berdasarkan data yang ada
-      const today = new Date().toISOString().split("T")[0];
+    const stockSummary: any[] = [];
 
-      // Hitung data statistik dari PO yang dipilih
-      let totalItems = 0;
-      let sufficientItems = 0;
-      let problemItemsCount = 0;
-      let itemsWithVariantCount = 0;
-      let totalStockAvailable = 0;
+    // Kumpulkan data dari semua PO yang dipilih, FILTER INJEKSI-BB
+    for (const order of selectedOrders) {
+      if (order.bom && order.stock) {
+        // Gunakan fungsi perhitungan untuk export yang sudah memfilter INJEKSI-BB
+        let materialNeeds;
 
-      const stockSummary: {
-        "Kode Item 物料代码": any;
-        "Nama Item 物料名称": any;
-        "Sum of Total 总需求 (PO)": any;
-        "Stock Available 可用库存": any;
-        "Remaining Stock 剩余库存": number;
-        "Status 状态": string;
-        "Warning 警告": string;
-      }[] = [];
-
-      // Kumpulkan data dari semua PO yang dipilih
-      for (const order of selectedOrders) {
-        if (order.bom && order.stock) {
-          const materialNeeds = calculateMaterialNeeds(
+        if (order.order.combinedItems && order.order.combinedItems.length > 1) {
+          // PO Gabungan
+          materialNeeds = calculateMaterialNeedsForCombinedPOForExport(
+            order.bom,
+            order.order.combinedItems,
+            order.stock,
+          );
+        } else {
+          // PO Biasa
+          materialNeeds = calculateMaterialNeedsForExport(
             order.bom.flat,
             order.order.QTY,
             order.stock,
           );
-
-          materialNeeds.items.forEach((item: any) => {
-            const hasVariant = itemsWithVariants.includes(item.ItemID);
-            const stockAvailable = item.availableStock;
-            const remainingStock = stockAvailable - item.needed;
-            const status = remainingStock >= 0 ? "CUKUP 充足" : "KURANG 不足";
-
-            stockSummary.push({
-              "Kode Item 物料代码": item.ItemID,
-              "Nama Item 物料名称": item.ItemName,
-              "Sum of Total 总需求 (PO)": item.needed,
-              "Stock Available 可用库存": stockAvailable,
-              "Remaining Stock 剩余库存": remainingStock,
-              "Status 状态": status,
-              "Warning 警告": hasVariant ? "⚠️ ADA VARIANT 有变体" : "",
-            });
-
-            totalItems++;
-            if (status === "CUKUP 充足") sufficientItems++;
-            if (remainingStock < 0) problemItemsCount++;
-            if (hasVariant) itemsWithVariantCount++;
-            totalStockAvailable += stockAvailable;
-          });
         }
+
+        materialNeeds.items.forEach((item: any) => {
+          // Double check filter INJEKSI-BB
+          if (isINJECTIONDepartment(item.Departemen)) {
+            INJECTIONItemsRemoved++;
+            return;
+          }
+
+          const hasVariant = itemsWithVariants.includes(item.ItemID);
+          const stockAvailable = item.availableStock;
+          const remainingStock = stockAvailable - item.needed;
+          const status = remainingStock >= 0 ? "CUKUP 充足" : "KURANG 不足";
+
+          stockSummary.push({
+            "Kode Item 物料代码": item.ItemID,
+            "Nama Item 物料名称": item.ItemName,
+            "Departemen 部门": item.Departemen || "-",
+            "Sum of Total 总需求 (PO)": item.needed,
+            "Stock Available 可用库存": stockAvailable,
+            "Remaining Stock 剩余库存": remainingStock,
+            "Status 状态": status,
+            "Warning 警告": hasVariant ? "⚠️ ADA VARIANT 有变体" : "",
+            "INJEKSI-BB Filter 注塑过滤": "DISERTAKAN 已包含",
+          });
+
+          totalItems++;
+          if (status === "CUKUP 充足") sufficientItems++;
+          if (remainingStock < 0) problemItemsCount++;
+          if (hasVariant) itemsWithVariantCount++;
+          totalStockAvailable += stockAvailable;
+        });
       }
-
-      const problemItems = stockSummary.filter(
-        (item) => item["Remaining Stock 剩余库存"] < 0,
-      );
-
-      const previewData: ExportPreviewData = {
-        stockSummary,
-        selectedPOData: selectedOrders.map((order) => ({
-          "No SPK 生产订单号": order.order.No_SPK,
-          "Nama PO 生产订单名称": order.order.Nama_PO,
-          "QTY 数量": order.order.QTY,
-        })),
-        problemItems: problemItems.map((item) => ({
-          ...item,
-          "Kekurangan 短缺": Math.abs(item["Remaining Stock 剩余库存"]),
-        })),
-        pengeluaranSummary: [],
-        variantItems: stockSummary.filter((item) => item["Warning 警告"]),
-        today,
-        totalItems,
-        sufficientItems,
-        problemItemsCount,
-        itemsWithVariantCount,
-        totalPengeluaran: 0, // Data pengeluaran bisa ditambahkan jika tersedia
-        itemsWithPengeluaran: 0,
-        totalStockAvailable,
-        selectedOrdersCount: selectedOrders.length,
-      };
-
-      setExportPreview({
-        isOpen: true,
-        data: previewData,
-      });
-    } catch (error) {
-      console.error("❌ [PREVIEW] Error dalam preview:", error);
-      alert("Gagal memuat preview. Silakan coba lagi. 加载预览失败，请重试");
-    } finally {
-      setExportLoading(false);
-      setExportProgress({ visible: false, current: 0, total: 0, message: "" });
     }
+
+    const problemItems = stockSummary.filter(
+      (item) => item["Remaining Stock 剩余库存"] < 0,
+    );
+
+    const previewData: ExportPreviewData = {
+      stockSummary,
+      selectedPOData: selectedOrders.map((order) => ({
+        "No SPK 生产订单号": order.order.No_SPK,
+        "Nama PO 生产订单名称": order.order.Nama_PO,
+        "QTY 数量": order.order.QTY,
+      })),
+      problemItems: problemItems.map((item) => ({
+        ...item,
+        "Kekurangan 短缺": Math.abs(item["Remaining Stock 剩余库存"]),
+      })),
+      pengeluaranSummary: [],
+      variantItems: stockSummary.filter((item) => item["Warning 警告"]),
+      today,
+      totalItems,
+      sufficientItems,
+      problemItemsCount,
+      itemsWithVariantCount,
+      totalPengeluaran: 0,
+      itemsWithPengeluaran: 0,
+      totalStockAvailable,
+      selectedOrdersCount: selectedOrders.length,
+    };
+
+    // Tambahkan info INJEKSI-BB di preview
+    const previewDataWithINJECTIONInfo = {
+      ...previewData,
+      INJECTIONItemsRemoved,
+      filterNote: `⚠️ Filter INJEKSI-BB: ${INJECTIONItemsRemoved} item dengan departemen 'INJEKSI-BB' tidak ditampilkan\n⚠️ 注塑过滤: ${INJECTIONItemsRemoved}个注塑部门项目不显示`,
+    };
+
+    setExportPreview({
+      isOpen: true,
+      data: previewDataWithINJECTIONInfo as any,
+    });
+  } catch (error) {
+    console.error("❌ [PREVIEW] Error dalam preview:", error);
+    alert("Gagal memuat preview. Silakan coba lagi. 加载预览失败，请重试");
+  } finally {
+    setExportLoading(false);
+    setExportProgress({ visible: false, current: 0, total: 0, message: "" });
+  }
+};
+  // ==================== FUNGSI PERHITUNGAN MATERIAL UNTUK EXPORT (TANPA INJEKSI-BB) ====================
+
+  // Perhitungan material needs untuk single PO (tanpa INJEKSI-BB)
+  const calculateMaterialNeedsForExport = (
+    bom: BomItem[],
+    productionQty: number,
+    stock: StockItem[] = [],
+  ) => {
+    if (!bom) return { totalNeeded: 0, totalShortage: 0, items: [] };
+
+    // Filter hanya komponen (Level > 0) dan bukan INJEKSI-BB
+    const componentsOnly = filterOnlyComponents(bom).filter((item) => {
+      const dept = item.Departemen?.toLowerCase() || "";
+      return !dept.includes("INJEKSI-BB");
+    });
+
+    let totalNeeded = 0;
+    let totalShortage = 0;
+    const items = componentsOnly.map((item) => {
+      const needed = item.Qty * productionQty;
+      const availableStock =
+        stock.find((s) => s.itemid === item.ItemID)?.stockAkhir || 0;
+      const shortage = Math.max(0, needed - availableStock);
+
+      totalNeeded += needed;
+      totalShortage += shortage;
+
+      return {
+        ...item,
+        needed,
+        availableStock,
+        shortage,
+      };
+    });
+
+    return { totalNeeded, totalShortage, items };
   };
 
+  // Perhitungan material needs untuk PO gabungan (tanpa INJEKSI-BB)
+  const calculateMaterialNeedsForCombinedPOForExport = (
+    bom: { flat: BomItem[]; tree: BomItem[]; combinedBoms?: any },
+    productionOrders: ProductionOrder[],
+    stock: StockItem[] = [],
+  ) => {
+    if (!bom || !productionOrders || productionOrders.length === 0) {
+      return { totalNeeded: 0, totalShortage: 0, items: [] };
+    }
+
+    const materialMap = new Map<
+      string,
+      {
+        item: BomItem;
+        totalNeeded: number;
+      }
+    >();
+
+    // Hitung kebutuhan untuk setiap PO dalam gabungan
+    productionOrders.forEach((po) => {
+      let bomForThisItem: BomItem[] = [];
+
+      if (bom.combinedBoms && bom.combinedBoms[po.Kode_Barang]) {
+        bomForThisItem = bom.combinedBoms[po.Kode_Barang].flat;
+      } else {
+        bomForThisItem = bom.flat;
+      }
+
+      // Filter hanya komponen (Level > 0) dan bukan INJEKSI-BB
+      const componentsOnly = filterOnlyComponents(bomForThisItem).filter(
+        (item) => {
+          const dept = item.Departemen?.toLowerCase() || "";
+          return !dept.includes("INJEKSI-BB");
+        },
+      );
+
+      componentsOnly.forEach((item) => {
+        const neededForThisPO = item.Qty * po.QTY;
+        const existing = materialMap.get(item.ItemID);
+
+        if (existing) {
+          existing.totalNeeded += neededForThisPO;
+        } else {
+          materialMap.set(item.ItemID, {
+            item: item,
+            totalNeeded: neededForThisPO,
+          });
+        }
+      });
+    });
+
+    let totalNeeded = 0;
+    let totalShortage = 0;
+    const items = Array.from(materialMap.values()).map((material) => {
+      const availableStock =
+        stock.find((s) => s.itemid === material.item.ItemID)?.stockAkhir || 0;
+      const shortage = Math.max(0, material.totalNeeded - availableStock);
+
+      totalNeeded += material.totalNeeded;
+      totalShortage += shortage;
+
+      return {
+        ...material.item,
+        needed: material.totalNeeded,
+        availableStock,
+        shortage,
+      };
+    });
+
+    return { totalNeeded, totalShortage, items };
+  };
   // ==================== FUNGSI EXPORT SETELAH PREVIEW ====================
   const handleConfirmExport = () => {
     setExportPreview({ isOpen: false, data: null });
@@ -3224,148 +3368,119 @@ export default function ProductionPlanPage() {
     );
   };
 
-  // FUNGSI: Export to Excel (disederhanakan untuk contoh)
-  // ==================== FUNGSI EXPORT YANG DIPERBAIKI ====================
-  const exportSelectedToExcel = async (): Promise<void> => {
-    try {
-      setExportLoading(true);
-      setExportProgress({
-        visible: true,
-        current: 0,
-        total: 100,
-        message: "Memulai proses export...",
-      });
+const exportSelectedToExcel = async (): Promise<void> => {
+  try {
+    setExportLoading(true);
+    setExportProgress({
+      visible: true,
+      current: 0,
+      total: 100,
+      message: "Memulai proses export...",
+    });
 
-      const selectedOrders = filteredOrders.filter(
-        (order) => order.selected && !order.committed,
+    const selectedOrders = filteredOrders.filter(
+      (order) => order.selected && !order.committed,
+    );
+
+    if (selectedOrders.length === 0) {
+      alert("Tidak ada PO yang dipilih untuk di-export! 没有选择要导出的PO!");
+      return;
+    }
+
+    const wb = XLSX.utils.book_new();
+
+    // ==================== FUNGSI FILTER INJEKSI-BB YANG LEBIH KUAT ====================
+    const isINJECTIONDepartment = (departemen?: string): boolean => {
+      if (!departemen) return false;
+      // Normalisasi: ubah ke string, hilangkan spasi, lowercase
+      const deptString = String(departemen).trim().toLowerCase();
+      // Cek berbagai kemungkinan penulisan INJEKSI-BB
+      return (
+        deptString.includes("INJEKSI-BB") ||
+        deptString.includes("injeksi") ||
+        deptString.includes("inj") ||
+        deptString.includes("injek") ||
+        deptString === "INJEKSI-BB" ||
+        deptString === "injeksi"
       );
+    };
 
-      if (selectedOrders.length === 0) {
-        alert("Tidak ada PO yang dipilih untuk di-export! 没有选择要导出的PO!");
-        return;
+    // ==================== WORKSHEET 1: DETAIL PO ====================
+    const selectedPOData = selectedOrders.flatMap((order) => {
+      const isCombinedPO =
+        order.order.combinedItems && order.order.combinedItems.length > 1;
+
+      if (isCombinedPO) {
+        return order.order.combinedItems!.map((item, idx) => ({
+          "No SPK 生产订单号": order.order.No_SPK,
+          "Tanggal 日期": order.order.Tanggal_Order,
+          "Nama PO 生产订单名称": item.Nama_PO,
+          "Kode Barang 物料代码": item.Kode_Barang,
+          "QTY 数量": item.QTY,
+          "Jenis 类型": "Bagian PO Gabungan 合并PO部分",
+          "Urutan 顺序": idx + 1,
+          "Total Items dalam PO 总数": order.order.combinedItems!.length,
+        }));
+      } else {
+        return [
+          {
+            "No SPK 生产订单号": order.order.No_SPK,
+            "Tanggal 日期": order.order.Tanggal_Order,
+            "Nama PO 生产订单名称": order.order.Nama_PO,
+            "Kode Barang 物料代码": order.order.Kode_Barang,
+            "QTY 数量": order.order.QTY,
+            "Jenis 类型": "PO Biasa 普通PO",
+            "Urutan 顺序": 1,
+            "Total Items dalam PO 总数": 1,
+          },
+        ];
       }
+    });
 
-      // Simulasi proses export
-      const wb = XLSX.utils.book_new();
+    const ws1 = XLSX.utils.json_to_sheet(selectedPOData);
+    XLSX.utils.book_append_sheet(wb, ws1, "Detail PO PO详情");
 
-      // ==================== WORKSHEET 1: DETAIL PO ====================
-      // PERBAIKAN: Tampilkan SEMUA item dalam PO gabungan
-      const selectedPOData = selectedOrders.flatMap((order) => {
+    // ==================== WORKSHEET 2: FULL BOM STRUCTURE (TANPA INJEKSI-BB) ====================
+    const fullBomData: any[] = [];
+    let totalINJECTIONItemsRemoved = 0;
+
+    for (const order of selectedOrders) {
+      if (order.bom && order.stock) {
         const isCombinedPO =
           order.order.combinedItems && order.order.combinedItems.length > 1;
 
         if (isCombinedPO) {
-          // Untuk PO gabungan, tampilkan setiap item sebagai baris terpisah
-          return order.order.combinedItems!.map((item, idx) => ({
-            "No SPK 生产订单号": order.order.No_SPK,
-            "Tanggal 日期": order.order.Tanggal_Order,
-            "Nama PO 生产订单名称": item.Nama_PO,
-            "Kode Barang 物料代码": item.Kode_Barang,
-            "QTY 数量": item.QTY,
-            "Jenis 类型": "Bagian PO Gabungan 合并PO部分",
-            "Urutan 顺序": idx + 1,
-            "Total Items dalam PO 总数": order.order.combinedItems!.length,
-          }));
-        } else {
-          // Untuk PO biasa
-          return [
-            {
-              "No SPK 生产订单号": order.order.No_SPK,
-              "Tanggal 日期": order.order.Tanggal_Order,
-              "Nama PO 生产订单名称": order.order.Nama_PO,
-              "Kode Barang 物料代码": order.order.Kode_Barang,
-              "QTY 数量": order.order.QTY,
-              "Jenis 类型": "PO Biasa 普通PO",
-              "Urutan 顺序": 1,
-              "Total Items dalam PO 总数": 1,
-            },
-          ];
-        }
-      });
-
-      const ws1 = XLSX.utils.json_to_sheet(selectedPOData);
-      XLSX.utils.book_append_sheet(wb, ws1, "Detail PO PO详情");
-
-      // ==================== WORKSHEET 2: FULL BOM STRUCTURE (SEMUA LEVEL) ====================
-      // PERBAIKAN BARU: Tampilkan SEMUA level BOM, termasuk barang jadi (Level 0) dan semua komponen
-      const fullBomData: any[] = [];
-
-      for (const order of selectedOrders) {
-        if (order.bom && order.stock) {
-          const isCombinedPO =
-            order.order.combinedItems && order.order.combinedItems.length > 1;
-
-          if (isCombinedPO) {
-            // Untuk PO gabungan, tampilkan BOM untuk setiap item
-            for (const combinedItem of order.order.combinedItems!) {
-              // Gunakan BOM yang sesuai untuk item ini
-              let bomForThisItem: BomItem[] = [];
-              if (
-                order.bom.combinedBoms &&
-                order.bom.combinedBoms[combinedItem.Kode_Barang]
-              ) {
-                bomForThisItem =
-                  order.bom.combinedBoms[combinedItem.Kode_Barang].flat;
-              } else {
-                bomForThisItem = order.bom.flat;
-              }
-
-              // Tampilkan SEMUA level, tidak hanya komponen
-              bomForThisItem.forEach((item) => {
-                // Untuk barang jadi (Level 0), hitung kebutuhan = QTY PO
-                // Untuk komponen (Level > 0), hitung kebutuhan = item.Qty * combinedItem.QTY
-                const needed =
-                  item.Level === 0
-                    ? combinedItem.QTY
-                    : item.Qty * combinedItem.QTY;
-
-                // Cari stok hanya untuk komponen (Level > 0)
-                const stockItem = order.stock?.find(
-                  (s) => s.itemid === item.ItemID,
-                );
-                const availableStock =
-                  item.Level > 0 ? stockItem?.stockAkhir || 0 : "-";
-                const shortage =
-                  item.Level > 0
-                    ? Math.max(0, needed - (stockItem?.stockAkhir || 0))
-                    : "-";
-
-                fullBomData.push({
-                  "No SPK 生产订单号": order.order.No_SPK,
-                  "Sumber PO 来源PO": combinedItem.Kode_Barang,
-                  "Nama Sumber PO 来源PO名称": combinedItem.Nama_PO,
-                  "Level 层级": item.Level,
-                  "Tipe 类型":
-                    item.Level === 0 ? "Barang Jadi 成品" : "Komponen 组件",
-                  "Kode Item 物料代码": item.ItemID,
-                  "Nama Item 物料名称": item.ItemName,
-                  "Departemen 部门": item.Departemen || "-",
-                  "Jenis 类别": item.NamaJenis || "-",
-                  "Qty Per Unit 每单位数量": item.Level === 0 ? 1 : item.Qty,
-                  "QTY PO 订单数量": combinedItem.QTY,
-                  "Total Butuh 总需求": needed,
-                  "Stok Tersedia 可用库存": availableStock,
-                  "Kekurangan 短缺": shortage,
-                  "Status 状态":
-                    item.Level === 0
-                      ? "PRODUKSI 生产"
-                      : shortage === "-"
-                        ? "-"
-                        : shortage > 0
-                          ? "KURANG 不足"
-                          : "CUKUP 充足",
-                });
-              });
+          for (const combinedItem of order.order.combinedItems!) {
+            let bomForThisItem: BomItem[] = [];
+            if (
+              order.bom.combinedBoms &&
+              order.bom.combinedBoms[combinedItem.Kode_Barang]
+            ) {
+              bomForThisItem =
+                order.bom.combinedBoms[combinedItem.Kode_Barang].flat;
+            } else {
+              bomForThisItem = order.bom.flat;
             }
-          } else {
-            // Untuk PO biasa, tampilkan SEMUA level BOM
-            order.bom.flat.forEach((item) => {
-              // Untuk barang jadi (Level 0), hitung kebutuhan = QTY PO
-              // Untuk komponen (Level > 0), hitung kebutuhan = item.Qty * order.order.QTY
-              const needed =
-                item.Level === 0 ? order.order.QTY : item.Qty * order.order.QTY;
 
-              // Cari stok hanya untuk komponen (Level > 0)
+            // FILTER KETAT: Hapus item dengan departemen INJEKSI-BB
+            const filteredBomItems = bomForThisItem.filter((item) => {
+              // Untuk barang jadi (Level 0), selalu tampilkan
+              if (item.Level === 0) return true;
+              // Untuk komponen, filter berdasarkan departemen
+              const isINJECTION = isINJECTIONDepartment(item.Departemen);
+              if (isINJECTION) {
+                totalINJECTIONItemsRemoved++;
+                return false;
+              }
+              return true;
+            });
+
+            filteredBomItems.forEach((item) => {
+              const needed =
+                item.Level === 0
+                  ? combinedItem.QTY
+                  : item.Qty * combinedItem.QTY;
+
               const stockItem = order.stock?.find(
                 (s) => s.itemid === item.ItemID,
               );
@@ -3378,8 +3493,8 @@ export default function ProductionPlanPage() {
 
               fullBomData.push({
                 "No SPK 生产订单号": order.order.No_SPK,
-                "Sumber PO 来源PO": order.order.Kode_Barang,
-                "Nama Sumber PO 来源PO名称": order.order.Nama_PO,
+                "Sumber PO 来源PO": combinedItem.Kode_Barang,
+                "Nama Sumber PO 来源PO名称": combinedItem.Nama_PO,
                 "Level 层级": item.Level,
                 "Tipe 类型":
                   item.Level === 0 ? "Barang Jadi 成品" : "Komponen 组件",
@@ -3388,7 +3503,7 @@ export default function ProductionPlanPage() {
                 "Departemen 部门": item.Departemen || "-",
                 "Jenis 类别": item.NamaJenis || "-",
                 "Qty Per Unit 每单位数量": item.Level === 0 ? 1 : item.Qty,
-                "QTY PO 订单数量": order.order.QTY,
+                "QTY PO 订单数量": combinedItem.QTY,
                 "Total Butuh 总需求": needed,
                 "Stok Tersedia 可用库存": availableStock,
                 "Kekurangan 短缺": shortage,
@@ -3400,79 +3515,102 @@ export default function ProductionPlanPage() {
                       : shortage > 0
                         ? "KURANG 不足"
                         : "CUKUP 充足",
+                "INJEKSI-BB Filter 注塑过滤": "DISERTAKAN 已包含",
               });
             });
           }
+        } else {
+          // Untuk PO biasa
+          // FILTER KETAT: Hapus item dengan departemen INJEKSI-BB
+          const filteredBomItems = order.bom.flat.filter((item) => {
+            // Untuk barang jadi (Level 0), selalu tampilkan
+            if (item.Level === 0) return true;
+            // Untuk komponen, filter berdasarkan departemen
+            const isINJECTION = isINJECTIONDepartment(item.Departemen);
+            if (isINJECTION) {
+              totalINJECTIONItemsRemoved++;
+              return false;
+            }
+            return true;
+          });
+
+          filteredBomItems.forEach((item) => {
+            const needed =
+              item.Level === 0 ? order.order.QTY : item.Qty * order.order.QTY;
+
+            const stockItem = order.stock?.find(
+              (s) => s.itemid === item.ItemID,
+            );
+            const availableStock =
+              item.Level > 0 ? stockItem?.stockAkhir || 0 : "-";
+            const shortage =
+              item.Level > 0
+                ? Math.max(0, needed - (stockItem?.stockAkhir || 0))
+                : "-";
+
+            fullBomData.push({
+              "No SPK 生产订单号": order.order.No_SPK,
+              "Sumber PO 来源PO": order.order.Kode_Barang,
+              "Nama Sumber PO 来源PO名称": order.order.Nama_PO,
+              "Level 层级": item.Level,
+              "Tipe 类型":
+                item.Level === 0 ? "Barang Jadi 成品" : "Komponen 组件",
+              "Kode Item 物料代码": item.ItemID,
+              "Nama Item 物料名称": item.ItemName,
+              "Departemen 部门": item.Departemen || "-",
+              "Jenis 类别": item.NamaJenis || "-",
+              "Qty Per Unit 每单位数量": item.Level === 0 ? 1 : item.Qty,
+              "QTY PO 订单数量": order.order.QTY,
+              "Total Butuh 总需求": needed,
+              "Stok Tersedia 可用库存": availableStock,
+              "Kekurangan 短缺": shortage,
+              "Status 状态":
+                item.Level === 0
+                  ? "PRODUKSI 生产"
+                  : shortage === "-"
+                    ? "-"
+                    : shortage > 0
+                      ? "KURANG 不足"
+                      : "CUKUP 充足",
+              "INJEKSI-BB Filter 注塑过滤": "DISERTAKAN 已包含",
+            });
+          });
         }
       }
+    }
 
-      const ws2 = XLSX.utils.json_to_sheet(fullBomData);
-      XLSX.utils.book_append_sheet(wb, ws2, "Full BOM Structure BOM完整结构");
+    const ws2 = XLSX.utils.json_to_sheet(fullBomData);
+    XLSX.utils.book_append_sheet(wb, ws2, "Full BOM Structure BOM完整结构");
 
-      // ==================== WORKSHEET 3: MATERIAL SUMMARY (HANYA KOMPONEN) ====================
-      // PERBAIKAN: Hitung kebutuhan material untuk SEMUA item yang dipilih (hanya komponen)
-      const materialSummary: any[] = [];
+    // ==================== WORKSHEET 3: MATERIAL SUMMARY (TANPA INJEKSI-BB) ====================
+    const materialSummary: any[] = [];
 
-      for (const order of selectedOrders) {
-        if (order.bom && order.stock) {
-          const isCombinedPO =
-            order.order.combinedItems && order.order.combinedItems.length > 1;
+    for (const order of selectedOrders) {
+      if (order.bom && order.stock) {
+        const isCombinedPO =
+          order.order.combinedItems && order.order.combinedItems.length > 1;
 
-          if (isCombinedPO) {
-            // Untuk PO gabungan, hitung kebutuhan per item
-            for (const combinedItem of order.order.combinedItems!) {
-              // Gunakan BOM yang sesuai untuk item ini
-              let bomForThisItem: BomItem[] = [];
-              if (
-                order.bom.combinedBoms &&
-                order.bom.combinedBoms[combinedItem.Kode_Barang]
-              ) {
-                bomForThisItem =
-                  order.bom.combinedBoms[combinedItem.Kode_Barang].flat;
-              } else {
-                bomForThisItem = order.bom.flat;
-              }
-
-              // Filter hanya komponen (Level > 0)
-              const componentsOnly = bomForThisItem.filter(
-                (item) => item.Level > 0,
-              );
-
-              componentsOnly.forEach((item) => {
-                const needed = item.Qty * combinedItem.QTY;
-                const stockItem = order.stock?.find(
-                  (s) => s.itemid === item.ItemID,
-                );
-                const availableStock = stockItem?.stockAkhir || 0;
-                const shortage = Math.max(0, needed - availableStock);
-
-                materialSummary.push({
-                  "No SPK 生产订单号": order.order.No_SPK,
-                  "Sumber PO 来源PO": combinedItem.Kode_Barang,
-                  "Nama Sumber PO 来源PO名称": combinedItem.Nama_PO,
-                  "Kode Item 物料代码": item.ItemID,
-                  "Nama Item 物料名称": item.ItemName,
-                  "Departemen 部门": item.Departemen || "-",
-                  "Level 层级": item.Level,
-                  "Qty Per Unit 每单位数量": item.Qty,
-                  "QTY PO 订单数量": combinedItem.QTY,
-                  "Total Butuh 总需求": needed,
-                  "Stok Tersedia 可用库存": availableStock,
-                  "Kekurangan 短缺": shortage,
-                  "Status 状态": shortage > 0 ? "KURANG 不足" : "CUKUP 充足",
-                  "Jenis PO PO类型": "Gabungan 合并",
-                });
-              });
+        if (isCombinedPO) {
+          for (const combinedItem of order.order.combinedItems!) {
+            let bomForThisItem: BomItem[] = [];
+            if (
+              order.bom.combinedBoms &&
+              order.bom.combinedBoms[combinedItem.Kode_Barang]
+            ) {
+              bomForThisItem =
+                order.bom.combinedBoms[combinedItem.Kode_Barang].flat;
+            } else {
+              bomForThisItem = order.bom.flat;
             }
-          } else {
-            // Untuk PO biasa
-            // Filter hanya komponen (Level > 0)
-            const componentsOnly = order.bom.flat.filter(
-              (item) => item.Level > 0,
+
+            // Filter hanya komponen (Level > 0) dan bukan INJEKSI-BB
+            const componentsOnly = bomForThisItem.filter(
+              (item) =>
+                item.Level > 0 && !isINJECTIONDepartment(item.Departemen),
             );
 
             componentsOnly.forEach((item) => {
-              const needed = item.Qty * order.order.QTY;
+              const needed = item.Qty * combinedItem.QTY;
               const stockItem = order.stock?.find(
                 (s) => s.itemid === item.ItemID,
               );
@@ -3481,281 +3619,267 @@ export default function ProductionPlanPage() {
 
               materialSummary.push({
                 "No SPK 生产订单号": order.order.No_SPK,
-                "Sumber PO 来源PO": order.order.Kode_Barang,
-                "Nama Sumber PO 来源PO名称": order.order.Nama_PO,
+                "Sumber PO 来源PO": combinedItem.Kode_Barang,
+                "Nama Sumber PO 来源PO名称": combinedItem.Nama_PO,
                 "Kode Item 物料代码": item.ItemID,
                 "Nama Item 物料名称": item.ItemName,
                 "Departemen 部门": item.Departemen || "-",
                 "Level 层级": item.Level,
                 "Qty Per Unit 每单位数量": item.Qty,
-                "QTY PO 订单数量": order.order.QTY,
+                "QTY PO 订单数量": combinedItem.QTY,
                 "Total Butuh 总需求": needed,
                 "Stok Tersedia 可用库存": availableStock,
                 "Kekurangan 短缺": shortage,
                 "Status 状态": shortage > 0 ? "KURANG 不足" : "CUKUP 充足",
-                "Jenis PO PO类型": "Biasa 普通",
+                "Jenis PO PO类型": "Gabungan 合并",
+                "INJEKSI-BB Filter 注塑过滤": "DISERTAKAN 已包含",
               });
             });
           }
-        }
-      }
-
-      const ws3 = XLSX.utils.json_to_sheet(materialSummary);
-      XLSX.utils.book_append_sheet(wb, ws3, "Material Summary 物料汇总");
-
-      // ==================== WORKSHEET 4: AGGREGATED MATERIAL NEEDS ====================
-      // Gabungkan material yang sama dari berbagai PO (hanya komponen)
-      const materialMap = new Map<string, any>();
-
-      materialSummary.forEach((item) => {
-        const key = item["Kode Item 物料代码"];
-        const existing = materialMap.get(key);
-
-        if (existing) {
-          existing["Total Butuh 总需求"] += item["Total Butuh 总需求"];
-          existing["Stok Tersedia 可用库存"] = item["Stok Tersedia 可用库存"]; // Ambil stok terakhir
-          existing["Kekurangan 短缺"] = Math.max(
-            0,
-            existing["Total Butuh 总需求"] - existing["Stok Tersedia 可用库存"],
-          );
-          existing["Sumber PO Count PO来源数"] += 1;
-
-          // Tambahkan sumber PO ke daftar
-          if (
-            !existing["Sumber PO List 来源PO列表"].includes(
-              item["Sumber PO 来源PO"],
-            )
-          ) {
-            existing["Sumber PO List 来源PO列表"].push(
-              item["Sumber PO 来源PO"],
-            );
-          }
         } else {
-          materialMap.set(key, {
-            "Kode Item 物料代码": item["Kode Item 物料代码"],
-            "Nama Item 物料名称": item["Nama Item 物料名称"],
-            "Departemen 部门": item["Departemen 部门"],
-            "Level 层级": item["Level 层级"],
-            "Total Butuh 总需求": item["Total Butuh 总需求"],
-            "Stok Tersedia 可用库存": item["Stok Tersedia 可用库存"],
-            "Kekurangan 短缺": item["Kekurangan 短缺"],
-            "Status 状态":
-              item["Kekurangan 短缺"] > 0 ? "KURANG 不足" : "CUKUP 充足",
-            "Sumber PO Count PO来源数": 1,
-            "Sumber PO List 来源PO列表": [item["Sumber PO 来源PO"]],
+          // Filter hanya komponen (Level > 0) dan bukan INJEKSI-BB
+          const componentsOnly = order.bom.flat.filter(
+            (item) => item.Level > 0 && !isINJECTIONDepartment(item.Departemen),
+          );
+
+          componentsOnly.forEach((item) => {
+            const needed = item.Qty * order.order.QTY;
+            const stockItem = order.stock?.find(
+              (s) => s.itemid === item.ItemID,
+            );
+            const availableStock = stockItem?.stockAkhir || 0;
+            const shortage = Math.max(0, needed - availableStock);
+
+            materialSummary.push({
+              "No SPK 生产订单号": order.order.No_SPK,
+              "Sumber PO 来源PO": order.order.Kode_Barang,
+              "Nama Sumber PO 来源PO名称": order.order.Nama_PO,
+              "Kode Item 物料代码": item.ItemID,
+              "Nama Item 物料名称": item.ItemName,
+              "Departemen 部门": item.Departemen || "-",
+              "Level 层级": item.Level,
+              "Qty Per Unit 每单位数量": item.Qty,
+              "QTY PO 订单数量": order.order.QTY,
+              "Total Butuh 总需求": needed,
+              "Stok Tersedia 可用库存": availableStock,
+              "Kekurangan 短缺": shortage,
+              "Status 状态": shortage > 0 ? "KURANG 不足" : "CUKUP 充足",
+              "Jenis PO PO类型": "Biasa 普通",
+              "INJEKSI-BB Filter 注塑过滤": "DISERTAKAN 已包含",
+            });
           });
         }
+      }
+    }
+
+    const ws3 = XLSX.utils.json_to_sheet(materialSummary);
+    XLSX.utils.book_append_sheet(wb, ws3, "Material Summary 物料汇总");
+
+    // ==================== WORKSHEET 4: AGGREGATED MATERIAL NEEDS (TANPA INJEKSI-BB) ====================
+    const materialMap = new Map<string, any>();
+
+    materialSummary.forEach((item) => {
+      const key = item["Kode Item 物料代码"];
+      const existing = materialMap.get(key);
+
+      if (existing) {
+        existing["Total Butuh 总需求"] += item["Total Butuh 总需求"];
+        existing["Stok Tersedia 可用库存"] = item["Stok Tersedia 可用库存"];
+        existing["Kekurangan 短缺"] = Math.max(
+          0,
+          existing["Total Butuh 总需求"] - existing["Stok Tersedia 可用库存"],
+        );
+        existing["Sumber PO Count PO来源数"] += 1;
+
+        if (
+          !existing["Sumber PO List 来源PO列表"].includes(
+            item["Sumber PO 来源PO"],
+          )
+        ) {
+          existing["Sumber PO List 来源PO列表"].push(item["Sumber PO 来源PO"]);
+        }
+      } else {
+        materialMap.set(key, {
+          "Kode Item 物料代码": item["Kode Item 物料代码"],
+          "Nama Item 物料名称": item["Nama Item 物料名称"],
+          "Departemen 部门": item["Departemen 部门"],
+          "Level 层级": item["Level 层级"],
+          "Total Butuh 总需求": item["Total Butuh 总需求"],
+          "Stok Tersedia 可用库存": item["Stok Tersedia 可用库存"],
+          "Kekurangan 短缺": item["Kekurangan 短缺"],
+          "Status 状态":
+            item["Kekurangan 短缺"] > 0 ? "KURANG 不足" : "CUKUP 充足",
+          "Sumber PO Count PO来源数": 1,
+          "Sumber PO List 来源PO列表": [item["Sumber PO 来源PO"]],
+          "INJEKSI-BB Filter 注塑过滤": "DISERTAKAN 已包含",
+        });
+      }
+    });
+
+    const aggregatedData = Array.from(materialMap.values()).map((item) => ({
+      ...item,
+      "Sumber PO List 来源PO列表": item["Sumber PO List 来源PO列表"].join(", "),
+    }));
+
+    const ws4 = XLSX.utils.json_to_sheet(aggregatedData);
+    XLSX.utils.book_append_sheet(wb, ws4, "Aggregated Summary 聚合汇总");
+
+    // ==================== WORKSHEET 5: STATISTICS DENGAN FILTER INJEKSI-BB ====================
+    const totalAllBomItems = fullBomData.length;
+    const totalFinishedGoods = fullBomData.filter(
+      (item) => item["Level 层级"] === 0,
+    ).length;
+    const totalComponents = fullBomData.filter(
+      (item) => item["Level 层级"] > 0,
+    ).length;
+
+    const statisticsData = [
+      {
+        "Kategori 类别": "Total PO Dipilih 选择的PO总数",
+        "Nilai 值": selectedOrders.length,
+      },
+      {
+        "Kategori 类别": "Total Items PO PO项目总数",
+        "Nilai 值": selectedPOData.length,
+      },
+      {
+        "Kategori 类别":
+          "Total Semua Item BOM (Tanpa INJEKSI-BB) 所有BOM项目总数(不含注塑)",
+        "Nilai 值": totalAllBomItems,
+      },
+      {
+        "Kategori 类别": "Barang Jadi 成品数",
+        "Nilai 值": totalFinishedGoods,
+      },
+      {
+        "Kategori 类别": "Komponen (Tanpa INJEKSI-BB) 组件数(不含注塑)",
+        "Nilai 值": totalComponents,
+      },
+      {
+        "Kategori 类别": "Total INJEKSI-BB Items Dihapus 删除的注塑项目总数",
+        "Nilai 值": totalINJECTIONItemsRemoved,
+        备注: "Item dengan departemen 'INJEKSI-BB' tidak ditampilkan 注塑部门项目不显示",
+      },
+      {
+        "Kategori 类别":
+          "Total Material Items (Komponen tanpa INJEKSI-BB) 物料项目总数(不含注塑)",
+        "Nilai 值": materialSummary.length,
+      },
+      {
+        "Kategori 类别":
+          "Unique Material Items (Tanpa INJEKSI-BB) 唯一物料项目(不含注塑)",
+        "Nilai 值": aggregatedData.length,
+      },
+      {
+        "Kategori 类别":
+          "Total Kebutuhan Material (Tanpa INJEKSI-BB) 物料总需求(不含注塑)",
+        "Nilai 值": aggregatedData.reduce(
+          (sum, item) => sum + item["Total Butuh 总需求"],
+          0,
+        ),
+      },
+      {
+        "Kategori 类别":
+          "Total Kekurangan Material (Tanpa INJEKSI-BB) 物料总短缺(不含注塑)",
+        "Nilai 值": aggregatedData.reduce(
+          (sum, item) => sum + item["Kekurangan 短缺"],
+          0,
+        ),
+      },
+      {
+        "Kategori 类别": "Items dengan Stok Cukup 库存充足项目",
+        "Nilai 值": aggregatedData.filter(
+          (item) => item["Kekurangan 短缺"] === 0,
+        ).length,
+      },
+      {
+        "Kategori 类别": "Items dengan Stok Kurang 库存不足项目",
+        "Nilai 值": aggregatedData.filter((item) => item["Kekurangan 短缺"] > 0)
+          .length,
+      },
+      {
+        "Kategori 类别": "Total QTY dari Semua PO 所有PO总数量",
+        "Nilai 值": selectedPOData.reduce(
+          (sum, item) => sum + item["QTY 数量"],
+          0,
+        ),
+      },
+    ];
+
+    const ws5 = XLSX.utils.json_to_sheet(statisticsData);
+    XLSX.utils.book_append_sheet(wb, ws5, "Statistics 统计");
+
+    // ==================== WORKSHEET 6: INJEKSI-BB ITEMS SUMMARY ====================
+    const INJECTIONItemsData: any[] = [];
+
+    for (const order of selectedOrders) {
+      if (order.bom) {
+        const allItems = order.bom.flat;
+        const INJECTIONItems = allItems.filter(
+          (item) => isINJECTIONDepartment(item.Departemen) && item.Level > 0,
+        );
+
+        INJECTIONItems.forEach((item) => {
+          const needed =
+            item.Level === 0 ? order.order.QTY : item.Qty * order.order.QTY;
+
+          INJECTIONItemsData.push({
+            "No SPK 生产订单号": order.order.No_SPK,
+            "Kode Item 物料代码": item.ItemID,
+            "Nama Item 物料名称": item.ItemName,
+            "Departemen 部门": item.Departemen || "-",
+            "Jenis 类别": item.NamaJenis || "-",
+            "Level 层级": item.Level,
+            "Qty Per Unit 每单位数量": item.Qty,
+            "QTY PO 订单数量": order.order.QTY,
+            "Total Butuh 总需求": needed,
+            "Status Filter 过滤状态": "DIHAPUS DARI EXPORT 已从导出中删除",
+            "Keterangan 备注":
+              "Item INJEKSI-BB tidak ditampilkan dalam export 注塑项目不显示在导出中",
+          });
+        });
+      }
+    }
+
+    if (INJECTIONItemsData.length > 0) {
+      const ws6 = XLSX.utils.json_to_sheet(INJECTIONItemsData);
+      XLSX.utils.book_append_sheet(wb, ws6, "INJEKSI-BB Items 注塑项目");
+    }
+
+    // Generate filename
+    const timestamp = new Date().toISOString().split("T")[0];
+    const filename = `Production_Export_${timestamp}_${selectedOrders.length}_PO_Tanpa_INJECTION.xlsx`;
+
+    // Generate Excel file
+    XLSX.writeFile(wb, filename);
+
+    setTimeout(() => {
+      setExportProgress({
+        visible: false,
+        current: 0,
+        total: 0,
+        message: "",
       });
 
-      const aggregatedData = Array.from(materialMap.values()).map((item) => ({
-        ...item,
-        "Sumber PO List 来源PO列表":
-          item["Sumber PO List 来源PO列表"].join(", "),
-      }));
-
-      const ws4 = XLSX.utils.json_to_sheet(aggregatedData);
-      XLSX.utils.book_append_sheet(wb, ws4, "Aggregated Summary 聚合汇总");
-
-      // ==================== WORKSHEET 5: STATISTICS ====================
-      // Hitung statistik untuk semua level BOM
-      const totalAllBomItems = fullBomData.length;
-      const totalFinishedGoods = fullBomData.filter(
-        (item) => item["Level 层级"] === 0,
-      ).length;
-      const totalComponents = fullBomData.filter(
-        (item) => item["Level 层级"] > 0,
-      ).length;
-
-      const statisticsData = [
-        {
-          "Kategori 类别": "Total PO Dipilih 选择的PO总数",
-          "Nilai 值": selectedOrders.length,
-        },
-        {
-          "Kategori 类别": "Total Items PO PO项目总数",
-          "Nilai 值": selectedPOData.length,
-        },
-        {
-          "Kategori 类别": "Total Semua Item BOM 所有BOM项目总数",
-          "Nilai 值": totalAllBomItems,
-        },
-        {
-          "Kategori 类别": "Barang Jadi 成品数",
-          "Nilai 值": totalFinishedGoods,
-        },
-        {
-          "Kategori 类别": "Komponen 组件数",
-          "Nilai 值": totalComponents,
-        },
-        {
-          "Kategori 类别": "Total Material Items (Komponen) 物料项目总数",
-          "Nilai 值": materialSummary.length,
-        },
-        {
-          "Kategori 类别": "Unique Material Items 唯一物料项目",
-          "Nilai 值": aggregatedData.length,
-        },
-        {
-          "Kategori 类别": "Total Kebutuhan Material 物料总需求",
-          "Nilai 值": aggregatedData.reduce(
-            (sum, item) => sum + item["Total Butuh 总需求"],
-            0,
-          ),
-        },
-        {
-          "Kategori 类别": "Total Kekurangan Material 物料总短缺",
-          "Nilai 值": aggregatedData.reduce(
-            (sum, item) => sum + item["Kekurangan 短缺"],
-            0,
-          ),
-        },
-        {
-          "Kategori 类别": "Items dengan Stok Cukup 库存充足项目",
-          "Nilai 值": aggregatedData.filter(
-            (item) => item["Kekurangan 短缺"] === 0,
-          ).length,
-        },
-        {
-          "Kategori 类别": "Items dengan Stok Kurang 库存不足项目",
-          "Nilai 值": aggregatedData.filter(
-            (item) => item["Kekurangan 短缺"] > 0,
-          ).length,
-        },
-        {
-          "Kategori 类别": "Total QTY dari Semua PO 所有PO总数量",
-          "Nilai 值": selectedPOData.reduce(
-            (sum, item) => sum + item["QTY 数量"],
-            0,
-          ),
-        },
-      ];
-
-      const ws5 = XLSX.utils.json_to_sheet(statisticsData);
-      XLSX.utils.book_append_sheet(wb, ws5, "Statistics 统计");
-
-      // ==================== WORKSHEET 6: BOM TREE STRUCTURE ====================
-      // Tambahkan struktur tree BOM untuk referensi visual
-      const bomTreeData: any[] = [];
-
-      for (const order of selectedOrders) {
-        if (order.bom && order.stock) {
-          const isCombinedPO =
-            order.order.combinedItems && order.order.combinedItems.length > 1;
-
-          if (isCombinedPO) {
-            // Untuk PO gabungan
-            for (const combinedItem of order.order.combinedItems!) {
-              let treeBom: BomItem[] = [];
-
-              if (
-                order.bom.combinedBoms &&
-                order.bom.combinedBoms[combinedItem.Kode_Barang]
-              ) {
-                treeBom = order.bom.combinedBoms[combinedItem.Kode_Barang].tree;
-              } else {
-                treeBom = order.bom.tree;
-              }
-
-              // Fungsi rekursif untuk menelusuri tree
-              const traverseTree = (node: BomItem, depth: number) => {
-                const indent = "  ".repeat(depth);
-                const isFinishedGood = depth === 0;
-
-                bomTreeData.push({
-                  "No SPK 生产订单号": order.order.No_SPK,
-                  "PO Item 订单项目": combinedItem.Kode_Barang,
-                  "Level 层级": depth,
-                  "Struktur 结构": `${indent}${isFinishedGood ? "📦 " : "├ "}${node.ItemID}`,
-                  "Nama Item 物料名称": node.ItemName,
-                  "Tipe 类型": isFinishedGood
-                    ? "成品 Finished Good"
-                    : `Komponen Level ${depth} Component`,
-                  "Qty per Unit 每单位数量": node.Qty,
-                  "Total QTY Needed 总需求": isFinishedGood
-                    ? combinedItem.QTY
-                    : node.Qty * combinedItem.QTY,
-                });
-
-                // Rekursif untuk children
-                if (node.children && node.children.length > 0) {
-                  node.children.forEach((child) =>
-                    traverseTree(child, depth + 1),
-                  );
-                }
-              };
-
-              treeBom.forEach((node) => traverseTree(node, 0));
-            }
-          } else {
-            // Untuk PO biasa
-            const traverseTree = (node: BomItem, depth: number) => {
-              const indent = "  ".repeat(depth);
-              const isFinishedGood = depth === 0;
-
-              bomTreeData.push({
-                "No SPK 生产订单号": order.order.No_SPK,
-                "PO Item 订单项目": order.order.Kode_Barang,
-                "Level 层级": depth,
-                "Struktur 结构": `${indent}${isFinishedGood ? "📦 " : "├ "}${node.ItemID}`,
-                "Nama Item 物料名称": node.ItemName,
-                "Tipe 类型": isFinishedGood
-                  ? "成品 Finished Good"
-                  : `Komponen Level ${depth} Component`,
-                "Qty per Unit 每单位数量": node.Qty,
-                "Total QTY Needed 总需求": isFinishedGood
-                  ? order.order.QTY
-                  : node.Qty * order.order.QTY,
-              });
-
-              // Rekursif untuk children
-              if (node.children && node.children.length > 0) {
-                node.children.forEach((child) =>
-                  traverseTree(child, depth + 1),
-                );
-              }
-            };
-
-            order.bom.tree.forEach((node) => traverseTree(node, 0));
-          }
-        }
-      }
-
-      const ws6 = XLSX.utils.json_to_sheet(bomTreeData);
-      XLSX.utils.book_append_sheet(wb, ws6, "BOM Tree Structure BOM树状结构");
-
-      // Generate filename
-      const timestamp = new Date().toISOString().split("T")[0];
-      const filename = `Production_Export_${timestamp}_${selectedOrders.length}_PO.xlsx`;
-
-      // Generate Excel file
-      XLSX.writeFile(wb, filename);
-
-      setTimeout(() => {
-        setExportProgress({
-          visible: false,
-          current: 0,
-          total: 0,
-          message: "",
-        });
-
-        alert(
-          `✅ Export berhasil!\nFile: ${filename}\n\n` +
-            `Total PO: ${selectedOrders.length}\n` +
-            `Total Items PO: ${selectedPOData.length}\n` +
-            `Total All BOM Items: ${totalAllBomItems}\n` +
-            `Barang Jadi: ${totalFinishedGoods}\n` +
-            `Komponen: ${totalComponents}`,
-        );
-      }, 1000);
-    } catch (error) {
-      console.error("❌ [EXPORT] Error dalam export:", error);
-      alert("Gagal mengekspor data. Silakan coba lagi. 导出失败，请重试");
-      setExportProgress({ visible: false, current: 0, total: 0, message: "" });
-    } finally {
-      setExportLoading(false);
-    }
-  };
-  // ==================== FUNGSI UTILITY TAMBAHAN ====================
+      alert(
+        `✅ Export berhasil! (Tanpa INJEKSI-BB)\nFile: ${filename}\n\n` +
+          `Total PO: ${selectedOrders.length}\n` +
+          `Total Items PO: ${selectedPOData.length}\n` +
+          `Total All BOM Items (Tanpa INJEKSI-BB): ${totalAllBomItems}\n` +
+          `Barang Jadi: ${totalFinishedGoods}\n` +
+          `Komponen (Tanpa INJEKSI-BB): ${totalComponents}\n` +
+          `INJEKSI-BB Items Dihapus: ${totalINJECTIONItemsRemoved}\n\n` +
+          `⚠️ Item dengan departemen 'INJEKSI-BB' tidak ditampilkan dalam export.`,
+      );
+    }, 1000);
+  } catch (error) {
+    console.error("❌ [EXPORT] Error dalam export:", error);
+    alert("Gagal mengekspor data. Silakan coba lagi. 导出失败，请重试");
+    setExportProgress({ visible: false, current: 0, total: 0, message: "" });
+  } finally {
+    setExportLoading(false);
+  }
+};
 
   const OrderRow = ({
     plan,
