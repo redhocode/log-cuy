@@ -3397,11 +3397,7 @@ const exportSelectedToExcel = async (): Promise<void> => {
       // Cek berbagai kemungkinan penulisan INJEKSI-BB
       return (
         deptString.includes("INJEKSI-BB") ||
-        deptString.includes("injeksi") ||
-        deptString.includes("inj") ||
-        deptString.includes("injek") ||
-        deptString === "INJEKSI-BB" ||
-        deptString === "injeksi"
+        deptString === "INJEKSI-BB"
       );
     };
 
@@ -3848,7 +3844,7 @@ const exportSelectedToExcel = async (): Promise<void> => {
 
     // Generate filename
     const timestamp = new Date().toISOString().split("T")[0];
-    const filename = `Production_Export_${timestamp}_${selectedOrders.length}_PO_Tanpa_INJECTION.xlsx`;
+    const filename = `Production_Export_${timestamp}_${selectedOrders.length}.xlsx`;
 
     // Generate Excel file
     XLSX.writeFile(wb, filename);
