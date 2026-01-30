@@ -3002,18 +3002,17 @@ const previewExport = async (): Promise<void> => {
       `📊 [PREVIEW] Memulai preview ${selectedOrders.length} PO terpilih`,
     );
 
-    // Fungsi filter INJEKSI-BB yang lebih kuat
-    const isINJECTIONDepartment = (departemen?: string): boolean => {
-      if (!departemen) return false;
-      // Normalisasi: ubah ke string, hilangkan spasi, lowercase
-      const deptString = String(departemen).trim().toLowerCase();
-      // Cek berbagai kemungkinan penulisan INJEKSI-BB
-      return (
-        deptString.includes("INJEKSI-BB") ||
-        deptString.includes("injeksi-bb") 
-        // deptString.includes("inj")
-      );
-    };
+// 过滤 INJEKSI-BB 部门的函数
+const isINJECTIONDepartment = (departemen?: string): boolean => {
+  if (!departemen) return false;
+  // Normalisasi: ubah ke string, hilangkan spasi, lowercase
+  const deptString = String(departemen).trim().toLowerCase();
+  // Cek berbagai kemungkinan penulisan INJEKSI-BB
+  return (
+    deptString.includes("INJEKSI-BB") ||
+    deptString === "INJEKSI-BB"
+  );
+};
 
     setExportProgress({
       visible: true,
@@ -3390,48 +3389,52 @@ const exportSelectedToExcel = async (): Promise<void> => {
     const wb = XLSX.utils.book_new();
 
     // ==================== FUNGSI FILTER INJEKSI-BB YANG LEBIH KUAT ====================
-    const isINJECTIONDepartment = (departemen?: string): boolean => {
-      if (!departemen) return false;
-      // Normalisasi: ubah ke string, hilangkan spasi, lowercase
-      const deptString = String(departemen).trim().toLowerCase();
-      // Cek berbagai kemungkinan penulisan INJEKSI-BB
-      return (
-        deptString.includes("INJEKSI-BB") ||
-        deptString === "INJEKSI-BB"
-      );
-    };
+  // 过滤 INJEKSI-BB 部门的函数
+const isINJECTIONDepartment = (departemen?: string): boolean => {
+  if (!departemen) return false;
+  // Normalisasi: ubah ke string, hilangkan spasi, lowercase
+  const deptString = String(departemen).trim().toLowerCase();
+  // Cek berbagai kemungkinan penulisan INJEKSI-BB
+  return (
+    deptString.includes("INJEKSI-BB") ||
+    deptString === "INJEKSI-BB"
+  );
+};
 
     // ==================== WORKSHEET 1: DETAIL PO ====================
-    const selectedPOData = selectedOrders.flatMap((order) => {
-      const isCombinedPO =
-        order.order.combinedItems && order.order.combinedItems.length > 1;
+ // Di dalam exportSelectedToExcel, pada bagian WORKSHEET 1: DETAIL PO
+const selectedPOData = selectedOrders.flatMap((order) => {
+  const isCombinedPO = order.order.combinedItems && order.order.combinedItems.length > 1;
 
-      if (isCombinedPO) {
-        return order.order.combinedItems!.map((item, idx) => ({
-          "No SPK 生产订单号": order.order.No_SPK,
-          "Tanggal 日期": order.order.Tanggal_Order,
-          "Nama PO 生产订单名称": item.Nama_PO,
-          "Kode Barang 物料代码": item.Kode_Barang,
-          "QTY 数量": item.QTY,
-          "Jenis 类型": "Bagian PO Gabungan 合并PO部分",
-          "Urutan 顺序": idx + 1,
-          "Total Items dalam PO 总数": order.order.combinedItems!.length,
-        }));
-      } else {
-        return [
-          {
-            "No SPK 生产订单号": order.order.No_SPK,
-            "Tanggal 日期": order.order.Tanggal_Order,
-            "Nama PO 生产订单名称": order.order.Nama_PO,
-            "Kode Barang 物料代码": order.order.Kode_Barang,
-            "QTY 数量": order.order.QTY,
-            "Jenis 类型": "PO Biasa 普通PO",
-            "Urutan 顺序": 1,
-            "Total Items dalam PO 总数": 1,
-          },
-        ];
-      }
-    });
+  if (isCombinedPO) {
+    return order.order.combinedItems!.map((item, idx) => ({
+      "No SPK 生产订单号": order.order.No_SPK,
+      "Tanggal 日期": order.order.Tanggal_Order,
+      "Nama PO 生产订单名称": item.Nama_PO,
+      "Kode Barang 物料代码": item.Kode_Barang,
+      "QTY per Item 每项数量": item.QTY, // PERBAIKAN: Tampilkan QTY per item
+      "QTY Total Gabungan 合并总数量": order.order.QTY, // QTY total gabungan (optional)
+      "Jenis 类型": "Bagian PO Gabungan 合并PO部分",
+      "Urutan 顺序": idx + 1,
+      "Total Items dalam PO 总数": order.order.combinedItems!.length,
+      "Catatan 备注": `Gabungan ${order.order.combinedItems!.length} item PO`,
+    }));
+  } else {
+    return [
+      {
+        "No SPK 生产订单号": order.order.No_SPK,
+        "Tanggal 日期": order.order.Tanggal_Order,
+        "Nama PO 生产订单名称": order.order.Nama_PO,
+        "Kode Barang 物料代码": order.order.Kode_Barang,
+        "QTY per Item 每项数量": order.order.QTY,
+        "QTY Total Gabungan 合并总数量": order.order.QTY, // Sama untuk PO biasa
+        "Jenis 类型": "PO Biasa 普通PO",
+        "Urutan 顺序": 1,
+        "Total Items dalam PO 总数": 1,
+      },
+    ];
+  }
+});
 
     const ws1 = XLSX.utils.json_to_sheet(selectedPOData);
     XLSX.utils.book_append_sheet(wb, ws1, "Detail PO PO详情");
@@ -3459,17 +3462,18 @@ const exportSelectedToExcel = async (): Promise<void> => {
             }
 
             // FILTER KETAT: Hapus item dengan departemen INJEKSI-BB
-            const filteredBomItems = bomForThisItem.filter((item) => {
-              // Untuk barang jadi (Level 0), selalu tampilkan
-              if (item.Level === 0) return true;
-              // Untuk komponen, filter berdasarkan departemen
-              const isINJECTION = isINJECTIONDepartment(item.Departemen);
-              if (isINJECTION) {
-                totalINJECTIONItemsRemoved++;
-                return false;
-              }
-              return true;
-            });
+         // 在 Full BOM Structure 工作中过滤
+const filteredBomItems = bomForThisItem.filter((item) => {
+  // Untuk barang jadi (Level 0), selalu tampilkan
+  if (item.Level === 0) return true;
+  // Untuk komponen, filter berdasarkan departemen
+  const isINJECTION = isINJECTIONDepartment(item.Departemen);
+  if (isINJECTION) {
+    totalINJECTIONItemsRemoved++;
+    return false;
+  }
+  return true;
+});
 
             filteredBomItems.forEach((item) => {
               const needed =
@@ -3578,232 +3582,328 @@ const exportSelectedToExcel = async (): Promise<void> => {
     const ws2 = XLSX.utils.json_to_sheet(fullBomData);
     XLSX.utils.book_append_sheet(wb, ws2, "Full BOM Structure BOM完整结构");
 
-    // ==================== WORKSHEET 3: MATERIAL SUMMARY (TANPA INJEKSI-BB) ====================
-    const materialSummary: any[] = [];
+  
 
-    for (const order of selectedOrders) {
-      if (order.bom && order.stock) {
-        const isCombinedPO =
-          order.order.combinedItems && order.order.combinedItems.length > 1;
+// ==================== WORKSHEET 3: MATERIAL SUMMARY (TANPA INJEKSI-BB) - DIGABUNGKAN PER ITEM ====================
+const materialMapForSummary = new Map<string, any>();
 
-        if (isCombinedPO) {
-          for (const combinedItem of order.order.combinedItems!) {
-            let bomForThisItem: BomItem[] = [];
-            if (
-              order.bom.combinedBoms &&
-              order.bom.combinedBoms[combinedItem.Kode_Barang]
-            ) {
-              bomForThisItem =
-                order.bom.combinedBoms[combinedItem.Kode_Barang].flat;
-            } else {
-              bomForThisItem = order.bom.flat;
-            }
+for (const order of selectedOrders) {
+  if (order.bom && order.stock) {
+    const isCombinedPO = order.order.combinedItems && order.order.combinedItems.length > 1;
 
-            // Filter hanya komponen (Level > 0) dan bukan INJEKSI-BB
-            const componentsOnly = bomForThisItem.filter(
-              (item) =>
-                item.Level > 0 && !isINJECTIONDepartment(item.Departemen),
+    if (isCombinedPO) {
+      for (const combinedItem of order.order.combinedItems!) {
+        let bomForThisItem: BomItem[] = [];
+        if (
+          order.bom.combinedBoms &&
+          order.bom.combinedBoms[combinedItem.Kode_Barang]
+        ) {
+          bomForThisItem = order.bom.combinedBoms[combinedItem.Kode_Barang].flat;
+        } else {
+          bomForThisItem = order.bom.flat;
+        }
+
+        // Filter hanya komponen (Level > 0) dan bukan INJEKSI-BB
+        const componentsOnly = bomForThisItem.filter(
+          (item) =>
+            item.Level > 0 && !isINJECTIONDepartment(item.Departemen),
+        );
+
+        componentsOnly.forEach((item) => {
+          const needed = item.Qty * combinedItem.QTY;
+          const stockItem = order.stock?.find(
+            (s) => s.itemid === item.ItemID,
+          );
+          const availableStock = stockItem?.stockAkhir || 0;
+          const shortage = Math.max(0, needed - availableStock);
+          const itemKey = item.ItemID;
+
+          // Check if item already exists in map
+          const existingItem = materialMapForSummary.get(itemKey);
+          
+          if (existingItem) {
+            // Jika item sudah ada, tambahkan kebutuhan dan update stok
+            existingItem["Total Butuh 总需求"] += needed;
+            existingItem["Kekurangan 短缺"] = Math.max(
+              0,
+              existingItem["Total Butuh 总需求"] - existingItem["Stok Tersedia 可用库存"]
             );
-
-            componentsOnly.forEach((item) => {
-              const needed = item.Qty * combinedItem.QTY;
-              const stockItem = order.stock?.find(
-                (s) => s.itemid === item.ItemID,
-              );
-              const availableStock = stockItem?.stockAkhir || 0;
-              const shortage = Math.max(0, needed - availableStock);
-
-              materialSummary.push({
+            existingItem["Status 状态"] = existingItem["Kekurangan 短缺"] > 0 ? "KURANG 不足" : "CUKUP 充足";
+            
+            // Tambahkan sumber PO ke daftar
+            if (!existingItem["Sumber PO List 来源PO列表"].some((source: any) => 
+              source["Sumber PO 来源PO"] === combinedItem.Kode_Barang && 
+              source["No SPK 生产订单号"] === order.order.No_SPK
+            )) {
+              existingItem["Sumber PO List 来源PO列表"].push({
                 "No SPK 生产订单号": order.order.No_SPK,
                 "Sumber PO 来源PO": combinedItem.Kode_Barang,
                 "Nama Sumber PO 来源PO名称": combinedItem.Nama_PO,
-                "Kode Item 物料代码": item.ItemID,
-                "Nama Item 物料名称": item.ItemName,
-                "Departemen 部门": item.Departemen || "-",
-                "Level 层级": item.Level,
-                "Qty Per Unit 每单位数量": item.Qty,
-                "QTY PO 订单数量": combinedItem.QTY,
-                "Total Butuh 总需求": needed,
-                "Stok Tersedia 可用库存": availableStock,
-                "Kekurangan 短缺": shortage,
-                "Status 状态": shortage > 0 ? "KURANG 不足" : "CUKUP 充足",
-                "Jenis PO PO类型": "Gabungan 合并",
-                "INJEKSI-BB Filter 注塑过滤": "DISERTAKAN 已包含",
+                "QTY PO per Item 每项PO数量": combinedItem.QTY,
+                "Kebutuhan untuk PO ini 此PO需求": needed,
               });
-            });
-          }
-        } else {
-          // Filter hanya komponen (Level > 0) dan bukan INJEKSI-BB
-          const componentsOnly = order.bom.flat.filter(
-            (item) => item.Level > 0 && !isINJECTIONDepartment(item.Departemen),
-          );
-
-          componentsOnly.forEach((item) => {
-            const needed = item.Qty * order.order.QTY;
-            const stockItem = order.stock?.find(
-              (s) => s.itemid === item.ItemID,
-            );
-            const availableStock = stockItem?.stockAkhir || 0;
-            const shortage = Math.max(0, needed - availableStock);
-
-            materialSummary.push({
-              "No SPK 生产订单号": order.order.No_SPK,
-              "Sumber PO 来源PO": order.order.Kode_Barang,
-              "Nama Sumber PO 来源PO名称": order.order.Nama_PO,
+            }
+            
+            existingItem["Jumlah PO Menggunakan 使用PO数"] = existingItem["Sumber PO List 来源PO列表"].length;
+          } else {
+            // Buat entry baru
+            materialMapForSummary.set(itemKey, {
               "Kode Item 物料代码": item.ItemID,
               "Nama Item 物料名称": item.ItemName,
               "Departemen 部门": item.Departemen || "-",
               "Level 层级": item.Level,
               "Qty Per Unit 每单位数量": item.Qty,
-              "QTY PO 订单数量": order.order.QTY,
               "Total Butuh 总需求": needed,
               "Stok Tersedia 可用库存": availableStock,
               "Kekurangan 短缺": shortage,
               "Status 状态": shortage > 0 ? "KURANG 不足" : "CUKUP 充足",
-              "Jenis PO PO类型": "Biasa 普通",
+              "Sumber PO List 来源PO列表": [{
+                "No SPK 生产订单号": order.order.No_SPK,
+                "Sumber PO 来源PO": combinedItem.Kode_Barang,
+                "Nama Sumber PO 来源PO名称": combinedItem.Nama_PO,
+                "QTY PO per Item 每项PO数量": combinedItem.QTY,
+                "Kebutuhan untuk PO ini 此PO需求": needed,
+              }],
+              "Jumlah PO Menggunakan 使用PO数": 1,
               "INJEKSI-BB Filter 注塑过滤": "DISERTAKAN 已包含",
             });
-          });
-        }
-      }
-    }
-
-    const ws3 = XLSX.utils.json_to_sheet(materialSummary);
-    XLSX.utils.book_append_sheet(wb, ws3, "Material Summary 物料汇总");
-
-    // ==================== WORKSHEET 4: AGGREGATED MATERIAL NEEDS (TANPA INJEKSI-BB) ====================
-    const materialMap = new Map<string, any>();
-
-    materialSummary.forEach((item) => {
-      const key = item["Kode Item 物料代码"];
-      const existing = materialMap.get(key);
-
-      if (existing) {
-        existing["Total Butuh 总需求"] += item["Total Butuh 总需求"];
-        existing["Stok Tersedia 可用库存"] = item["Stok Tersedia 可用库存"];
-        existing["Kekurangan 短缺"] = Math.max(
-          0,
-          existing["Total Butuh 总需求"] - existing["Stok Tersedia 可用库存"],
-        );
-        existing["Sumber PO Count PO来源数"] += 1;
-
-        if (
-          !existing["Sumber PO List 来源PO列表"].includes(
-            item["Sumber PO 来源PO"],
-          )
-        ) {
-          existing["Sumber PO List 来源PO列表"].push(item["Sumber PO 来源PO"]);
-        }
-      } else {
-        materialMap.set(key, {
-          "Kode Item 物料代码": item["Kode Item 物料代码"],
-          "Nama Item 物料名称": item["Nama Item 物料名称"],
-          "Departemen 部门": item["Departemen 部门"],
-          "Level 层级": item["Level 层级"],
-          "Total Butuh 总需求": item["Total Butuh 总需求"],
-          "Stok Tersedia 可用库存": item["Stok Tersedia 可用库存"],
-          "Kekurangan 短缺": item["Kekurangan 短缺"],
-          "Status 状态":
-            item["Kekurangan 短缺"] > 0 ? "KURANG 不足" : "CUKUP 充足",
-          "Sumber PO Count PO来源数": 1,
-          "Sumber PO List 来源PO列表": [item["Sumber PO 来源PO"]],
-          "INJEKSI-BB Filter 注塑过滤": "DISERTAKAN 已包含",
+          }
         });
       }
+    } else {
+      // Filter hanya komponen (Level > 0) dan bukan INJEKSI-BB
+      const componentsOnly = order.bom.flat.filter(
+        (item) => item.Level > 0 && !isINJECTIONDepartment(item.Departemen),
+      );
+
+      componentsOnly.forEach((item) => {
+        const needed = item.Qty * order.order.QTY;
+        const stockItem = order.stock?.find(
+          (s) => s.itemid === item.ItemID,
+        );
+        const availableStock = stockItem?.stockAkhir || 0;
+        const shortage = Math.max(0, needed - availableStock);
+        const itemKey = item.ItemID;
+
+        // Check if item already exists in map
+        const existingItem = materialMapForSummary.get(itemKey);
+        
+        if (existingItem) {
+          // Jika item sudah ada, tambahkan kebutuhan dan update stok
+          existingItem["Total Butuh 总需求"] += needed;
+          existingItem["Kekurangan 短缺"] = Math.max(
+            0,
+            existingItem["Total Butuh 总需求"] - existingItem["Stok Tersedia 可用库存"]
+          );
+          existingItem["Status 状态"] = existingItem["Kekurangan 短缺"] > 0 ? "KURANG 不足" : "CUKUP 充足";
+          
+          // Tambahkan sumber PO ke daftar
+          if (!existingItem["Sumber PO List 来源PO列表"].some((source: any) => 
+            source["Sumber PO 来源PO"] === order.order.Kode_Barang && 
+            source["No SPK 生产订单号"] === order.order.No_SPK
+          )) {
+            existingItem["Sumber PO List 来源PO列表"].push({
+              "No SPK 生产订单号": order.order.No_SPK,
+              "Sumber PO 来源PO": order.order.Kode_Barang,
+              "Nama Sumber PO 来源PO名称": order.order.Nama_PO,
+              "QTY PO per Item 每项PO数量": order.order.QTY,
+              "Kebutuhan untuk PO ini 此PO需求": needed,
+            });
+          }
+          
+          existingItem["Jumlah PO Menggunakan 使用PO数"] = existingItem["Sumber PO List 来源PO列表"].length;
+        } else {
+          // Buat entry baru
+          materialMapForSummary.set(itemKey, {
+            "Kode Item 物料代码": item.ItemID,
+            "Nama Item 物料名称": item.ItemName,
+            "Departemen 部门": item.Departemen || "-",
+            "Level 层级": item.Level,
+            "Qty Per Unit 每单位数量": item.Qty,
+            "Total Butuh 总需求": needed,
+            "Stok Tersedia 可用库存": availableStock,
+            "Kekurangan 短缺": shortage,
+            "Status 状态": shortage > 0 ? "KURANG 不足" : "CUKUP 充足",
+            "Sumber PO List 来源PO列表": [{
+              "No SPK 生产订单号": order.order.No_SPK,
+              "Sumber PO 来源PO": order.order.Kode_Barang,
+              "Nama Sumber PO 来源PO名称": order.order.Nama_PO,
+              "QTY PO per Item 每项PO数量": order.order.QTY,
+              "Kebutuhan untuk PO ini 此PO需求": needed,
+            }],
+            "Jumlah PO Menggunakan 使用PO数": 1,
+            "INJEKSI-BB Filter 注塑过滤": "DISERTAKAN 已包含",
+          });
+        }
+      });
+    }
+  }
+}
+
+// Konversi map ke array untuk Material Summary
+const materialSummaryGrouped = Array.from(materialMapForSummary.values());
+
+// Format untuk Excel dengan daftar sumber PO sebagai string
+const materialSummaryFormatted = materialSummaryGrouped.map(item => ({
+  ...item,
+  "Sumber PO List 来源PO列表": item["Sumber PO List 来源PO列表"]
+    .map((source: any) => `${source["Sumber PO 来源PO"]} (SPK: ${source["No SPK 生产订单号"]})`)
+    .join(", "),
+  "Detail Kebutuhan per PO 每PO需求详情": item["Sumber PO List 来源PO列表"]
+    .map((source: any, index: number) => 
+      `PO${index + 1}: ${source["Sumber PO 来源PO"]} (QTY: ${source["QTY PO per Item 每项PO数量"]}) = ${source["Kebutuhan untuk PO ini 此PO需求"]}`
+    )
+    .join(" | "),
+}));
+
+const ws3 = XLSX.utils.json_to_sheet(materialSummaryFormatted);
+XLSX.utils.book_append_sheet(wb, ws3, "Material Summary 物料汇总");
+
+ 
+
+  // ==================== WORKSHEET 4: AGGREGATED MATERIAL NEEDS (TANPA INJEKSI-BB) ====================
+const materialMap = new Map<string, any>();
+
+// Pertama, kumpulkan semua data dari materialSummary dengan detail per item PO
+    materialMap.forEach((item) => {
+  const key = item["Kode Item 物料代码"];
+  const existing = materialMap.get(key);
+
+  if (existing) {
+    // Gabungkan total kebutuhan
+    existing["Total Butuh 总需求"] += item["Total Butuh 总需求"];
+    
+    // Update kekurangan berdasarkan stok yang tersedia
+    existing["Kekurangan 短缺"] = Math.max(
+      0,
+      existing["Total Butuh 总需求"] - existing["Stok Tersedia 可用库存"],
+    );
+    
+    // Update status
+    existing["Status 状态"] = existing["Kekurangan 短缺"] > 0 ? "KURANG 不足" : "CUKUP 充足";
+    
+    // Tambahkan sumber PO ke daftar
+    if (!existing["Sumber PO List 来源PO列表"].includes(item["Sumber PO 来源PO"])) {
+      existing["Sumber PO List 来源PO列表"].push(item["Sumber PO 来源PO"]);
+    }
+    
+    // Hitung jumlah PO unik
+    existing["Sumber PO Count PO来源数"] = existing["Sumber PO List 来源PO列表"].length;
+    
+    // Simpan detail per PO untuk kebutuhan masing-masing
+    existing["Detail Kebutuhan per PO 每PO需求详情"].push({
+      "Sumber PO 来源PO": item["Sumber PO 来源PO"],
+      "Nama PO PO名称": item["Nama Sumber PO 来源PO名称"],
+      "QTY PO 订单数量": item["QTY PO per Item 每项PO数量"],
+      "Kebutuhan untuk PO ini 此PO需求": item["Total Butuh 总需求"],
     });
+  } else {
+    // Buat entry baru dengan struktur yang lengkap
+    materialMap.set(key, {
+      "Kode Item 物料代码": item["Kode Item 物料代码"],
+      "Nama Item 物料名称": item["Nama Item 物料名称"],
+      "Departemen 部门": item["Departemen 部门"],
+      "Level 层级": item["Level 层级"],
+      "Qty Per Unit 每单位数量": item["Qty Per Unit 每单位数量"],
+      "Total Butuh 总需求": item["Total Butuh 总需求"],
+      "Stok Tersedia 可用库存": item["Stok Tersedia 可用库存"],
+      "Kekurangan 短缺": item["Kekurangan 短缺"],
+      "Status 状态": item["Status 状态"],
+      "Sumber PO Count PO来源数": 1,
+      "Sumber PO List 来源PO列表": [item["Sumber PO 来源PO"]],
+      "Detail Kebutuhan per PO 每PO需求详情": [{
+        "Sumber PO 来源PO": item["Sumber PO 来源PO"],
+        "Nama PO PO名称": item["Nama Sumber PO 来源PO名称"],
+        "QTY PO 订单数量": item["QTY PO per Item 每项PO数量"],
+        "Kebutuhan untuk PO ini 此PO需求": item["Total Butuh 总需求"],
+      }],
+      "INJEKSI-BB Filter 注塑过滤": "DISERTAKAN 已包含",
+    });
+  }
+});
 
-    const aggregatedData = Array.from(materialMap.values()).map((item) => ({
-      ...item,
-      "Sumber PO List 来源PO列表": item["Sumber PO List 来源PO列表"].join(", "),
-    }));
+// ==================== WORKSHEET 4: AGGREGATED MATERIAL NEEDS (TANPA INJEKSI-BB) ====================
+// Gunakan materialMapForSummary yang sudah dibuat sebelumnya
+const aggregatedData = Array.from(materialMapForSummary.values()).map((item: any) => {
+  // Buat string ringkasan PO
+  const poSummary = item["Sumber PO List 来源PO列表"]
+    .map((source: any) => source["Sumber PO 来源PO"])
+    .join(", ");
+  
+  // Hitung total QTY PO yang menggunakan item ini
+  const totalQtyPO = item["Sumber PO List 来源PO列表"]
+    .reduce((sum: number, source: any) => sum + source["QTY PO per Item 每项PO数量"], 0);
+  
+  // Hitung rata-rata Qty Per Unit (jika berbeda antar PO)
+  const avgQtyPerUnit = item["Qty Per Unit 每单位数量"]; // Gunakan yang pertama sebagai referensi
+  
+  return {
+    "Kode Item 物料代码": item["Kode Item 物料代码"],
+    "Nama Item 物料名称": item["Nama Item 物料名称"],
+    "Departemen 部门": item["Departemen 部门"],
+    "Level 层级": item["Level 层级"],
+    "Qty Per Unit (Rata-rata) 每单位数量(平均)": avgQtyPerUnit,
+    "Total Butuh 总需求": item["Total Butuh 总需求"],
+    "Stok Tersedia 可用库存": item["Stok Tersedia 可用库存"],
+    "Kekurangan 短缺": item["Kekurangan 短缺"],
+    "Status 状态": item["Status 状态"],
+    "Jumlah PO Menggunakan 使用PO数": item["Jumlah PO Menggunakan 使用PO数"],
+    "Total QTY dari Semua PO 所有PO总数量": totalQtyPO,
+    "Daftar Sumber PO 来源PO列表": poSummary,
+    "Rata-rata Kebutuhan per PO 每PO平均需求": item["Jumlah PO Menggunakan 使用PO数"] > 0 
+      ? Math.round(item["Total Butuh 总需求"] / item["Jumlah PO Menggunakan 使用PO数"])
+      : 0,
+  };
+});
 
-    const ws4 = XLSX.utils.json_to_sheet(aggregatedData);
-    XLSX.utils.book_append_sheet(wb, ws4, "Aggregated Summary 聚合汇总");
+const ws4 = XLSX.utils.json_to_sheet(aggregatedData);
+XLSX.utils.book_append_sheet(wb, ws4, "Aggregated Summary 聚合汇总");
+   
 
-    // ==================== WORKSHEET 5: STATISTICS DENGAN FILTER INJEKSI-BB ====================
-    const totalAllBomItems = fullBomData.length;
-    const totalFinishedGoods = fullBomData.filter(
-      (item) => item["Level 层级"] === 0,
-    ).length;
-    const totalComponents = fullBomData.filter(
-      (item) => item["Level 层级"] > 0,
-    ).length;
+// ==================== WORKSHEET 5: CONSOLIDATED MATERIAL NEEDS ====================
+const consolidatedMaterialData: any[] = [];
 
-    const statisticsData = [
-      {
-        "Kategori 类别": "Total PO Dipilih 选择的PO总数",
-        "Nilai 值": selectedOrders.length,
-      },
-      {
-        "Kategori 类别": "Total Items PO PO项目总数",
-        "Nilai 值": selectedPOData.length,
-      },
-      {
-        "Kategori 类别":
-          "Total Semua Item BOM (Tanpa INJEKSI-BB) 所有BOM项目总数(不含注塑)",
-        "Nilai 值": totalAllBomItems,
-      },
-      {
-        "Kategori 类别": "Barang Jadi 成品数",
-        "Nilai 值": totalFinishedGoods,
-      },
-      {
-        "Kategori 类别": "Komponen (Tanpa INJEKSI-BB) 组件数(不含注塑)",
-        "Nilai 值": totalComponents,
-      },
-      {
-        "Kategori 类别": "Total INJEKSI-BB Items Dihapus 删除的注塑项目总数",
-        "Nilai 值": totalINJECTIONItemsRemoved,
-        备注: "Item dengan departemen 'INJEKSI-BB' tidak ditampilkan 注塑部门项目不显示",
-      },
-      {
-        "Kategori 类别":
-          "Total Material Items (Komponen tanpa INJEKSI-BB) 物料项目总数(不含注塑)",
-        "Nilai 值": materialSummary.length,
-      },
-      {
-        "Kategori 类别":
-          "Unique Material Items (Tanpa INJEKSI-BB) 唯一物料项目(不含注塑)",
-        "Nilai 值": aggregatedData.length,
-      },
-      {
-        "Kategori 类别":
-          "Total Kebutuhan Material (Tanpa INJEKSI-BB) 物料总需求(不含注塑)",
-        "Nilai 值": aggregatedData.reduce(
-          (sum, item) => sum + item["Total Butuh 总需求"],
-          0,
-        ),
-      },
-      {
-        "Kategori 类别":
-          "Total Kekurangan Material (Tanpa INJEKSI-BB) 物料总短缺(不含注塑)",
-        "Nilai 值": aggregatedData.reduce(
-          (sum, item) => sum + item["Kekurangan 短缺"],
-          0,
-        ),
-      },
-      {
-        "Kategori 类别": "Items dengan Stok Cukup 库存充足项目",
-        "Nilai 值": aggregatedData.filter(
-          (item) => item["Kekurangan 短缺"] === 0,
-        ).length,
-      },
-      {
-        "Kategori 类别": "Items dengan Stok Kurang 库存不足项目",
-        "Nilai 值": aggregatedData.filter((item) => item["Kekurangan 短缺"] > 0)
-          .length,
-      },
-      {
-        "Kategori 类别": "Total QTY dari Semua PO 所有PO总数量",
-        "Nilai 值": selectedPOData.reduce(
-          (sum, item) => sum + item["QTY 数量"],
-          0,
-        ),
-      },
-    ];
+// Gunakan materialMap yang sudah dibuat sebelumnya
+materialMap.forEach((item, itemCode) => {
+  // Hitung total kebutuhan dari semua PO
+  const totalNeeded = item["Total Butuh 总需求"];
+  const availableStock = item["Stok Tersedia 可用库存"];
+  const shortage = item["Kekurangan 短缺"];
+  
+  // Hitung jumlah PO yang menggunakan komponen ini
+  const poCount = item["Sumber PO List 来源PO列表"].length;
+  
+  // Buat string ringkasan PO
+  const poSummary = item["Sumber PO List 来源PO列表"].join(", ");
+  
+  // Parse detail per PO untuk perhitungan
+  const poDetails = item["Detail Kebutuhan per PO 每PO需求详情"];
+  
+  // Buat string detail per PO
+  let poDetailString = "";
+  if (Array.isArray(poDetails)) {
+    poDetails.forEach((detail: any, index: number) => {
+      poDetailString += `PO${index + 1}: ${detail["Sumber PO 来源PO"]} = ${detail["Kebutuhan untuk PO ini 此PO需求"]}\n`;
+    });
+  }
 
-    const ws5 = XLSX.utils.json_to_sheet(statisticsData);
-    XLSX.utils.book_append_sheet(wb, ws5, "Statistics 统计");
+  consolidatedMaterialData.push({
+    "Kode Item 物料代码": itemCode,
+    "Nama Item 物料名称": item["Nama Item 物料名称"],
+    "Departemen 部门": item["Departemen 部门"],
+    "Jumlah PO Menggunakan 使用PO数": poCount,
+    "Daftar PO 来源PO列表": poSummary,
+    "Total Kebutuhan 总需求": totalNeeded,
+    "Stok Tersedia 可用库存": availableStock,
+    "Kekurangan 短缺": shortage,
+    "Status 状态": shortage > 0 ? "KURANG 不足" : "CUKUP 充足",
+    "Detail Kebutuhan per PO 每PO需求详情": poDetailString.trim(),
+    "Qty Per Unit Rata-rata 平均每单位数量": item["Qty Per Unit 每单位数量"], // Rata-rata jika berbeda
+  });
+});
+
+const ws5 = XLSX.utils.json_to_sheet(consolidatedMaterialData);
+XLSX.utils.book_append_sheet(wb, ws5, "Consolidated Material 合并物料需求");
 
     // ==================== WORKSHEET 6: INJEKSI-BB ITEMS SUMMARY ====================
     const INJECTIONItemsData: any[] = [];
@@ -3861,9 +3961,6 @@ const exportSelectedToExcel = async (): Promise<void> => {
         `✅ Export berhasil! (Tanpa INJEKSI-BB)\nFile: ${filename}\n\n` +
           `Total PO: ${selectedOrders.length}\n` +
           `Total Items PO: ${selectedPOData.length}\n` +
-          `Total All BOM Items (Tanpa INJEKSI-BB): ${totalAllBomItems}\n` +
-          `Barang Jadi: ${totalFinishedGoods}\n` +
-          `Komponen (Tanpa INJEKSI-BB): ${totalComponents}\n` +
           `INJEKSI-BB Items Dihapus: ${totalINJECTIONItemsRemoved}\n\n` +
           `⚠️ Item dengan departemen 'INJEKSI-BB' tidak ditampilkan dalam export.`,
       );
