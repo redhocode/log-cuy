@@ -3002,18 +3002,11 @@ const previewExport = async (): Promise<void> => {
       `📊 [PREVIEW] Memulai preview ${selectedOrders.length} PO terpilih`,
     );
 
-// 过滤 INJEKSI-BB 部门的函数
 const isINJECTIONDepartment = (departemen?: string): boolean => {
   if (!departemen) return false;
-  // Normalisasi: ubah ke string, hilangkan spasi, lowercase
-  const deptString = String(departemen).trim().toLowerCase();
-  // Cek berbagai kemungkinan penulisan INJEKSI-BB
-  return (
-    deptString.includes("INJEKSI-BB") ||
-    deptString === "INJEKSI-BB"
-  );
+  const deptString = String(departemen).trim().toLowerCase().replace(/\s+/g, '');
+  return deptString.includes("INJEKSI-BB") || deptString.includes("INJEKSIBB");
 };
-
     setExportProgress({
       visible: true,
       current: 5,
@@ -3392,10 +3385,14 @@ const exportSelectedToExcel = async (): Promise<void> => {
     // ==================== FUNGSI FILTER INJEKSI-BB YANG LEBIH KUAT ====================
     const isINJECTIONDepartment = (departemen?: string): boolean => {
       if (!departemen) return false;
-      const deptString = String(departemen).trim().toLowerCase();
+      const deptString = String(departemen).trim().toUpperCase();
+      // Tangkap berbagai format penulisan INJEKSI-BB
       return (
         deptString.includes("INJEKSI-BB") ||
-        deptString === "INJEKSI-BB"
+        deptString === "INJEKSI-BB" ||
+        deptString.includes("INJEKSI BB") ||
+        deptString.includes("INJEKSI_BB") ||
+        deptString === "INJEKSIBB"
       );
     };
 
@@ -3404,7 +3401,6 @@ const exportSelectedToExcel = async (): Promise<void> => {
       const isCombinedPO = order.order.combinedItems && order.order.combinedItems.length > 1;
 
       if (isCombinedPO) {
-        // PERBAIKAN 1: Hitung total QTY gabungan yang benar
         const totalCombinedQty = order.order.combinedItems!.reduce(
           (sum, item) => sum + item.QTY, 0
         );
@@ -3415,7 +3411,7 @@ const exportSelectedToExcel = async (): Promise<void> => {
           "Nama PO 生产订单名称": item.Nama_PO,
           "Kode Barang 物料代码": item.Kode_Barang,
           "QTY per Item 每项数量": item.QTY,
-          "QTY Total Gabungan 合并总数量": totalCombinedQty, // PERBAIKAN: gunakan total yang benar
+          "QTY Total Gabungan 合并总数量": totalCombinedQty,
           "Jenis 类型": "Bagian PO Gabungan 合并PO部分",
           "Urutan 顺序": idx + 1,
           "Total Items dalam PO 总数": order.order.combinedItems!.length,
@@ -3441,7 +3437,7 @@ const exportSelectedToExcel = async (): Promise<void> => {
     const ws1 = XLSX.utils.json_to_sheet(selectedPOData);
     XLSX.utils.book_append_sheet(wb, ws1, "Detail PO PO详情");
 
-    // ==================== WORKSHEET 2: FULL BOM STRUCTURE (TANPA INJEKSI-BB) ====================
+    // ==================== WORKSHEET 2: FULL BOM STRUCTURE ====================
     const fullBomData: any[] = [];
     let totalINJECTIONItemsRemoved = 0;
 
@@ -3452,27 +3448,19 @@ const exportSelectedToExcel = async (): Promise<void> => {
         if (isCombinedPO) {
           for (const combinedItem of order.order.combinedItems!) {
             let bomForThisItem: BomItem[] = [];
-            if (
-              order.bom.combinedBoms &&
-              order.bom.combinedBoms[combinedItem.Kode_Barang]
-            ) {
+            if (order.bom.combinedBoms && order.bom.combinedBoms[combinedItem.Kode_Barang]) {
               bomForThisItem = order.bom.combinedBoms[combinedItem.Kode_Barang].flat;
             } else {
               bomForThisItem = order.bom.flat;
             }
 
-            // Filter ketat untuk menghapus INJEKSI-BB
-            const filteredBomItems = bomForThisItem.filter((item) => {
-              if (item.Level === 0) return true;
+            bomForThisItem.forEach((item) => {
               const isINJECTION = isINJECTIONDepartment(item.Departemen);
-              if (isINJECTION) {
+              if (isINJECTION && item.Level > 0) {
                 totalINJECTIONItemsRemoved++;
-                return false;
+                return; // Skip items dengan departemen INJEKSI-BB (Level > 0)
               }
-              return true;
-            });
 
-            filteredBomItems.forEach((item) => {
               const needed = item.Level === 0 ? combinedItem.QTY : item.Qty * combinedItem.QTY;
               const stockItem = order.stock?.find((s) => s.itemid === item.ItemID);
               const availableStock = item.Level > 0 ? stockItem?.stockAkhir || 0 : "-";
@@ -3502,23 +3490,18 @@ const exportSelectedToExcel = async (): Promise<void> => {
                     : shortage > 0
                       ? "KURANG 不足"
                       : "CUKUP 充足",
-                "INJEKSI-BB Filter 注塑过滤": "DISERTAKAN 已包含",
+                "INJEKSI-BB Filter 注塑过滤": isINJECTION ? "DIHAPUS 已删除" : "DISERTAKAN 已包含",
               });
             });
           }
         } else {
-          // Filter ketat untuk PO biasa
-          const filteredBomItems = order.bom.flat.filter((item) => {
-            if (item.Level === 0) return true;
+          order.bom.flat.forEach((item) => {
             const isINJECTION = isINJECTIONDepartment(item.Departemen);
-            if (isINJECTION) {
+            if (isINJECTION && item.Level > 0) {
               totalINJECTIONItemsRemoved++;
-              return false;
+              return; // Skip items dengan departemen INJEKSI-BB (Level > 0)
             }
-            return true;
-          });
 
-          filteredBomItems.forEach((item) => {
             const needed = item.Level === 0 ? order.order.QTY : item.Qty * order.order.QTY;
             const stockItem = order.stock?.find((s) => s.itemid === item.ItemID);
             const availableStock = item.Level > 0 ? stockItem?.stockAkhir || 0 : "-";
@@ -3548,7 +3531,7 @@ const exportSelectedToExcel = async (): Promise<void> => {
                   : shortage > 0
                     ? "KURANG 不足"
                     : "CUKUP 充足",
-              "INJEKSI-BB Filter 注塑过滤": "DISERTAKAN 已包含",
+              "INJEKSI-BB Filter 注塑过滤": isINJECTION ? "DIHAPUS 已删除" : "DISERTAKAN 已包含",
             });
           });
         }
@@ -3558,7 +3541,7 @@ const exportSelectedToExcel = async (): Promise<void> => {
     const ws2 = XLSX.utils.json_to_sheet(fullBomData);
     XLSX.utils.book_append_sheet(wb, ws2, "Full BOM Structure BOM完整结构");
 
-    // ==================== WORKSHEET 3: MATERIAL SUMMARY (DIPERBAIKI - FILTER INJEKSI-BB) ====================
+    // ==================== WORKSHEET 3: MATERIAL SUMMARY (DIPERBAIKI) ====================
     const materialMapForSummary = new Map<string, any>();
 
     for (const order of selectedOrders) {
@@ -3568,16 +3551,13 @@ const exportSelectedToExcel = async (): Promise<void> => {
         if (isCombinedPO) {
           for (const combinedItem of order.order.combinedItems!) {
             let bomForThisItem: BomItem[] = [];
-            if (
-              order.bom.combinedBoms &&
-              order.bom.combinedBoms[combinedItem.Kode_Barang]
-            ) {
+            if (order.bom.combinedBoms && order.bom.combinedBoms[combinedItem.Kode_Barang]) {
               bomForThisItem = order.bom.combinedBoms[combinedItem.Kode_Barang].flat;
             } else {
               bomForThisItem = order.bom.flat;
             }
 
-            // PERBAIKAN 2: Filter INJEKSI-BB di Material Summary
+            // Hanya ambil komponen (Level > 0) dan BUKAN INJEKSI-BB
             const componentsOnly = bomForThisItem.filter(
               (item) => item.Level > 0 && !isINJECTIONDepartment(item.Departemen)
             );
@@ -3638,7 +3618,7 @@ const exportSelectedToExcel = async (): Promise<void> => {
             });
           }
         } else {
-          // PERBAIKAN 2: Filter INJEKSI-BB untuk PO biasa di Material Summary
+          // Hanya ambil komponen (Level > 0) dan BUKAN INJEKSI-BB
           const componentsOnly = order.bom.flat.filter(
             (item) => item.Level > 0 && !isINJECTIONDepartment(item.Departemen)
           );
@@ -3701,11 +3681,12 @@ const exportSelectedToExcel = async (): Promise<void> => {
       }
     }
 
-    // Konversi map ke array untuk Material Summary
-    const materialSummaryGrouped = Array.from(materialMapForSummary.values());
+    // Filter tambahan untuk memastikan tidak ada INJEKSI-BB
+    const filteredMaterialSummary = Array.from(materialMapForSummary.values()).filter(
+      (item) => !isINJECTIONDepartment(item["Departemen 部门"])
+    );
 
-    // Format untuk Excel dengan daftar sumber PO sebagai string
-    const materialSummaryFormatted = materialSummaryGrouped.map(item => ({
+    const materialSummaryFormatted = filteredMaterialSummary.map(item => ({
       ...item,
       "Sumber PO List 来源PO列表": item["Sumber PO List 来源PO列表"]
         .map((source: any) => `${source["Sumber PO 来源PO"]} (SPK: ${source["No SPK 生产订单号"]})`)
@@ -3720,15 +3701,12 @@ const exportSelectedToExcel = async (): Promise<void> => {
     const ws3 = XLSX.utils.json_to_sheet(materialSummaryFormatted);
     XLSX.utils.book_append_sheet(wb, ws3, "Material Summary 物料汇总");
 
-    // ==================== WORKSHEET 4: AGGREGATED SUMMARY (DIPERBAIKI - FILTER INJEKSI-BB) ====================
-    // Gunakan materialMapForSummary yang sudah difilter INJEKSI-BB
-    const aggregatedData = Array.from(materialMapForSummary.values()).map((item: any) => {
-      // Buat string ringkasan PO
+    // ==================== WORKSHEET 4: AGGREGATED SUMMARY (DIPERBAIKI) ====================
+    const aggregatedData = filteredMaterialSummary.map((item: any) => {
       const poSummary = item["Sumber PO List 来源PO列表"]
         .map((source: any) => source["Sumber PO 来源PO"])
         .join(", ");
       
-      // Hitung total QTY PO yang menggunakan item ini
       const totalQtyPO = item["Sumber PO List 来源PO列表"]
         .reduce((sum: number, source: any) => sum + source["QTY PO per Item 每项PO数量"], 0);
       
@@ -3748,61 +3726,47 @@ const exportSelectedToExcel = async (): Promise<void> => {
         "Rata-rata Kebutuhan per PO 每PO平均需求": item["Jumlah PO Menggunakan 使用PO数"] > 0 
           ? Math.round(item["Total Butuh 总需求"] / item["Jumlah PO Menggunakan 使用PO数"])
           : 0,
-        "INJEKSI-BB Filter 注塑过滤": "DISERTAKAN 已包含", // Pastikan item sudah difilter
       };
     });
 
     const ws4 = XLSX.utils.json_to_sheet(aggregatedData);
     XLSX.utils.book_append_sheet(wb, ws4, "Aggregated Summary 聚合汇总");
 
-    // ==================== WORKSHEET 5: CONSOLIDATED MATERIAL NEEDS (DIPERBAIKI - FILTER INJEKSI-BB) ====================
-    const consolidatedMaterialData: any[] = [];
-
-    // Gunakan materialMapForSummary yang sudah difilter
-    materialMapForSummary.forEach((item, itemCode) => {
-      // Hitung total kebutuhan dari semua PO
-      const totalNeeded = item["Total Butuh 总需求"];
-      const availableStock = item["Stok Tersedia 可用库存"];
-      const shortage = item["Kekurangan 短缺"];
-      
-      // Buat string ringkasan PO
+    // ==================== WORKSHEET 5: CONSOLIDATED MATERIAL (DIPERBAIKI) ====================
+    const consolidatedMaterialData = filteredMaterialSummary.map((item: any) => {
       const poSummary = item["Sumber PO List 来源PO列表"]
         .map((source: any) => source["Sumber PO 来源PO"])
         .join(", ");
       
-      // Parse detail per PO untuk perhitungan
-      const poDetails = item["Sumber PO List 来源PO列表"];
-      
-      // Buat string detail per PO
       let poDetailString = "";
-      if (Array.isArray(poDetails)) {
-        poDetails.forEach((detail: any, index: number) => {
+      if (Array.isArray(item["Sumber PO List 来源PO列表"])) {
+        item["Sumber PO List 来源PO列表"].forEach((detail: any, index: number) => {
           poDetailString += `PO${index + 1}: ${detail["Sumber PO 来源PO"]} = ${detail["Kebutuhan untuk PO ini 此PO需求"]}\n`;
         });
       }
 
-      consolidatedMaterialData.push({
-        "Kode Item 物料代码": itemCode,
+      return {
+        "Kode Item 物料代码": item["Kode Item 物料代码"],
         "Nama Item 物料名称": item["Nama Item 物料名称"],
         "Departemen 部门": item["Departemen 部门"],
         "Jumlah PO Menggunakan 使用PO数": item["Jumlah PO Menggunakan 使用PO数"],
         "Daftar PO 来源PO列表": poSummary,
-        "Total Kebutuhan 总需求": totalNeeded,
-        "Stok Tersedia 可用库存": availableStock,
-        "Kekurangan 短缺": shortage,
-        "Status 状态": shortage > 0 ? "KURANG 不足" : "CUKUP 充足",
+        "Total Kebutuhan 总需求": item["Total Butuh 总需求"],
+        "Stok Tersedia 可用库存": item["Stok Tersedia 可用库存"],
+        "Kekurangan 短缺": item["Kekurangan 短缺"],
+        "Status 状态": item["Status 状态"],
         "Detail Kebutuhan per PO 每PO需求详情": poDetailString.trim(),
         "Qty Per Unit Rata-rata 平均每单位数量": item["Qty Per Unit 每单位数量"],
-        "INJEKSI-BB Filter 注塑过滤": "DISERTAKAN 已包含", // Pastikan item sudah difilter
-      });
+      };
     });
 
     const ws5 = XLSX.utils.json_to_sheet(consolidatedMaterialData);
     XLSX.utils.book_append_sheet(wb, ws5, "Consolidated Material 合并物料需求");
 
-    // ==================== WORKSHEET 6: INJEKSI-BB ITEMS SUMMARY ====================
+    // ==================== WORKSHEET 6: INJEKSI-BB ITEMS REMOVED ====================
     const INJECTIONItemsData: any[] = [];
-
+    
+    // Kumpulkan item INJEKSI-BB yang dihapus dari semua PO
     for (const order of selectedOrders) {
       if (order.bom) {
         const allItems = order.bom.flat;
@@ -3811,7 +3775,17 @@ const exportSelectedToExcel = async (): Promise<void> => {
         );
 
         INJECTIONItems.forEach((item) => {
-          const needed = item.Level === 0 ? order.order.QTY : item.Qty * order.order.QTY;
+          const isCombinedPO = order.order.combinedItems && order.order.combinedItems.length > 1;
+          let totalNeeded = 0;
+          
+          if (isCombinedPO) {
+            // Hitung kebutuhan dari semua PO gabungan
+            order.order.combinedItems!.forEach((combinedItem) => {
+              totalNeeded += item.Qty * combinedItem.QTY;
+            });
+          } else {
+            totalNeeded = item.Qty * order.order.QTY;
+          }
 
           INJECTIONItemsData.push({
             "No SPK 生产订单号": order.order.No_SPK,
@@ -3821,10 +3795,10 @@ const exportSelectedToExcel = async (): Promise<void> => {
             "Jenis 类别": item.NamaJenis || "-",
             "Level 层级": item.Level,
             "Qty Per Unit 每单位数量": item.Qty,
-            "QTY PO 订单数量": order.order.QTY,
-            "Total Butuh 总需求": needed,
+            "Total Butuh 总需求": totalNeeded,
             "Status Filter 过滤状态": "DIHAPUS DARI EXPORT 已从导出中删除",
             "Keterangan 备注": "Item INJEKSI-BB tidak ditampilkan dalam export 注塑项目不显示在导出中",
+            "Alasan 原因": "Departemen termasuk dalam filter INJEKSI-BB 部门包含在注塑过滤中",
           });
         });
       }
@@ -3834,6 +3808,41 @@ const exportSelectedToExcel = async (): Promise<void> => {
       const ws6 = XLSX.utils.json_to_sheet(INJECTIONItemsData);
       XLSX.utils.book_append_sheet(wb, ws6, "INJEKSI-BB Items 注塑项目");
     }
+
+    // ==================== WORKSHEET 7: EXPORT SUMMARY ====================
+    const exportSummary = [
+      {
+        "Parameter 参数": "Total PO Diexport 总导出PO数",
+        "Nilai 值": selectedOrders.length,
+      },
+      {
+        "Parameter 参数": "Total Item PO 总PO项目数",
+        "Nilai 值": selectedPOData.length,
+      },
+      {
+        "Parameter 参数": "INJEKSI-BB Items Dihapus 注塑项目删除数",
+        "Nilai 值": totalINJECTIONItemsRemoved,
+      },
+      {
+        "Parameter 参数": "Items dalam Material Summary 物料汇总项目数",
+        "Nilai 值": filteredMaterialSummary.length,
+      },
+      {
+        "Parameter 参数": "Items dalam Aggregated Summary 聚合汇总项目数",
+        "Nilai 值": aggregatedData.length,
+      },
+      {
+        "Parameter 参数": "Items dalam Consolidated Material 合并物料项目数",
+        "Nilai 值": consolidatedMaterialData.length,
+      },
+      {
+        "Parameter 参数": "Tanggal Export 导出日期",
+        "Nilai 值": new Date().toLocaleDateString("id-ID"),
+      },
+    ];
+
+    const ws7 = XLSX.utils.json_to_sheet(exportSummary);
+    XLSX.utils.book_append_sheet(wb, ws7, "Export Summary 导出总结");
 
     // Generate filename
     const timestamp = new Date().toISOString().split("T")[0];
@@ -3854,7 +3863,9 @@ const exportSelectedToExcel = async (): Promise<void> => {
         `✅ Export berhasil! (Tanpa INJEKSI-BB)\nFile: ${filename}\n\n` +
           `Total PO: ${selectedOrders.length}\n` +
           `Total Items PO: ${selectedPOData.length}\n` +
-          `INJEKSI-BB Items Dihapus: ${totalINJECTIONItemsRemoved}\n\n` +
+          `INJEKSI-BB Items Dihapus: ${totalINJECTIONItemsRemoved}\n` +
+          `Items dalam Material Summary: ${filteredMaterialSummary.length}\n` +
+          `Items dalam Aggregated Summary: ${aggregatedData.length}\n\n` +
           `⚠️ Item dengan departemen 'INJEKSI-BB' tidak ditampilkan dalam export.`,
       );
     }, 1000);
