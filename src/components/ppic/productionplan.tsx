@@ -138,6 +138,19 @@ interface ExportData {
   productionOrders: any[];
 }
 
+// ==================== FUNGSI BANTU UNTUK FILTER INJEKSI-BB ====================
+const isINJECTIONDepartment = (departemen?: string): boolean => {
+  if (!departemen) return false;
+  const deptString = String(departemen).trim().toUpperCase();
+  return (
+    deptString.includes("INJEKSI-BB") ||
+    deptString === "INJEKSI-BB" ||
+    deptString.includes("INJEKSI BB") ||
+    deptString.includes("INJEKSI_BB") ||
+    deptString === "INJEKSIBB"
+  );
+};
+
 // ==================== KOMPONEN PREVIEW EXPORT ====================
 const ExportPreviewModal: React.FC<{
   previewData: ExportPreviewData | null;
@@ -2985,6 +2998,114 @@ export default function ProductionPlanPage() {
     );
   };
 
+// ==================== FUNGSI PERHITUNGAN MATERIAL UNTUK EXPORT (TANPA INJEKSI-BB) ====================
+
+// Perhitungan material needs untuk single PO (tanpa INJEKSI-BB)
+const calculateMaterialNeedsForExport = (
+  bom: BomItem[],
+  productionQty: number,
+  stock: StockItem[] = [],
+) => {
+  if (!bom) return { totalNeeded: 0, totalShortage: 0, items: [] };
+
+  // Filter hanya komponen (Level > 0) dan bukan INJEKSI-BB
+  const componentsOnly = filterOnlyComponents(bom).filter((item) => {
+    return !isINJECTIONDepartment(item.Departemen);
+  });
+
+  let totalNeeded = 0;
+  let totalShortage = 0;
+  const items = componentsOnly.map((item) => {
+    const needed = item.Qty * productionQty;
+    // PERBAIKAN: Selalu gunakan stockAkhir (SaldoAkhir dari API)
+    const availableStock = stock.find((s) => s.itemid === item.ItemID)?.stockAkhir || 0;
+    const shortage = Math.max(0, needed - availableStock);
+
+    totalNeeded += needed;
+    totalShortage += shortage;
+
+    return {
+      ...item,
+      needed,
+      availableStock,
+      shortage,
+    };
+  });
+
+  return { totalNeeded, totalShortage, items };
+};
+
+// Perhitungan material needs untuk PO gabungan (tanpa INJEKSI-BB)
+const calculateMaterialNeedsForCombinedPOForExport = (
+  bom: { flat: BomItem[]; tree: BomItem[]; combinedBoms?: any },
+  productionOrders: ProductionOrder[],
+  stock: StockItem[] = [],
+) => {
+  if (!bom || !productionOrders || productionOrders.length === 0) {
+    return { totalNeeded: 0, totalShortage: 0, items: [] };
+  }
+
+  const materialMap = new Map<
+    string,
+    {
+      item: BomItem;
+      totalNeeded: number;
+    }
+  >();
+
+  // Hitung kebutuhan untuk setiap PO dalam gabungan
+  productionOrders.forEach((po) => {
+    let bomForThisItem: BomItem[] = [];
+
+    if (bom.combinedBoms && bom.combinedBoms[po.Kode_Barang]) {
+      bomForThisItem = bom.combinedBoms[po.Kode_Barang].flat;
+    } else {
+      bomForThisItem = bom.flat;
+    }
+
+    // Filter hanya komponen (Level > 0) dan bukan INJEKSI-BB
+    const componentsOnly = filterOnlyComponents(bomForThisItem).filter(
+      (item) => {
+        return !isINJECTIONDepartment(item.Departemen);
+      },
+    );
+
+    componentsOnly.forEach((item) => {
+      const neededForThisPO = item.Qty * po.QTY;
+      const existing = materialMap.get(item.ItemID);
+
+      if (existing) {
+        existing.totalNeeded += neededForThisPO;
+      } else {
+        materialMap.set(item.ItemID, {
+          item: item,
+          totalNeeded: neededForThisPO,
+        });
+      }
+    });
+  });
+
+  let totalNeeded = 0;
+  let totalShortage = 0;
+  const items = Array.from(materialMap.values()).map((material) => {
+    // PERBAIKAN: Selalu gunakan stockAkhir (SaldoAkhir dari API)
+    const availableStock = stock.find((s) => s.itemid === material.item.ItemID)?.stockAkhir || 0;
+    const shortage = Math.max(0, material.totalNeeded - availableStock);
+
+    totalNeeded += material.totalNeeded;
+    totalShortage += shortage;
+
+    return {
+      ...material.item,
+      needed: material.totalNeeded,
+      availableStock,
+      shortage,
+    };
+  });
+
+  return { totalNeeded, totalShortage, items };
+};
+
 const previewExport = async (): Promise<void> => {
   try {
     setExportLoading(true);
@@ -3002,11 +3123,6 @@ const previewExport = async (): Promise<void> => {
       `📊 [PREVIEW] Memulai preview ${selectedOrders.length} PO terpilih`,
     );
 
-const isINJECTIONDepartment = (departemen?: string): boolean => {
-  if (!departemen) return false;
-  const deptString = String(departemen).trim().toLowerCase().replace(/\s+/g, '');
-  return deptString.includes("INJEKSI-BB") || deptString.includes("INJEKSIBB");
-};
     setExportProgress({
       visible: true,
       current: 5,
@@ -3127,240 +3243,7 @@ const isINJECTIONDepartment = (departemen?: string): boolean => {
     setExportProgress({ visible: false, current: 0, total: 0, message: "" });
   }
 };
-  // ==================== FUNGSI PERHITUNGAN MATERIAL UNTUK EXPORT (TANPA INJEKSI-BB) ====================
-
-  // Perhitungan material needs untuk single PO (tanpa INJEKSI-BB)
-  const calculateMaterialNeedsForExport = (
-    bom: BomItem[],
-    productionQty: number,
-    stock: StockItem[] = [],
-  ) => {
-    if (!bom) return { totalNeeded: 0, totalShortage: 0, items: [] };
-
-    // Filter hanya komponen (Level > 0) dan bukan INJEKSI-BB
-    const componentsOnly = filterOnlyComponents(bom).filter((item) => {
-      const dept = item.Departemen?.toLowerCase() || "";
-      return !dept.includes("INJEKSI-BB");
-    });
-
-    let totalNeeded = 0;
-    let totalShortage = 0;
-    const items = componentsOnly.map((item) => {
-      const needed = item.Qty * productionQty;
-      const availableStock =
-        stock.find((s) => s.itemid === item.ItemID)?.stockAkhir || 0;
-      const shortage = Math.max(0, needed - availableStock);
-
-      totalNeeded += needed;
-      totalShortage += shortage;
-
-      return {
-        ...item,
-        needed,
-        availableStock,
-        shortage,
-      };
-    });
-
-    return { totalNeeded, totalShortage, items };
-  };
-
-  // Perhitungan material needs untuk PO gabungan (tanpa INJEKSI-BB)
-  const calculateMaterialNeedsForCombinedPOForExport = (
-    bom: { flat: BomItem[]; tree: BomItem[]; combinedBoms?: any },
-    productionOrders: ProductionOrder[],
-    stock: StockItem[] = [],
-  ) => {
-    if (!bom || !productionOrders || productionOrders.length === 0) {
-      return { totalNeeded: 0, totalShortage: 0, items: [] };
-    }
-
-    const materialMap = new Map<
-      string,
-      {
-        item: BomItem;
-        totalNeeded: number;
-      }
-    >();
-
-    // Hitung kebutuhan untuk setiap PO dalam gabungan
-    productionOrders.forEach((po) => {
-      let bomForThisItem: BomItem[] = [];
-
-      if (bom.combinedBoms && bom.combinedBoms[po.Kode_Barang]) {
-        bomForThisItem = bom.combinedBoms[po.Kode_Barang].flat;
-      } else {
-        bomForThisItem = bom.flat;
-      }
-
-      // Filter hanya komponen (Level > 0) dan bukan INJEKSI-BB
-      const componentsOnly = filterOnlyComponents(bomForThisItem).filter(
-        (item) => {
-          const dept = item.Departemen?.toLowerCase() || "";
-          return !dept.includes("INJEKSI-BB");
-        },
-      );
-
-      componentsOnly.forEach((item) => {
-        const neededForThisPO = item.Qty * po.QTY;
-        const existing = materialMap.get(item.ItemID);
-
-        if (existing) {
-          existing.totalNeeded += neededForThisPO;
-        } else {
-          materialMap.set(item.ItemID, {
-            item: item,
-            totalNeeded: neededForThisPO,
-          });
-        }
-      });
-    });
-
-    let totalNeeded = 0;
-    let totalShortage = 0;
-    const items = Array.from(materialMap.values()).map((material) => {
-      const availableStock =
-        stock.find((s) => s.itemid === material.item.ItemID)?.stockAkhir || 0;
-      const shortage = Math.max(0, material.totalNeeded - availableStock);
-
-      totalNeeded += material.totalNeeded;
-      totalShortage += shortage;
-
-      return {
-        ...material.item,
-        needed: material.totalNeeded,
-        availableStock,
-        shortage,
-      };
-    });
-
-    return { totalNeeded, totalShortage, items };
-  };
-  // ==================== FUNGSI EXPORT SETELAH PREVIEW ====================
-  const handleConfirmExport = () => {
-    setExportPreview({ isOpen: false, data: null });
-    // Panggil fungsi export yang asli
-    exportSelectedToExcel();
-  };
-
-  // ==================== FUNGSI EXPORT YANG DIPERBAIKI ====================
-  const ExportProgress: React.FC<{
-    visible: boolean;
-    current: number;
-    total: number;
-    message: string;
-  }> = ({ visible, current, total, message }) => {
-    if (!visible) return null;
-
-    const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
-
-    return (
-      <div
-        style={{
-          position: "fixed",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -50%)",
-          background: "rgba(0,0,0,0.9)",
-          color: "white",
-          padding: "25px",
-          borderRadius: "10px",
-          zIndex: 10000,
-          textAlign: "center",
-          minWidth: "350px",
-          border: "2px solid #4CAF50",
-          boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
-        }}
-      >
-        <div
-          style={{ fontSize: "18px", fontWeight: "bold", marginBottom: "10px" }}
-        >
-          🚀 Sedang Mengekspor Data...
-        </div>
-        <div style={{ fontSize: "14px", marginBottom: "15px" }}>
-          Exporting Data... 正在导出数据...
-        </div>
-
-        {message && (
-          <div
-            style={{
-              fontSize: "12px",
-              color: "#4CAF50",
-              marginBottom: "10px",
-              fontWeight: "bold",
-            }}
-          >
-            {message}
-          </div>
-        )}
-
-        <div
-          style={{
-            width: "100%",
-            background: "#333",
-            borderRadius: "10px",
-            marginTop: "15px",
-            height: "25px",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              width: `${percentage}%`,
-              background: "linear-gradient(90deg, #4CAF50, #45a049)",
-              height: "100%",
-              borderRadius: "10px",
-              transition: "width 0.5s ease",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "white",
-              fontSize: "12px",
-              fontWeight: "bold",
-            }}
-          >
-            {percentage}%
-          </div>
-        </div>
-
-        <div
-          style={{
-            marginTop: "10px",
-            fontSize: "12px",
-            color: "#ccc",
-            display: "flex",
-            justifyContent: "space-between",
-          }}
-        >
-          <span>
-            Progress: {current}/{total}
-          </span>
-          <span>
-            进度: {current}/{total}
-          </span>
-        </div>
-
-        <div
-          style={{
-            marginTop: "15px",
-            fontSize: "11px",
-            color: "#999",
-            lineHeight: "1.4",
-          }}
-        >
-          Harap tunggu, proses export sedang berjalan...
-          <br />
-          Jangan tutup halaman ini selama proses berlangsung
-          <br />
-          请稍候，导出过程正在进行中...
-          <br />
-          过程中请勿关闭此页面
-        </div>
-      </div>
-    );
-  };
-
-// ==================== FUNGSI BANTU UNTUK PERHITUNGAN LEVEL ====================
+  // ==================== FUNGSI BANTU UNTUK PERHITUNGAN LEVEL ====================
 
 // FUNGSI: Hitung Qty terakumulasi untuk setiap level berdasarkan struktur BOM
 const calculateAccumulatedQty = (
@@ -3417,7 +3300,7 @@ const buildBomHierarchy = (flatBom: BomItem[]): BomItem[] => {
   return rootItems;
 };
 
-// FUNGSI: Hitung total kebutuhan dengan memperhitungkan level
+// FUNGSI: Hitung total kebutuhan dengan memperhitungkan level - FIXED untuk export
 const calculateLevelBasedNeeds = (
   bomItems: BomItem[],
   productionQty: number,
@@ -3445,18 +3328,18 @@ const calculateLevelBasedNeeds = (
       // Total kebutuhan = accumulatedQtyPerUnit * productionQty
       const totalNeeded = accumulatedQtyPerUnit * productionQty;
       
-      // Cari stok
+      // Cari stok - PERBAIKAN: Gunakan stockAkhir (SaldoAkhir)
       const stockItem = stock.find(s => s.itemid === node.ItemID);
-      const availableStock = stockItem?.stockAkhir || 0;
+      const availableStock = stockItem?.stockAkhir || 0; // Gunakan stockAkhir, bukan physicalStock
       const shortage = Math.max(0, totalNeeded - availableStock);
       
       items.push({
         ...node,
         Level: node.Level || 0,
-        BaseQtyPerUnit: node.Qty || 0, // Qty asli dari BOM
-        AccumulatedQtyPerUnit: accumulatedQtyPerUnit, // Qty setelah dikalikan parent
+        BaseQtyPerUnit: node.Qty || 0,
+        AccumulatedQtyPerUnit: accumulatedQtyPerUnit,
         TotalNeeded: totalNeeded,
-        AvailableStock: availableStock,
+        AvailableStock: availableStock, // stockAkhir
         Shortage: shortage,
         ParentItemID: node.ParentItemID || null,
         LevelPath: [...levelPath, node.ItemID]
@@ -3466,7 +3349,7 @@ const calculateLevelBasedNeeds = (
       if ((node as any).children && (node as any).children.length > 0) {
         const childItems = calculateNeedsRecursive(
           (node as any).children,
-          accumulatedQtyPerUnit, // Multiplier untuk children = accumulatedQtyPerUnit dari parent
+          accumulatedQtyPerUnit,
           [...levelPath, node.ItemID]
         );
         items = [...items, ...childItems];
@@ -3512,20 +3395,18 @@ const exportSelectedToExcel = async (): Promise<void> => {
       return;
     }
 
-    const wb = XLSX.utils.book_new();
+    // DEBUG: Log data stock yang digunakan
+    console.log("🔍 [EXPORT] Verifikasi data stock untuk export:");
+    selectedOrders.forEach((order, idx) => {
+      if (order.stock) {
+        console.log(`  PO ${idx + 1}: ${order.order.No_SPK}`);
+        order.stock.slice(0, 3).forEach((stockItem) => {
+          console.log(`    ${stockItem.itemid}: stockAkhir=${stockItem.stockAkhir}, physicalStock=${stockItem.physicalStock}`);
+        });
+      }
+    });
 
-    // ==================== FUNGSI BANTU UNTUK EXPORT ====================
-    const isINJECTIONDepartment = (departemen?: string): boolean => {
-      if (!departemen) return false;
-      const deptString = String(departemen).trim().toUpperCase();
-      return (
-        deptString.includes("INJEKSI-BB") ||
-        deptString === "INJEKSI-BB" ||
-        deptString.includes("INJEKSI BB") ||
-        deptString.includes("INJEKSI_BB") ||
-        deptString === "INJEKSIBB"
-      );
-    };
+    const wb = XLSX.utils.book_new();
 
     // ==================== WORKSHEET 1: DETAIL PO ====================
     const selectedPOData = selectedOrders.flatMap((order) => {
@@ -3576,7 +3457,6 @@ const exportSelectedToExcel = async (): Promise<void> => {
     const bomHierarchyMap = new Map<string, BomItem[]>();
 
     for (const order of selectedOrders) {
-      // PERBAIKAN: Tambahkan pengecekan untuk order.bom
       if (!order.bom || !order.stock) {
         console.warn(`⚠️ Order ${order.order.No_SPK} tidak memiliki BOM atau stock, dilewati`);
         continue;
@@ -3588,14 +3468,12 @@ const exportSelectedToExcel = async (): Promise<void> => {
         for (const combinedItem of order.order.combinedItems!) {
           let bomForThisItem: BomItem[] = [];
           
-          // PERBAIKAN: Gunakan optional chaining dan nullish coalescing
           if (order.bom.combinedBoms && order.bom.combinedBoms[combinedItem.Kode_Barang]) {
             bomForThisItem = order.bom.combinedBoms[combinedItem.Kode_Barang].flat;
           } else {
             bomForThisItem = order.bom.flat || [];
           }
 
-          // PERBAIKAN: Skip jika bomForThisItem kosong
           if (!bomForThisItem || bomForThisItem.length === 0) {
             console.warn(`⚠️ Tidak ada BOM untuk item ${combinedItem.Kode_Barang}, dilewati`);
             continue;
@@ -3642,16 +3520,19 @@ const exportSelectedToExcel = async (): Promise<void> => {
                 `${item.BaseQtyPerUnit} × (Parent Multiplier)`,
               "QTY PO 订单数量": combinedItem.QTY,
               "Total Butuh 总需求": item.TotalNeeded,
-              "Stok Tersedia 可用库存": item.AvailableStock,
+              "Stok Tersedia 可用库存": item.AvailableStock, // ← Ini sudah stockAkhir
               "Kekurangan 短缺": item.Shortage,
               "Status 状态": item.Shortage > 0 ? "KURANG 不足" : "CUKUP 充足",
               "Level Path 层级路径": item.LevelPath?.join(" → ") || item.ItemID,
               "INJEKSI-BB Filter 注塑过滤": "DISERTAKAN 已包含",
+              // DEBUG: Tambahkan info sumber data
+              "Sumber Stok 库存来源": "SaldoAkhir dari API /ppic/stock",
+              "StockAkhir Field 库存字段": item.AvailableStock,
+              "PhysicalStock Field 物理库存字段": order.stock?.find(s => s.itemid === item.ItemID)?.physicalStock || 0,
             });
           });
         }
       } else {
-        // PERBAIKAN: Tambahkan pengecekan untuk order.bom.flat
         const bomForThisItem = order.bom.flat || [];
         
         if (bomForThisItem.length === 0) {
@@ -3700,11 +3581,15 @@ const exportSelectedToExcel = async (): Promise<void> => {
               `${item.BaseQtyPerUnit} × (Parent Multiplier)`,
             "QTY PO 订单数量": order.order.QTY,
             "Total Butuh 总需求": item.TotalNeeded,
-            "Stok Tersedia 可用库存": item.AvailableStock,
+            "Stok Tersedia 可用库存": item.AvailableStock, // ← Ini sudah stockAkhir
             "Kekurangan 短缺": item.Shortage,
             "Status 状态": item.Shortage > 0 ? "KURANG 不足" : "CUKUP 充足",
             "Level Path 层级路径": item.LevelPath?.join(" → ") || item.ItemID,
             "INJEKSI-BB Filter 注塑过滤": "DISERTAKAN 已包含",
+            // DEBUG: Tambahkan info sumber data
+            "Sumber Stok 库存来源": "SaldoAkhir dari API /ppic/stock",
+            "StockAkhir Field 库存字段": item.AvailableStock,
+            "PhysicalStock Field 物理库存字段": order.stock?.find(s => s.itemid === item.ItemID)?.physicalStock || 0,
           });
         });
       }
@@ -4515,17 +4400,6 @@ const exportSelectedToExcel = async (): Promise<void> => {
 
   // ==================== USE EFFECT ====================
 
-  // useEffect(() => {
-  //   refreshAllData();
-  // }, [refreshAllData]);
-
-  // // Sinkronkan setiap kali committedPOs berubah
-  // useEffect(() => {
-  //   if (committedPOs.length > 0 || orders.length > 0) {
-  //     syncCommitStatus();
-  //   }
-  // }, [committedPOs, orders.length, syncCommitStatus]);
-  // Ganti useEffect yang ada dengan ini:
   useEffect(() => {
     refreshAllData();
   }, []); // Empty dependency array, hanya dijalankan sekali saat mount
@@ -4552,6 +4426,130 @@ const exportSelectedToExcel = async (): Promise<void> => {
       saving: totalOriginalOrders - filteredOrders.length,
     };
   }, [filteredOrders]);
+
+  // ==================== FUNGSI EXPORT SETELAH PREVIEW ====================
+  const handleConfirmExport = () => {
+    setExportPreview({ isOpen: false, data: null });
+    // Panggil fungsi export yang asli
+    exportSelectedToExcel();
+  };
+
+  // ==================== EXPORT PROGRESS COMPONENT ====================
+  const ExportProgress: React.FC<{
+    visible: boolean;
+    current: number;
+    total: number;
+    message: string;
+  }> = ({ visible, current, total, message }) => {
+    if (!visible) return null;
+
+    const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
+
+    return (
+      <div
+        style={{
+          position: "fixed",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          background: "rgba(0,0,0,0.9)",
+          color: "white",
+          padding: "25px",
+          borderRadius: "10px",
+          zIndex: 10000,
+          textAlign: "center",
+          minWidth: "350px",
+          border: "2px solid #4CAF50",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
+        }}
+      >
+        <div
+          style={{ fontSize: "18px", fontWeight: "bold", marginBottom: "10px" }}
+        >
+          🚀 Sedang Mengekspor Data...
+        </div>
+        <div style={{ fontSize: "14px", marginBottom: "15px" }}>
+          Exporting Data... 正在导出数据...
+        </div>
+
+        {message && (
+          <div
+            style={{
+              fontSize: "12px",
+              color: "#4CAF50",
+              marginBottom: "10px",
+              fontWeight: "bold",
+            }}
+          >
+            {message}
+          </div>
+        )}
+
+        <div
+          style={{
+            width: "100%",
+            background: "#333",
+            borderRadius: "10px",
+            marginTop: "15px",
+            height: "25px",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              width: `${percentage}%`,
+              background: "linear-gradient(90deg, #4CAF50, #45a049)",
+              height: "100%",
+              borderRadius: "10px",
+              transition: "width 0.5s ease",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "white",
+              fontSize: "12px",
+              fontWeight: "bold",
+            }}
+          >
+            {percentage}%
+          </div>
+        </div>
+
+        <div
+          style={{
+            marginTop: "10px",
+            fontSize: "12px",
+            color: "#ccc",
+            display: "flex",
+            justifyContent: "space-between",
+          }}
+        >
+          <span>
+            Progress: {current}/{total}
+          </span>
+          <span>
+            进度: {current}/{total}
+          </span>
+        </div>
+
+        <div
+          style={{
+            marginTop: "15px",
+            fontSize: "11px",
+            color: "#999",
+            lineHeight: "1.4",
+          }}
+        >
+          Harap tunggu, proses export sedang berjalan...
+          <br />
+          Jangan tutup halaman ini selama proses berlangsung
+          <br />
+          请稍候，导出过程正在进行中...
+          <br />
+          过程中请勿关闭此页面
+        </div>
+      </div>
+    );
+  };
 
   // ==================== RENDER COMPONENT ====================
 

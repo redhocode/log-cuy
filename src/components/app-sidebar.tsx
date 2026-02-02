@@ -1,6 +1,10 @@
 "use client";
 import { useRouter, usePathname } from "next/navigation";
-import {  Package2, Import, User2, ChevronUp, Annoyed, User,BellDot,TimerReset} from "lucide-react";
+import { 
+  Package2, Import, User2, ChevronUp, Annoyed, TimerReset,
+  Warehouse, FileText, Calculator, Users, Factory, Repeat, Truck, BarChart,
+  ClipboardList, ShoppingCart, Eye, Settings, History, Package, Layers
+} from "lucide-react";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,7 +18,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
-  
 } from "@/components/ui/sidebar";
 
 import {
@@ -27,33 +30,25 @@ import { useEffect } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import Link from "next/link";
 import { Label } from "./ui/label";
+
 const masterItems = [ 
-  { href: "/dashboard/", label: "Stock Gudang", icon: BellDot },
-  { href: "/dashboard/bom", label: "BOM", icon: Package2 },
-  { href: "/dashboard/pengeluaran", label: "Laporan Exim", icon: BellDot },
-  { href: "/dashboard/barang", label: "Master Barang", icon: Package2 },
-  { href: "/dashboard/cekppn", label: "Hitung PPN", icon: Package2 },
-  { href: "/dashboard/supplier", label: "Supplier", icon: User2 },
+  { href: "/dashboard/", label: "Stock Gudang", icon: Warehouse },
+  { href: "/dashboard/bom", label: "BOM", icon: FileText },
+  { href: "/dashboard/pengeluaran", label: "Laporan Exim", icon: BarChart },
+  { href: "/dashboard/barang", label: "Master Barang", icon: Package },
+  { href: "/dashboard/cekppn", label: "Hitung PPN", icon: Calculator },
+  { href: "/dashboard/supplier", label: "Supplier", icon: Users },
   { href: "/dashboard/absensi", label: "Ripair", icon: TimerReset },
-  // {href: "/dashboard/kunci", label: "Kunci", icon: LockKeyhole },
-  // {href: "/dashboard/number", label: "Fix Number", icon: Package2 },
-  // { href: "/dashboard/qr", label: "QR Code", icon: Package2 },
-  // { href: "/dashboard/qr/cetak", label: "Cetak QR", icon: Package2 },
-  // { href: "/laporan", label: "Input laporan excel", icon: Package2 },
-  // { href: "/dashboard/print", label: "Nota Jual", icon: Printer },
-  // { href: "/dashboard/notajual", label: "Nota Jual 2.5", icon: Package2 },
 ];
+
 const navItems = [
-  { href: "/dashboard/ppic", label: "PPIC", icon: Package2 },
-  { href: "/dashboard/spk", label: "SPK", icon: Package2 },
-  { href: "/dashboard/data", label: "Produksi", icon: Package2 },
+  { href: "/dashboard/data", label: "Produksi", icon: Factory },
   { href: "/dashboard/lbm", label: "LBM", icon: Package2 },
   { href: "/dashboard/lbk", label: "LBK", icon: Package2 },
-  { href: "/dashboard/retur", label: "Retur Produksi", icon: Package2 },
-  { href: "/dashboard/mutasi", label: "Mutasi Gudang", icon: Package2 },
-  { href: "/dashboard/kartustock", label: "Kartu Stock", icon: Package2 },
-  { href: "/dashboard/stock", label: "Stock Pergudang", icon: Package2 },
-  //   { href: "/dashboard/import", label: "Import", icon: Import },
+  { href: "/dashboard/retur", label: "Retur Produksi", icon: Repeat },
+  { href: "/dashboard/mutasi", label: "Mutasi Gudang", icon: Truck },
+  { href: "/dashboard/kartustock", label: "Kartu Stock", icon: Layers },
+  { href: "/dashboard/stock", label: "Stock Pergudang", icon: Warehouse },
 ];
 
 const items = [
@@ -63,40 +58,25 @@ const items = [
     icon: Import,
     disabled: true,
   },
-]
+];
+
 const Items2 = [
-  
-  { href: "/dashboard/purchase", label: "Pembelian", icon: Package2 },
-  { href: "/dashboard/penerimaan", label: "Penerimaan", icon: Package2 },
-  //{ href: "/dashboard/trackpo", label: "Track PO", icon: Package2 },
- // { href: "/dashboard/po", label: "Monitoring PO Produksi", icon: Package2 },
-  // { href: "/dashboard/laprod", label: "LapProd", icon: Package2 },
+  { href: "/dashboard/ppic", label: "PPIC", icon: ClipboardList },
+  { href: "/dashboard/spk", label: "SPK", icon: FileText },
+  { href: "/dashboard/purchase", label: "Pembelian", icon: ShoppingCart },
+  { href: "/dashboard/penerimaan", label: "Penerimaan", icon: Truck },
 ];
+
 const Items5 = [
-  { href: "/dashboard/po", label: "PO Produksi", icon: Package2 },
-  { href: "/dashboard/so", label: "SO", icon: Package2 },
-  { href: "/dashboard/po-beli", label: "PO Pembelian", icon: Package2 },
+  { href: "/dashboard/po", label: "PO Produksi", icon: Eye },
+  { href: "/dashboard/so", label: "SO", icon: FileText },
+  { href: "/dashboard/po-beli", label: "PO Pembelian", icon: ShoppingCart },
 ];
-// const Items3 = [
-//   { href: "/dashboard/kas", label: "Kas", icon: Wallet, disabled: true },
-//   { href: "/dashboard/bank", label: "Bank", icon: Landmark, disabled: true },
-//   {
-//     href: "/dashboard/jurnal",
-//     label: "Jurnal Umum",
-//     icon: Banknote,
-//     disabled: true,
-//   },
-//   {
-//     href: "/dashboard/glbarang",
-//     label: "Barang GL",
-//     icon: Blocks,
-//     disabled: true,
-//   },
-// ];
+
 const Items4 = [
-  { href: "/dashboard/loguser", label: "Log Users", icon: User },
-  // { href: "/dashboard/logacr", label: "Log Acc", icon: User}
-]
+  { href: "/dashboard/loguser", label: "Log Users", icon: History },
+];
+
 export default function AppSidebar() {
   const router = useRouter();
   const pathname = usePathname();
@@ -107,10 +87,10 @@ export default function AppSidebar() {
       typeof window !== "undefined" && localStorage.getItem("user") !== null;
 
     if (!isLoggedIn) {
-      router.push("/"); // Redirect to login if not logged in
+      router.push("/");
     } else {
       const user = JSON.parse(localStorage.getItem("user") || "{}");
-      setUserName(user.UserName); // Get the user's name
+      setUserName(user.UserName);
     }
   }, [router]);
 
@@ -120,26 +100,26 @@ export default function AppSidebar() {
   };
 
   return (
-    <Sidebar>
-      <SidebarContent>
+    <Sidebar collapsible="icon" className="border-r">
+      <SidebarContent className="overflow-y-auto pt-0">
         <SidebarGroup>
-          <SidebarGroupLabel className="text-lg pb-1">
-            <Annoyed className="h-5 w-5" />
-            <Label className="text-lg font-semibold">
+          <SidebarGroupLabel className="text-lg py-2">
+            <Annoyed className="h-6 w-6" />
+            <Label className="text-lg font-semibold ml-2">
               <Link href="/dashboard" replace={false}>
-                Kiw
+                Kiw-kiw
               </Link>
             </Label>
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {/* Collapsible Section with Nav Links */}
+              {/* Master Section */}
               <Collapsible defaultOpen className="group/collapsible">
                 <SidebarMenuItem>
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton className="flex items-center gap-2">
-                      <Package2 className="h-5 w-5" />
-                      <span>Master</span>
+                      <Settings className="h-5 w-5" />
+                      <span className="font-medium">Master</span>
                     </SidebarMenuButton>
                   </CollapsibleTrigger>
                   <CollapsibleContent>
@@ -148,12 +128,12 @@ export default function AppSidebar() {
                         <SidebarMenuItem key={href}>
                           <SidebarMenuButton asChild>
                             <Button
-                              variant={pathname === href ? "outline" : "ghost"}
+                              variant={pathname === href ? "secondary" : "ghost"}
                               onClick={() => router.push(href)}
-                              className="flex items-center gap-2 justify-start"
+                              className="flex items-center gap-2 justify-start w-full h-9 px-3"
                             >
-                              <Icon className="h-5 w-5" />
-                              <span>{label}</span>
+                              <Icon className="h-4 w-4" />
+                              <span className="text-sm">{label}</span>
                             </Button>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
@@ -162,51 +142,14 @@ export default function AppSidebar() {
                   </CollapsibleContent>
                 </SidebarMenuItem>
               </Collapsible>
-              {/* Collapsible Section with Nav Links */}
-              {/* <Collapsible defaultOpen className="group/collapsible">
-                <SidebarMenuItem>
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton className="flex items-center gap-2">
-                      <Package2 className="h-5 w-5" />
-                      <span>Keuangan</span>
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <SidebarMenuSub>
-                      {Items3.map(({ href, label, icon: Icon, disabled }) => (
-                        <SidebarMenuItem key={href}>
-                          <SidebarMenuButton asChild>
-                            {disabled ? (
-                              <span className="flex items-center gap-2 text-gray-400">
-                                <Icon className="h-5 w-5" />
-                                <span>{label}</span>
-                              </span>
-                            ) : (
-                              <Button
-                                variant={
-                                  pathname === href ? "outline" : "ghost"
-                                }
-                                onClick={() => router.push(href)}
-                                className="flex items-center gap-2 justify-start"
-                              >
-                                <Icon className="h-5 w-5" />
-                                <span>{label}</span>
-                              </Button>
-                            )}
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      ))}
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
-                </SidebarMenuItem>
-              </Collapsible> */}
-              {/* Collapsible Section with Nav Links */}
+
+              {/* Monitoring Section */}
               <Collapsible defaultOpen className="group/collapsible">
                 <SidebarMenuItem>
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton className="flex items-center gap-2">
-                      <Package2 className="h-5 w-5" />
-                      <span>Monitoring</span>
+                      <Eye className="h-5 w-5" />
+                      <span className="font-medium">Monitoring</span>
                     </SidebarMenuButton>
                   </CollapsibleTrigger>
                   <CollapsibleContent>
@@ -215,12 +158,12 @@ export default function AppSidebar() {
                         <SidebarMenuItem key={href}>
                           <SidebarMenuButton asChild>
                             <Button
-                              variant={pathname === href ? "outline" : "ghost"}
+                              variant={pathname === href ? "secondary" : "ghost"}
                               onClick={() => router.push(href)}
-                              className="flex items-center gap-2 justify-start"
+                              className="flex items-center gap-2 justify-start w-full h-9 px-3"
                             >
-                              <Icon className="h-5 w-5" />
-                              <span>{label}</span>
+                              <Icon className="h-4 w-4" />
+                              <span className="text-sm">{label}</span>
                             </Button>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
@@ -230,12 +173,13 @@ export default function AppSidebar() {
                 </SidebarMenuItem>
               </Collapsible>
 
+              {/* Operasional Section */}
               <Collapsible defaultOpen className="group/collapsible">
                 <SidebarMenuItem>
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton className="flex items-center gap-2">
-                      <Package2 className="h-5 w-5" />
-                      <span>Operasional</span>
+                      <ClipboardList className="h-5 w-5" />
+                      <span className="font-medium">Operasional</span>
                     </SidebarMenuButton>
                   </CollapsibleTrigger>
                   <CollapsibleContent>
@@ -244,12 +188,12 @@ export default function AppSidebar() {
                         <SidebarMenuItem key={href}>
                           <SidebarMenuButton asChild>
                             <Button
-                              variant={pathname === href ? "outline" : "ghost"}
+                              variant={pathname === href ? "secondary" : "ghost"}
                               onClick={() => router.push(href)}
-                              className="flex items-center gap-2 justify-start"
+                              className="flex items-center gap-2 justify-start w-full h-9 px-3"
                             >
-                              <Icon className="h-5 w-5" />
-                              <span>{label}</span>
+                              <Icon className="h-4 w-4" />
+                              <span className="text-sm">{label}</span>
                             </Button>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
@@ -259,12 +203,13 @@ export default function AppSidebar() {
                 </SidebarMenuItem>
               </Collapsible>
 
+              {/* Produksi Section */}
               <Collapsible defaultOpen className="group/collapsible">
                 <SidebarMenuItem>
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton className="flex items-center gap-2">
-                      <Package2 className="h-5 w-5" />
-                      <span>Produksi</span>
+                      <Factory className="h-5 w-5" />
+                      <span className="font-medium">Produksi</span>
                     </SidebarMenuButton>
                   </CollapsibleTrigger>
                   <CollapsibleContent>
@@ -273,12 +218,12 @@ export default function AppSidebar() {
                         <SidebarMenuItem key={href}>
                           <SidebarMenuButton asChild>
                             <Button
-                              variant={pathname === href ? "outline" : "ghost"}
+                              variant={pathname === href ? "secondary" : "ghost"}
                               onClick={() => router.push(href)}
-                              className="flex items-center gap-2 justify-start"
+                              className="flex items-center gap-2 justify-start w-full h-9 px-3"
                             >
-                              <Icon className="h-5 w-5" />
-                              <span>{label}</span>
+                              <Icon className="h-4 w-4" />
+                              <span className="text-sm">{label}</span>
                             </Button>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
@@ -287,13 +232,14 @@ export default function AppSidebar() {
                   </CollapsibleContent>
                 </SidebarMenuItem>
               </Collapsible>
-              {/* log */}
+
+              {/* Log Section */}
               <Collapsible defaultOpen className="group/collapsible">
                 <SidebarMenuItem>
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton className="flex items-center gap-2">
-                      <Package2 className="h-5 w-5" />
-                      <span>Log</span>
+                      <History className="h-5 w-5" />
+                      <span className="font-medium">Log</span>
                     </SidebarMenuButton>
                   </CollapsibleTrigger>
                   <CollapsibleContent>
@@ -302,12 +248,12 @@ export default function AppSidebar() {
                         <SidebarMenuItem key={href}>
                           <SidebarMenuButton asChild>
                             <Button
-                              variant={pathname === href ? "outline" : "ghost"}
+                              variant={pathname === href ? "secondary" : "ghost"}
                               onClick={() => router.push(href)}
-                              className="flex items-center gap-2 justify-start"
+                              className="flex items-center gap-2 justify-start w-full h-9 px-3"
                             >
-                              <Icon className="h-5 w-5" />
-                              <span>{label}</span>
+                              <Icon className="h-4 w-4" />
+                              <span className="text-sm">{label}</span>
                             </Button>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
@@ -317,18 +263,20 @@ export default function AppSidebar() {
                 </SidebarMenuItem>
               </Collapsible>
             </SidebarMenu>
+            
+            {/* Import Section */}
             <SidebarMenu>
               {items.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     {item.disabled ? (
-                      <span>
-                        <item.icon />
-                        <span className="text-gray-400">{item.title}</span>
+                      <span className="flex items-center gap-2 text-gray-400 text-sm py-2 px-3">
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.title}</span>
                       </span>
                     ) : (
-                      <Link href={item.url}>
-                        <item.icon />
+                      <Link href={item.url} className="flex items-center gap-2 text-sm py-2 px-3">
+                        <item.icon className="h-4 w-4" />
                         <span>{item.title}</span>
                       </Link>
                     )}
@@ -339,15 +287,20 @@ export default function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter>
+      
+      <SidebarFooter className="border-t pt-2">
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <SidebarMenuButton>
-                  <User2 />{" "}
-                  {userName && <span className="ml-2">{userName}</span>}
-                  <ChevronUp className="ml-auto" />
+                <SidebarMenuButton className="w-full h-10 px-3">
+                  <div className="flex items-center gap-2 w-full">
+                    <User2 className="h-4 w-4 flex-shrink-0" />
+                    <span className="truncate text-sm font-medium">
+                      {userName || "User"}
+                    </span>
+                    <ChevronUp className="ml-auto h-3 w-3 flex-shrink-0" />
+                  </div>
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
               <DropdownMenuContent
@@ -355,7 +308,7 @@ export default function AppSidebar() {
                 className="w-[--radix-popper-anchor-width]"
               >
                 <DropdownMenuItem onClick={handleLogout}>
-                  <span>Sign out</span>
+                  <span className="text-sm">Sign out</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
-// import localFont from "next/font/local";
-// import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
-// import Navbar from "@/components/header/navbar";
 import StoreProvider from "../StroreProvider";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import  AppSidebar  from "@/components/app-sidebar";
+import AppSidebar from "@/components/app-sidebar";
 import Maintenance from "../maintenance/page";
+import { SidebarInset } from "@/components/ui/sidebar";
+
 export const metadata: Metadata = {
   title: "Kiw ✖",
   description: "data",
@@ -30,20 +29,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (isMaintenance) {
     return <Maintenance />;
   }
+  
   return (
-      <section>
+    <StoreProvider>
       <SidebarProvider>
-        <AppSidebar />
-          <SidebarTrigger />
-      <Toaster />
-      <StoreProvider>
-        <div className="h-screen pt-16 flex justify-center mx-auto">
-
-        {children}
+        <div className="flex min-h-screen w-full">
+          <AppSidebar />
+          <SidebarInset className="flex-1">
+            {/* Header dengan tombol hamburger hanya di mobile */}
+            <header className="sticky top-0 z-10 border-b bg-background px-4 py-3 md:px-6 md:py-4">
+              <div className="flex items-center gap-2">
+                <SidebarTrigger className="md:hidden" />
+                {/* <h1 className="text-lg font-semibold md:text-xl">Dashboard</h1> */}
+              </div>
+            </header>
+            
+            <main className="flex-1 flex items-center justify-center p-4 md:p-6">
+              <div className="w-full max-w-7xl mx-auto">
+                {children}
+              </div>
+            </main>
+          </SidebarInset>
+          <Toaster />
         </div>
-        </StoreProvider>
-        
       </SidebarProvider>
-    </section>
+    </StoreProvider>
   );
 }

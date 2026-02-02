@@ -93,3 +93,77 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+/* Reset padding dan margin untuk sidebar */
+[data-sidebar="sidebar"] {
+  top: 0 !important;
+}
+
+/* Pastikan sidebar tidak memiliki padding atas berlebih */
+[data-sidebar="sidebar"]>div {
+  padding-top: 0 !important;
+}
+
+/* Untuk mobile, pastikan sidebar overlay tidak menutupi tombol */
+@media (max-width: 768px) {
+  [data-sidebar="trigger"] {
+    position: fixed;
+    top: 1rem;
+    left: 1rem;
+    z-index: 40;
+  }
+
+  [data-sidebar="sidebar"] {
+    z-index: 50;
+  }
+}
+
+/* Pastikan konten utama tidak tertutup */
+.sidebar-inset {
+  width: 100%;
+}
+/* Responsif tambahan untuk dashboard */
+@media (max-width: 640px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .quick-actions {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .stat-card {
+    padding: 0.75rem !important;
+  }
+}
+
+/* Smooth transitions */
+.dashboard-transition {
+  transition: all 0.3s ease;
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  .mobile-padding {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  .mobile-text-center {
+    text-align: center;
+  }
+
+  .mobile-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+}
+
+/* Untuk tabel yang overflow di mobile */
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
