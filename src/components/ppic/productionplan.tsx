@@ -641,7 +641,8 @@ const fetchStockForItem = async (
 
         // ⭐ PERBAIKAN: Stock Real = SaldoAkhir (karena ini data real dari sistem)
         // Jangan gunakan SaldoAkhirFisik jika tidak reliable
-        const physicalStock = stockAkhir; // Gunakan stockAkhir sebagai stock real
+        const physicalStock =  parseFloat(itemData.SaldoAkhirFisik) || 0;
+        // Gunakan stockAkhir sebagai stock real
 
         console.log(`📦 Stock details for ${itemId}:`, {
           stockAkhir,
@@ -3331,6 +3332,7 @@ const calculateLevelBasedNeeds = (
       // Cari stok - PERBAIKAN: Gunakan stockAkhir (SaldoAkhir)
       const stockItem = stock.find(s => s.itemid === node.ItemID);
       const availableStock = stockItem?.stockAkhir || 0; // Gunakan stockAkhir, bukan physicalStock
+      const physicalStock = stockItem?.physicalStock || 0;
       const shortage = Math.max(0, totalNeeded - availableStock);
       
       items.push({
@@ -3340,6 +3342,7 @@ const calculateLevelBasedNeeds = (
         AccumulatedQtyPerUnit: accumulatedQtyPerUnit,
         TotalNeeded: totalNeeded,
         AvailableStock: availableStock, // stockAkhir
+        PhysicalStock: physicalStock,
         Shortage: shortage,
         ParentItemID: node.ParentItemID || null,
         LevelPath: [...levelPath, node.ItemID]
@@ -3519,6 +3522,7 @@ const exportSelectedToExcel = async (): Promise<void> => {
                 item.Level === 1 ? `${item.BaseQtyPerUnit} × 1 (Parent: ${combinedItem.Kode_Barang})` :
                 `${item.BaseQtyPerUnit} × (Parent Multiplier)`,
               "QTY PO 订单数量": combinedItem.QTY,
+              "Stock Wincp": item.PhysicalStock || 0,
               "Total Butuh 总需求": item.TotalNeeded,
               "Stok Tersedia 可用库存": item.AvailableStock, // ← Ini sudah stockAkhir
               "Kekurangan 短缺": item.Shortage,
@@ -3580,6 +3584,7 @@ const exportSelectedToExcel = async (): Promise<void> => {
               item.Level === 1 ? `${item.BaseQtyPerUnit} × 1 (Parent: ${order.order.Kode_Barang})` :
               `${item.BaseQtyPerUnit} × (Parent Multiplier)`,
             "QTY PO 订单数量": order.order.QTY,
+            "Stock Wincp": item.PhysicalStock || 0,
             "Total Butuh 总需求": item.TotalNeeded,
             "Stok Tersedia 可用库存": item.AvailableStock, // ← Ini sudah stockAkhir
             "Kekurangan 短缺": item.Shortage,
@@ -3635,6 +3640,7 @@ const exportSelectedToExcel = async (): Promise<void> => {
           "Base Qty Per Unit 基础每单位数量": item["Base Qty Per Unit 基础每单位数量"],
           "Accumulated Qty Per Unit 累计每单位数量": item["Accumulated Qty Per Unit 累计每单位数量"],
           "Contoh Perhitungan 计算示例": item["Multiplier Calculation 乘数计算"],
+          "Stock Wincp":item["Stock Wincp"],
           "Total Butuh 总需求": item["Total Butuh 总需求"],
           "Stok Tersedia 可用库存": item["Stok Tersedia 可用库存"],
           "Kekurangan 短缺": item["Kekurangan 短缺"],
