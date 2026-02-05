@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Separator } from "../ui/separator";
 
-export interface pengeluaran {
+export interface retur {
   PembeliPeneima: string;
   KodeBarang: string;
   NamaBarang: string;
@@ -26,10 +26,10 @@ export interface pengeluaran {
   NilaiBarang: number;
 }
 
-export default function PengeluaranPage() {
-  const [data, setData] = useState<pengeluaran[]>([]);
+export default function ReturPage() {
+  const [data, setData] = useState<retur[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedRows, setSelectedRows] = useState<pengeluaran[]>([]);
+  const [selectedRows, setSelectedRows] = useState<retur[]>([]);
   const [tgl1, setTgl1] = useState<string>(
     new Date().toISOString().split("T")[0]
   );
@@ -126,7 +126,7 @@ export default function PengeluaranPage() {
       // Buat array untuk seluruh konten worksheet
       const today = new Date();
       const worksheetData = [
-        ["LAPORAN PENGELUARAN BARANG"],
+        ["LAPORAN PENGELUARAN BARANG RETUR PEMBELIAN"],
         [`Periode: ${formatTanggal(tgl1)} s/d ${formatTanggal(tgl2)}`],
         [`Tanggal Export: ${today.toLocaleDateString('id-ID')} ${today.toLocaleTimeString('id-ID')}`],
         [`Jumlah Data: ${data.length} item`],
@@ -421,7 +421,7 @@ export default function PengeluaranPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const url = new URL("/api/pengeluaran", window.location.origin);
+    const url = new URL("/api/returpembelian", window.location.origin);
     const finalTgl1 = tgl1 || new Date().toISOString().split("T")[0];
     const finalTgl2 = tgl2 || new Date().toISOString().split("T")[0];
 
@@ -433,7 +433,7 @@ export default function PengeluaranPage() {
       const json = await res.json();
 
       const filtered = json.filter(
-        (item: pengeluaran) =>
+        (item: retur) =>
           item.JenisDokPabean === "BC 3.0" || item.JenisDokPabean === "BC 4.1" || item.JenisDokPabean === "BC 2.5" || item.JenisDokPabean === "BC 2.7"  
       );
 
@@ -442,10 +442,10 @@ export default function PengeluaranPage() {
       // ✅ Kirim otomatis jika hari ini
       const today = new Date().toISOString().split("T")[0];
       if (finalTgl1 === today && finalTgl2 === today && filtered.length > 0) {
-        const header = `📦 *Laporan Pengeluaran Penjualan Hari Ini* (${today})\n\n`;
+        const header = `📦 *Laporan Pengeluaran Retur Hari Ini* (${today})\n\n`;
         const body = filtered
           .map(
-            (item: pengeluaran, index: number) =>
+            (item: retur, index: number) =>
               `📋 ${index + 1}.\n` +
               `🛒 Barang: ${item.KodeBarang}\n` +
               `🔢 Jumlah: ${item.Jumlah} ${item.Satuan}\n` +
@@ -535,8 +535,8 @@ export default function PengeluaranPage() {
         <div className="flex items-center gap-3">
           <BarChart3 className="h-8 w-8 text-primary" />
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Laporan Pengeluaran Penjualan</h1>
-            <p className="text-muted-foreground">
+            <h1 className="text-3xl font-bold tracking-tight">Laporan Pengeluaran Retur</h1>
+          <p className="text-muted-foreground">
               Monitor dan kelola data pengeluaran barang dengan dokumen
             </p>
           </div>
@@ -547,7 +547,7 @@ export default function PengeluaranPage() {
         <TabsList>
           <TabsTrigger value="data" className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4" />
-            Data Pengeluaran Penjualan
+            Data Pengeluaran Retur
           </TabsTrigger>
           <TabsTrigger value="statistik" className="flex items-center gap-2">
             <CalendarDays className="h-4 w-4" />
@@ -560,7 +560,7 @@ export default function PengeluaranPage() {
             <CardHeader>
               <CardTitle>Filter Data</CardTitle>
               <CardDescription>
-                Pilih rentang tanggal untuk melihat laporan pengeluaran
+                Pilih rentang tanggal untuk melihat laporan retur
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -684,7 +684,7 @@ export default function PengeluaranPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
               <div>
-                <CardTitle>Data Pengeluaran Penjualan</CardTitle>
+                <CardTitle>Data Pengeluaran Retur</CardTitle>
                 <CardDescription>
                   {data.length} data ditemukan untuk periode {formatTanggal(tgl1)} s/d {formatTanggal(tgl2)}
                 </CardDescription>
@@ -749,7 +749,7 @@ export default function PengeluaranPage() {
                 <Alert>
                   <AlertTitle>Tidak ada data</AlertTitle>
                   <AlertDescription>
-                    Tidak ada data pengeluaran untuk periode yang dipilih. Coba ubah rentang tanggal.
+                    Tidak ada data retur untuk periode yang dipilih. Coba ubah rentang tanggal.
                   </AlertDescription>
                 </Alert>
               ) : (
@@ -768,7 +768,7 @@ export default function PengeluaranPage() {
             <CardHeader>
               <CardTitle>Statistik Pengeluaran Penjualan</CardTitle>
               <CardDescription>
-                Analisis data pengeluaran periode {formatTanggal(tgl1)} s/d {formatTanggal(tgl2)}
+                Analisis data retur periode {formatTanggal(tgl1)} s/d {formatTanggal(tgl2)}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">

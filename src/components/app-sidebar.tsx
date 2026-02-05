@@ -34,7 +34,6 @@ import { Label } from "./ui/label";
 const masterItems = [ 
   { href: "/dashboard/", label: "Stock Gudang", icon: Warehouse },
   { href: "/dashboard/bom", label: "BOM", icon: FileText },
-  { href: "/dashboard/pengeluaran", label: "Laporan Exim", icon: BarChart },
   { href: "/dashboard/barang", label: "Master Barang", icon: Package },
   { href: "/dashboard/cekppn", label: "Hitung PPN", icon: Calculator },
   { href: "/dashboard/supplier", label: "Supplier", icon: Users },
@@ -65,6 +64,8 @@ const Items2 = [
   { href: "/dashboard/spk", label: "SPK", icon: FileText },
   { href: "/dashboard/purchase", label: "Pembelian", icon: ShoppingCart },
   { href: "/dashboard/penerimaan", label: "Penerimaan", icon: Truck },
+  { href: "/dashboard/pengeluaran", label: "Penjualan", icon: BarChart },
+  { href: "/dashboard/returpembelian", label: "Retur Pembelian", icon: Repeat },
 ];
 
 const Items5 = [

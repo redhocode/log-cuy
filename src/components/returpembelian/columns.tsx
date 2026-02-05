@@ -7,15 +7,15 @@ import { ColumnDef } from "@tanstack/react-table";
 import { ArrowUpDown } from "lucide-react";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
-import { pengeluaran } from "./notifpengeluaran";
+import { retur } from "./returpembelian";
 
 interface ColumnsProps {
-  setSelectedRows: React.Dispatch<React.SetStateAction<pengeluaran[]>>; // Update with your correct type
+  setSelectedRows: React.Dispatch<React.SetStateAction<retur[]>>; // Update with your correct type
 }
 
 export const columns = (
   setSelectedRows: ColumnsProps["setSelectedRows"]
-): ColumnDef<pengeluaran>[] => [
+): ColumnDef<retur>[] => [
   {
     id: "select",
     header: ({ table }) => (
