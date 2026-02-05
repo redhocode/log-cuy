@@ -68,9 +68,9 @@ const Items2 = [
 ];
 
 const Items5 = [
-  { href: "/dashboard/po", label: "PO Produksi", icon: Eye },
-  { href: "/dashboard/so", label: "SO", icon: FileText },
-  { href: "/dashboard/po-beli", label: "PO Pembelian", icon: ShoppingCart },
+  { href: "/dashboard/po", label: "Produksi", icon: Eye },
+  { href: "/dashboard/so", label: "Seles Order", icon: FileText },
+  { href: "/dashboard/po-beli", label: "Pembelian", icon: ShoppingCart },
 ];
 
 const Items4 = [

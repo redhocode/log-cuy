@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
+// Tambahkan import untuk xlsx
+import * as XLSX from 'xlsx';
 
 interface PORecord {
   orderid: string;
@@ -636,15 +638,181 @@ export default function MonitoringPOPage() {
     );
   };
 
+  // Fungsi untuk ekspor ke Excel
   const exportToExcel = () => {
-    const dataStr = JSON.stringify(data);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `PO-Pembelian-${tgl1}-${tgl2}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
+    try {
+      // 1. Buat data untuk worksheet PO Detail
+      const poDetailData = poList.flatMap(po => 
+        po.items.flatMap(item => 
+          item.records.map((record: { moveid: any; movedate: string | number | Date; mbags: any; mkgs: any; transid: any; transdate: string | number | Date; CompanyInvNo: any; }) => ({
+            'PO Number': po.header.orderid,
+            'PO Date': new Date(po.header.orderdate).toLocaleDateString('id-ID'),
+            'Supplier': po.header.companyname1 || '',
+            'Currency': po.header.currency || getCurrencyFromData(po.header),
+            'Item ID': item.itemid || '',
+            'Item Name': item.itemname || '',
+            'PO Price': item.poprice || 0,
+            'PO Quantity (Bags)': item.pobags || 0,
+            'PO Quantity (Kg)': item.pokgs || 0,
+            'Receipt Number': record.moveid || '',
+            'Receipt Date': record.movedate ? new Date(record.movedate).toLocaleDateString('id-ID') : '',
+            'Received Bags': record.mbags || 0,
+            'Received Kg': record.mkgs || 0,
+            'Memo Number': record.transid || '',
+            'Memo Date': record.transdate ? new Date(record.transdate).toLocaleDateString('id-ID') : '',
+            'Supplier Invoice': record.CompanyInvNo || '',
+            'Progress Bags (%)': Math.round(item.progressBags) || 0,
+            'Progress Kg (%)': Math.round(item.progressKg) || 0
+          }))
+        )
+      );
+
+      // 2. Buat data untuk worksheet PO Summary
+      const poSummaryData = poList.map(po => {
+        const status = poStatuses.find(s => s.orderid === po.orderId);
+        const totalPOBags = po.items.reduce((sum, item) => sum + (item.pobags || 0), 0);
+        const totalPOKg = po.items.reduce((sum, item) => sum + (item.pokgs || 0), 0);
+        const totalReceivedBags = po.items.reduce((sum, item) => sum + (item.totals.mbags || 0), 0);
+        const totalReceivedKg = po.items.reduce((sum, item) => sum + (item.totals.mkgs || 0), 0);
+        
+        return {
+          'PO Number': po.header.orderid,
+          'PO Date': new Date(po.header.orderdate).toLocaleDateString('id-ID'),
+          'Supplier': po.header.companyname1 || '',
+          'Currency': po.header.currency || getCurrencyFromData(po.header),
+          'Total Items': po.items.length,
+          'Total PO Bags': totalPOBags,
+          'Total PO Kg': totalPOKg,
+          'Total Received Bags': totalReceivedBags,
+          'Total Received Kg': totalReceivedKg,
+          'Progress Bags (%)': totalPOBags > 0 ? Math.round((totalReceivedBags / totalPOBags) * 100) : 0,
+          'Progress Kg (%)': totalPOKg > 0 ? Math.round((totalReceivedKg / totalPOKg) * 100) : 0,
+          'Status': status?.status || 'pending',
+          'Has Receipt': po.adaPenerimaan ? 'Yes' : 'No'
+        };
+      });
+
+      // 3. Buat data untuk worksheet Stock Card (jika ada)
+      const stockCardData = Object.entries(stockData).flatMap(([key, stockItems]) => {
+        const [orderId, itemId] = key.split('-');
+        return stockItems.map(stock => ({
+          'PO Number': orderId,
+          'Item ID': itemId,
+          'Warehouse': stock.locid || '',
+          'Date': stock.MoveDate ? new Date(stock.MoveDate).toLocaleDateString('id-ID') : '',
+          'Activity': stock.Kegiatan || '',
+          'Memo Number': stock.NoMemo || '',
+          'Description': stock.Keterangan || '',
+          'IN (kg)': stock.KgI || 0,
+          'OUT (kg)': stock.KgO || 0,
+          'Balance': stock.Saldo || 0
+        }));
+      });
+
+      // 4. Buat workbook dengan multiple worksheets
+      const workbook = XLSX.utils.book_new();
+      
+      // Worksheet 1: PO Detail
+      const ws1 = XLSX.utils.json_to_sheet(poDetailData);
+      XLSX.utils.book_append_sheet(workbook, ws1, 'PO Detail');
+      
+      // Worksheet 2: PO Summary
+      const ws2 = XLSX.utils.json_to_sheet(poSummaryData);
+      XLSX.utils.book_append_sheet(workbook, ws2, 'PO Summary');
+      
+      // Worksheet 3: Stock Card (jika ada data)
+      if (stockCardData.length > 0) {
+        const ws3 = XLSX.utils.json_to_sheet(stockCardData);
+        XLSX.utils.book_append_sheet(workbook, ws3, 'Stock Card');
+      }
+      
+      // 5. Atur lebar kolom otomatis
+      const setAutoWidth = (worksheet: any, data: any[]) => {
+        const colWidths = data.reduce((widths, row) => {
+          Object.keys(row).forEach((key, idx) => {
+            const length = row[key]?.toString().length || 0;
+            if (!widths[idx] || length > widths[idx]) {
+              widths[idx] = length;
+            }
+          });
+          return widths;
+        }, []);
+        
+        worksheet['!cols'] = colWidths.map((w: number) => ({ 
+          width: Math.min(Math.max(w + 2, 10), 50) 
+        }));
+      };
+      
+      setAutoWidth(ws1, poDetailData);
+      setAutoWidth(ws2, poSummaryData);
+      if (stockCardData.length > 0) {
+        setAutoWidth(ws2, stockCardData);
+      }
+      
+      // 6. Generate dan download file
+      const fileName = `PO-Tracking-${tgl1}-to-${tgl2}.xlsx`;
+      XLSX.writeFile(workbook, fileName);
+      
+      // Optional: Tambahkan notifikasi
+      alert(`${language === 'zh' ? '文件导出成功！' : 'File berhasil diekspor!'}`);
+      
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      alert(`${language === 'zh' ? '导出失败，请重试' : 'Gagal mengekspor, silakan coba lagi'}`);
+    }
+  };
+
+  // Alternatif: Fungsi untuk ekspor ke CSV (lebih ringan)
+  const exportToCSV = () => {
+    try {
+      // Buat data untuk CSV
+      const csvData = poList.flatMap(po => 
+        po.items.flatMap(item => 
+          item.records.map((record: { moveid: any; movedate: string | number | Date; mbags: any; mkgs: any; transid: any; transdate: string | number | Date; CompanyInvNo: any; }) => ({
+            'PO Number': po.header.orderid,
+            'PO Date': new Date(po.header.orderdate).toLocaleDateString('id-ID'),
+            'Supplier': po.header.companyname1 || '',
+            'Currency': po.header.currency || getCurrencyFromData(po.header),
+            'Item ID': item.itemid || '',
+            'Item Name': item.itemname || '',
+            'PO Price': item.poprice || 0,
+            'PO Quantity (Bags)': item.pobags || 0,
+            'PO Quantity (Kg)': item.pokgs || 0,
+            'Receipt Number': record.moveid || '',
+            'Receipt Date': record.movedate ? new Date(record.movedate).toLocaleDateString('id-ID') : '',
+            'Received Bags': record.mbags || 0,
+            'Received Kg': record.mkgs || 0,
+            'Memo Number': record.transid || '',
+            'Memo Date': record.transdate ? new Date(record.transdate).toLocaleDateString('id-ID') : '',
+            'Supplier Invoice': record.CompanyInvNo || ''
+          }))
+        )
+      );
+
+      // Konversi ke CSV string
+      const headers = Object.keys(csvData[0] || {}).join(',');
+      const rows = csvData.map(row => 
+        Object.values(row).map(value => 
+          typeof value === 'string' && value.includes(',') ? `"${value}"` : value
+        ).join(',')
+      );
+      const csvString = [headers, ...rows].join('\n');
+      
+      // Buat blob dan download
+      const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `PO-Tracking-${tgl1}-${tgl2}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+    } catch (error) {
+      console.error('Error exporting to CSV:', error);
+      alert(`${language === 'zh' ? '导出失败，请重试' : 'Gagal mengekspor, silakan coba lagi'}`);
+    }
   };
 
   const formatCurrency = (amount: number, currencyCode: string = 'IDR') => {
@@ -1054,10 +1222,30 @@ export default function MonitoringPOPage() {
             </SelectContent>
           </Select>
           
-          <Button variant="outline" onClick={exportToExcel}>
-            <Download className="h-4 w-4 mr-2" />
-            {t('exportData')}
-          </Button>
+          {/* Dropdown untuk pilihan export */}
+          <Select onValueChange={(value) => {
+            if (value === 'excel') exportToExcel();
+            if (value === 'csv') exportToCSV();
+          }}>
+            <SelectTrigger className="w-[180px]">
+              <Download className="h-4 w-4 mr-2" />
+              <SelectValue placeholder={t('exportData')} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="excel">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Excel (.xlsx)
+                </div>
+              </SelectItem>
+              <SelectItem value="csv">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  CSV (.csv)
+                </div>
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
