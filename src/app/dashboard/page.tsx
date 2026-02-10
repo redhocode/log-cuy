@@ -2,173 +2,307 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import StockList from "@/components/stock/stocklist";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { 
+  Package, 
+  Factory, 
+  FileText, 
+  BarChart3, 
+  TrendingUp, 
+  Clock,
+  Bell,
+  QrCode,
+  Shield,
+  Database,
+  Download,
+  GitBranch,
+  Heart
+} from "lucide-react";
+// import StockList from "@/components/stock/stocklist";
 
 const DashboardPage = () => {
   const router = useRouter();
   const [userName, setUserName] = useState<string | null>(null);
+  const [loginTime, setLoginTime] = useState<string>("");
 
   useEffect(() => {
     const user = localStorage.getItem("user");
+    const now = new Date();
+    const formattedTime = now.toLocaleTimeString('id-ID', { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+    const formattedDate = now.toLocaleDateString('id-ID', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    
+    setLoginTime(`${formattedDate}, ${formattedTime}`);
+    
     if (!user) {
       router.push("/auth/login");
     } else {
-      const parsedUser = JSON.parse(user);
-      setUserName(parsedUser.UserName);
+      try {
+        const parsedUser = JSON.parse(user);
+        setUserName(parsedUser.UserName || parsedUser.username || "Pengguna");
+      } catch {
+        router.push("/auth/login");
+      }
     }
   }, [router]);
 
+  // Statistik contoh (bisa diganti dengan data real)
+  const stats = [
+    { label: "Total Stock", value: "1,234", change: "+12%", icon: Package, color: "blue" },
+    { label: "Produksi Hari Ini", value: "56", change: "3 line aktif", icon: Factory, color: "green" },
+    { label: "Pending PO", value: "23", change: "2 perlu perhatian", icon: FileText, color: "amber" },
+    { label: "Total Supplier", value: "48", change: "5 aktif hari ini", icon: BarChart3, color: "purple" },
+  ];
+
+  const quickActions = [
+    { label: "Data Produksi", path: '/dashboard/data', color: "primary", icon: Database },
+    { label: "Stock Gudang", path: '/dashboard/stock', color: "blue", icon: Package },
+    { label: "PO Produksi", path: '/dashboard/spk', color: "green", icon: FileText },
+    { label: "Laporan", path: '/dashboard/report', color: "purple", icon: Download },
+  ];
+
+  const systemUpdates = [
+    { status: "normal", text: "Sistem berjalan normal", color: "text-green-500", bg: "bg-green-500" },
+    { status: "update", text: "Update terakhir: 2 jam yang lalu", color: "text-blue-500", bg: "bg-blue-500" },
+    { status: "backup", text: "Backup otomatis: 00:00 WIB", color: "text-amber-500", bg: "bg-amber-500" },
+  ];
+
+  const tips = [
+    { icon: "📊", text: "Gunakan filter untuk mencari data lebih cepat" },
+    { icon: "🔔", text: "Aktifkan notifikasi untuk update penting" },
+    { icon: "📱", text: "Akses sistem dari mobile dengan scan QR code" },
+    { icon: "🛡️", text: "Selalu logout setelah menggunakan sistem" },
+  ];
+
   return (
-    <div className="flex flex-col items-center w-full min-h-screen p-4 md:p-6">
-      {/* Header dengan teks responsif */}
-      <div className="w-full max-w-7xl mx-auto text-center mb-6 md:mb-8">
-        <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-9xl font-bold mb-2 md:mb-4">
-          KIW-KIW
-        </h1>
-        {userName && (
-          <div className="text-lg sm:text-xl md:text-2xl text-gray-600 dark:text-gray-400">
-            <p className="mb-1">Sistem Monitoring Produksi</p>
-            <p className="font-semibold text-primary">Halo, {userName}!</p>
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 p-4 md:p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Header dengan branding */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+          <div>
+            <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">
+              KIW-KIW
+            </h1>
+            <div className="mt-2 space-y-1">
+              <p className="text-lg text-gray-600 dark:text-gray-400">
+                Sistem Monitoring Produksi & Inventory
+              </p>
+              {userName && (
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Halo, <span className="font-semibold text-primary">{userName}</span>
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
-        )}
+          
+          <div className="flex flex-col items-end gap-2">
+            <Badge variant="outline" className="flex items-center gap-1 text-xs">
+              <Clock className="w-3 h-3" />
+              <span>Login: {loginTime}</span>
+            </Badge>
+            <Badge variant="outline" className="flex items-center gap-1 text-xs">
+              v2.0.1 Production
+            </Badge>
+          </div>
+        </div>
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          {stats.map((stat, index) => {
+            const Icon = stat.icon;
+            return (
+              <Card key={index} className="overflow-hidden border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-shadow">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">{stat.label}</p>
+                      <p className="text-2xl font-bold">{stat.value}</p>
+                      <p className={`text-xs mt-1 ${
+                        stat.color === 'blue' ? 'text-blue-600 dark:text-blue-400' :
+                        stat.color === 'green' ? 'text-green-600 dark:text-green-400' :
+                        stat.color === 'amber' ? 'text-amber-600 dark:text-amber-400' :
+                        'text-purple-600 dark:text-purple-400'
+                      }`}>
+                        <TrendingUp className="inline w-3 h-3 mr-1" />
+                        {stat.change}
+                      </p>
+                    </div>
+                    <div className={`p-3 rounded-full ${
+                      stat.color === 'blue' ? 'bg-blue-100 dark:bg-blue-900/30' :
+                      stat.color === 'green' ? 'bg-green-100 dark:bg-green-900/30' :
+                      stat.color === 'amber' ? 'bg-amber-100 dark:bg-amber-900/30' :
+                      'bg-purple-100 dark:bg-purple-900/30'
+                    }`}>
+                      <Icon className={`w-6 h-6 ${
+                        stat.color === 'blue' ? 'text-blue-600 dark:text-blue-400' :
+                        stat.color === 'green' ? 'text-green-600 dark:text-green-400' :
+                        stat.color === 'amber' ? 'text-amber-600 dark:text-amber-400' :
+                        'text-purple-600 dark:text-purple-400'
+                      }`} />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Main Dashboard Card */}
+        <Card className="shadow-xl border-gray-200 dark:border-gray-800 mb-8">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-2xl font-bold flex items-center gap-2">
+              <BarChart3 className="w-6 h-6 text-primary" />
+              Dashboard Utama
+            </CardTitle>
+          </CardHeader>
+          
+          <Separator className="mb-6" />
+          
+          <CardContent className="space-y-8">
+            {/* Quick Actions */}
+            <div>
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Bell className="w-5 h-5 text-primary" />
+                Aksi Cepat
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {quickActions.map((action, index) => {
+                  const Icon = action.icon;
+                  return (
+                    <Button
+                      key={index}
+                      onClick={() => router.push(action.path)}
+                      className={`h-auto py-4 flex flex-col items-center justify-center gap-2 ${
+                        action.color === 'primary' ? 'bg-primary hover:bg-primary/90' :
+                        action.color === 'blue' ? 'bg-blue-600 hover:bg-blue-700' :
+                        action.color === 'green' ? 'bg-green-600 hover:bg-green-700' :
+                        'bg-purple-600 hover:bg-purple-700'
+                      }`}
+                    >
+                      <Icon className="w-5 h-5" />
+                      <span className="font-medium">{action.label}</span>
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Stock List Section */}
+            {/* <div>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <Package className="w-5 h-5 text-primary" />
+                  Stock Terbaru
+                </h3>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => router.push('/dashboard/stock')}
+                >
+                  Lihat Semua
+                </Button>
+              </div>
+              <div className="overflow-x-auto rounded-lg border">
+                <StockList />
+              </div>
+            </div> */}
+
+            {/* Information Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* System Updates */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                    <Shield className="w-5 h-5 text-primary" />
+                    Status Sistem
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-3">
+                    {systemUpdates.map((update, index) => (
+                      <li key={index} className="flex items-center gap-3">
+                        <div className={`w-3 h-3 rounded-full ${update.bg}`}></div>
+                        <span className="text-sm">{update.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+
+              {/* Tips & Tricks */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                    <QrCode className="w-5 h-5 text-primary" />
+                    Tips & Trik
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-3">
+                    {tips.map((tip, index) => (
+                      <li key={index} className="flex items-start gap-3">
+                        <span className="text-lg">{tip.icon}</span>
+                        <span className="text-sm">{tip.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Footer dengan attribution */}
+        <footer className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-800">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              <p>© {new Date().getFullYear()} KIW-KIW Production Monitoring System</p>
+              <p className="mt-1">Terakhir login: {loginTime}</p>
+            </div>
+            
+            {/* Attribution Section */}
+            <div className="flex flex-col items-center gap-2">
+              <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                <Heart className="w-4 h-4 text-red-500" />
+                <span>Dibuat dengan</span>
+              </div>
+              <a 
+                href="https://github.com/redoamain" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-gray-900 to-gray-800 dark:from-gray-800 dark:to-gray-900 text-white hover:opacity-90 transition-opacity"
+              >
+                <GitBranch className="w-4 h-4" />
+                <span className="font-medium">redo</span>
+                <span className="text-xs opacity-80">on GitHub</span>
+              </a>
+            </div>
+            
+            <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
+              <Badge variant="outline" className="text-xs">
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                  <span>Online</span>
+                </div>
+              </Badge>
+              <span>•</span>
+              <span>Server: Production</span>
+            </div>
+          </div>
+        </footer>
       </div>
-
-      {/* Card utama dengan lebar responsif */}
-      <Card className="w-full max-w-7xl mx-auto shadow-lg">
-        <CardHeader className="text-center pb-4">
-          <CardTitle className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold">
-            Dashboard Utama
-          </CardTitle>
-        </CardHeader>
-        
-        <hr className="mx-4 md:mx-6" />
-        
-        <CardContent className="pt-6">
-          {/* Section ringkasan statistik (opsional) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            {/* Statistik Card 1 */}
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 rounded-lg p-4 border">
-              <div className="flex flex-col">
-                <span className="text-sm text-gray-600 dark:text-gray-400">Total Stock</span>
-                <span className="text-2xl font-bold">1,234</span>
-                <span className="text-xs text-green-600 dark:text-green-400 mt-1">+12% dari bulan lalu</span>
-              </div>
-            </div>
-            
-            {/* Statistik Card 2 */}
-            <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/30 rounded-lg p-4 border">
-              <div className="flex flex-col">
-                <span className="text-sm text-gray-600 dark:text-gray-400">Produksi Hari Ini</span>
-                <span className="text-2xl font-bold">56</span>
-                <span className="text-xs text-blue-600 dark:text-blue-400 mt-1">Aktif: 3 line</span>
-              </div>
-            </div>
-            
-            {/* Statistik Card 3 */}
-            <div className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-900/30 dark:to-amber-800/30 rounded-lg p-4 border">
-              <div className="flex flex-col">
-                <span className="text-sm text-gray-600 dark:text-gray-400">Pending PO</span>
-                <span className="text-2xl font-bold">23</span>
-                <span className="text-xs text-red-600 dark:text-red-400 mt-1">2 perlu perhatian</span>
-              </div>
-            </div>
-            
-            {/* Statistik Card 4 */}
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/30 rounded-lg p-4 border">
-              <div className="flex flex-col">
-                <span className="text-sm text-gray-600 dark:text-gray-400">Total Supplier</span>
-                <span className="text-2xl font-bold">48</span>
-                <span className="text-xs text-purple-600 dark:text-purple-400 mt-1">5 aktif hari ini</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Aksi cepat (Quick Actions) */}
-          <div className="mb-8">
-            <h3 className="text-lg font-semibold mb-4">Aksi Cepat</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              <button 
-                onClick={() => router.push('/dashboard/data')}
-                className="bg-primary hover:bg-primary/90 text-white py-3 px-4 rounded-lg text-center transition-colors"
-              >
-                Data Produksi
-              </button>
-              <button 
-                onClick={() => router.push('/dashboard/stock')}
-                className="bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg text-center transition-colors"
-              >
-                Stock Gudang
-              </button>
-              <button 
-                onClick={() => router.push('/dashboard/po')}
-                className="bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-lg text-center transition-colors"
-              >
-                PO Produksi
-              </button>
-            </div>
-          </div>
-
-          {/* Komponen StockList dengan container responsif */}
-          <div className="mb-8">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Stock Terbaru</h3>
-              <button 
-                onClick={() => router.push('/dashboard/')}
-                className="text-sm text-primary hover:underline"
-              >
-                Lihat Semua
-              </button>
-            </div>
-            <div className="overflow-x-auto">
-              <StockList />
-            </div>
-          </div>
-
-          {/* Informasi tambahan */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-muted/50 rounded-lg p-4">
-              <h4 className="font-semibold mb-2">Update Sistem</h4>
-              <ul className="space-y-2 text-sm">
-                <li className="flex items-center">
-                  <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                  <span>Sistem berjalan normal</span>
-                </li>
-                <li className="flex items-center">
-                  <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                  <span>Update terakhir: 2 jam yang lalu</span>
-                </li>
-                <li className="flex items-center">
-                  <span className="w-2 h-2 bg-amber-500 rounded-full mr-2"></span>
-                  <span>Backup otomatis: 00:00 WIB</span>
-                </li>
-              </ul>
-            </div>
-            
-            <div className="bg-muted/50 rounded-lg p-4">
-              <h4 className="font-semibold mb-2">Tips & Trik</h4>
-              <ul className="space-y-2 text-sm">
-                <li className="flex items-start">
-                  <span className="mr-2">📊</span>
-                  <span>Gunakan filter untuk mencari data lebih cepat</span>
-                </li>
-                <li className="flex items-start">
-                  <span className="mr-2">🔔</span>
-                  <span>Aktifkan notifikasi untuk update penting</span>
-                </li>
-                <li className="flex items-start">
-                  <span className="mr-2">📱</span>
-                  <span>Akses sistem dari mobile dengan scan QR code</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Footer */}
-      <footer className="w-full max-w-7xl mx-auto mt-8 pt-4 border-t text-center text-sm text-gray-500">
-        <p>© {new Date().getFullYear()} KIW System v2.0 • Terakhir login: {new Date().toLocaleDateString('id-ID')}</p>
-      </footer>
     </div>
   );
 };

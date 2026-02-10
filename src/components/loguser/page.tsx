@@ -1,22 +1,33 @@
 "use client";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchLogUserData } from "@/lib/features/loguserSlice";
-import { RootState, AppDispatch } from "@/lib/store"; // Ensure this path is correct
+import { RootState, AppDispatch } from "@/lib/store";
 import Loading from "@/app/loading";
 import { DataTable } from "../data-table";
 import { columns } from "./columns";
 import { saveAs } from "file-saver";
+import DateRangePicker from "../datarangepicker";
 import { Input } from "../ui/input";
-import { Card, CardContent, CardHeader } from "../ui/card";
-// import toast from "react-hot-toast";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../ui/card";
 import { toast } from "sonner";
-
 import * as XLSX from "xlsx";
 import { Button } from "../ui/button";
-import { FileUp, RefreshCcw, Search } from "lucide-react";
-import DateRangePicker from "../datarangepicker";
-// Create a typed version of useDispatch
+import { Separator } from "../ui/separator";
+import { Badge } from "../ui/badge";
+import { 
+  FileUp, 
+  RefreshCcw, 
+  Search, 
+  Calendar, 
+  Filter,
+  User,
+  Activity,
+  Download,
+  Users,
+  Shield
+} from "lucide-react";
+
 const useAppDispatch = () => useDispatch<AppDispatch>();
 
 const DataLogUserPage: React.FC = () => {
@@ -25,58 +36,110 @@ const DataLogUserPage: React.FC = () => {
     (state: RootState) => state.loguser
   );
 
-  const [searchTerm, setSearchTerm] = React.useState<string>("");
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [dateFilterActive, setDateFilterActive] = useState<boolean>(false);
+  const [currentFilterInfo, setCurrentFilterInfo] = useState<string>("");
+  const [startDate, setStartDate] = useState<string | null>(null);
+  const [endDate, setEndDate] = useState<string | null>(null);
+  
   const EXCEL_TYPE =
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8";
   const EXCEL_EXTENSION = ".xlsx";
 
+  // Load data awal
   useEffect(() => {
     const myPromise = dispatch(fetchLogUserData({}));
     toast.promise(myPromise, {
-      loading: "Loading...",
-      success: "Data fetched successfully!",
-      error: "Error fetching data",
+      loading: "Memuat data log user...",
+      success: "Data log user berhasil dimuat!",
+      error: "Gagal memuat data log user",
     });
   }, [dispatch]);
+
+  // Update filter info
+  useEffect(() => {
+    const filters = [];
+    
+    if (dateFilterActive && startDate && endDate) {
+      const start = new Date(startDate).toLocaleDateString("id-ID");
+      const end = new Date(endDate).toLocaleDateString("id-ID");
+      filters.push(`Tanggal: ${start} - ${end}`);
+    }
+    
+    if (searchTerm) {
+      filters.push(`Pencarian: "${searchTerm}"`);
+    }
+    
+    const filterInfo = filters.join(" • ") || "Semua Data";
+    setCurrentFilterInfo(filterInfo);
+  }, [dateFilterActive, searchTerm, startDate, endDate]);
+
   const handleExport = () => {
-    const ws = XLSX.utils.json_to_sheet(data);
+    let rowsToExport = [];
+
+    if (searchTerm) {
+      rowsToExport = data.filter((item) =>
+        Object.values(item).some((value) =>
+          String(value).toLowerCase().includes(searchTerm.toLowerCase())
+        )
+      );
+    } else {
+      rowsToExport = data;
+    }
+
+    if (rowsToExport.length === 0) {
+      toast.error("Tidak ada data yang dapat diekspor. Silakan pastikan ada data.");
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(rowsToExport);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Data Produksi");
+    XLSX.utils.book_append_sheet(wb, ws, "Data Log User");
+
     const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
     const blob = new Blob([excelBuffer], { type: EXCEL_TYPE });
-    saveAs(blob, `DataPenerimaan${EXCEL_EXTENSION}`);
+
+    const fileName = `Data_Log_User_${searchTerm ? searchTerm : ''}_${new Date().toISOString().split('T')[0]}${EXCEL_EXTENSION}`;
+    saveAs(blob, fileName);
+    toast.success(`Data berhasil diekspor: ${rowsToExport.length} baris`);
   };
+
   const handleRefresh = () => {
-  const myPromise = dispatch(fetchLogUserData({})); // Fetch data without filters on initial load
+    setSearchTerm("");
+    setDateFilterActive(false);
+    setStartDate(null);
+    setEndDate(null);
+    const myPromise = dispatch(fetchLogUserData({}));
     toast.promise(myPromise, {
-      loading: "Loading...",
-      success: "Data fetched successfully!",
-      error: "Error fetching data",
+      loading: "Memuat ulang data...",
+      success: "Data berhasil dimuat ulang!",
+      error: "Gagal memuat ulang data",
     });
   };
-const handleDateRangeChange = (
-  startDate: string | null,
-  endDate: string | null
-) => {
-  if (!startDate) {
-    console.log("Start date is required");
-    return;
-  }
 
-  // If no endDate is provided, treat this as a single date search
-  if (!endDate) {
-    console.log("Dispatching fetchLogUserData with single date:", startDate);
-    dispatch(fetchLogUserData({ startDate, endDate: undefined })); // Single date search
-  } else {
-    console.log("Dispatching fetchLogUserData with date range:", {
-      startDate,
-      endDate,
+  const handleDateRangeChange = (
+    startDate: string | null,
+    endDate: string | null
+  ) => {
+    if (!startDate) {
+      toast.error("Pilih tanggal mulai");
+      return;
+    }
+
+    setDateFilterActive(true);
+    setStartDate(startDate);
+    setEndDate(endDate);
+    
+    const myPromise = dispatch(fetchLogUserData({ 
+      startDate, 
+      endDate: endDate || undefined 
+    }));
+    toast.promise(myPromise, {
+      loading: "Menerapkan filter tanggal...",
+      success: "Filter tanggal berhasil diterapkan",
+      error: "Gagal menerapkan filter",
     });
-    dispatch(fetchLogUserData({ startDate, endDate: endDate ?? "" })); // Date range search
-  }
-};
-
-
+  };
 
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
@@ -88,50 +151,311 @@ const handleDateRangeChange = (
     )
   );
 
+  // Hitung statistik
+  const totalItems = data.length;
+  const filteredItems = filteredData.length;
+  
+  // Hitung statistik berdasarkan jenis aktivitas (jika ada field action/activity)
+  // const loginCount = data.filter(item => 
+  //   item.action?.toLowerCase().includes('login') || 
+  //   item.activity?.toLowerCase().includes('login')
+  // ).length;
+  
+  // const logoutCount = data.filter(item => 
+  //   item.action?.toLowerCase().includes('logout') || 
+  //   item.activity?.toLowerCase().includes('logout')
+  // ).length;
+  
+  const today = new Date().toLocaleDateString("id-ID", {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+
   if (loading) return <Loading />;
-  if (error) return <div>Error: {error}</div>;
+  if (error) return (
+    <div className="flex items-center justify-center min-h-screen">
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <CardTitle className="text-destructive">Error</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-muted-foreground">Terjadi kesalahan saat memuat data log user:</p>
+          <code className="block p-3 bg-muted rounded-md text-sm">{error}</code>
+          <Button onClick={handleRefresh} className="w-full">
+            <RefreshCcw className="mr-2 h-4 w-4" />
+            Coba Lagi
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
 
   return (
-    <div className="flex flex-col p-14">
-      <h1 className="text-5xl font-bold mb-4 flex justify-end"> Log Users</h1>
-      <Card className="mb-4">
+    <div className="container mx-auto py-6 space-y-6">
+      {/* Header Section */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-3">
+          <div className="p-3 rounded-lg bg-primary/10">
+            <Activity className="h-8 w-8 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Log User</h1>
+            <p className="text-muted-foreground">
+              Pantau dan kelola seluruh aktivitas pengguna dalam sistem
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <Calendar className="h-4 w-4 flex-shrink-0" />
+          <span>{today}</span>
+          <Separator orientation="vertical" className="h-4" />
+          <Badge variant="outline" className="font-normal">
+            {filteredItems} Data
+          </Badge>
+          <Separator orientation="vertical" className="h-4" />
+          <div className="flex items-center gap-1">
+            <Filter className="h-3 w-3" />
+            <span className="truncate max-w-xs">{currentFilterInfo}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats Overview */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Log</CardTitle>
+            <Activity className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{filteredItems}</div>
+            <p className="text-xs text-muted-foreground">
+              {searchTerm ? "Setelah pencarian" : `Dari ${totalItems} data`}
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Login Activity</CardTitle>
+            <User className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold"></div>
+            <p className="text-xs text-muted-foreground">Aktivitas login user</p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Logout Activity</CardTitle>
+            <Shield className="h-4 w-4 text-blue-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold"></div>
+            <p className="text-xs text-muted-foreground">Aktivitas logout user</p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Status Filter</CardTitle>
+            <Filter className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-1">
+              <div className="text-lg font-semibold">
+                {dateFilterActive || searchTerm ? "Filter Aktif" : "Semua Data"}
+              </div>
+              <div className="text-xs text-muted-foreground truncate">
+                {currentFilterInfo}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Control Panel */}
+      <Card>
         <CardHeader>
-          <div className="flex justify-between">
-            <DateRangePicker onDateRangeChange={handleDateRangeChange} />
-            <form className="ml-auto flex-1 sm:flex-initial">
+          <CardTitle>Filter & Kontrol Data</CardTitle>
+          <CardDescription>
+            Filter data log user berdasarkan kriteria tertentu
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* Filter Tanggal */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                <label className="text-sm font-medium">Filter Berdasarkan Tanggal</label>
+              </div>
+              <DateRangePicker onDateRangeChange={handleDateRangeChange} />
+              {dateFilterActive && (
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary">
+                    {startDate && endDate 
+                      ? `${new Date(startDate).toLocaleDateString("id-ID")} - ${new Date(endDate).toLocaleDateString("id-ID")}`
+                      : `${new Date(startDate!).toLocaleDateString("id-ID")}`}
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setDateFilterActive(false);
+                      setStartDate(null);
+                      setEndDate(null);
+                      dispatch(fetchLogUserData({}));
+                    }}
+                    className="h-6 px-2 text-xs"
+                  >
+                    Hapus Filter
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Info Pencarian */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Search className="h-4 w-4" />
+                <label className="text-sm font-medium">Pencarian Data Log User</label>
+              </div>
               <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   type="search"
-                  onChange={handleSearchChange}
+                  placeholder="Cari berdasarkan username, action, atau IP address..."
                   value={searchTerm}
-                  placeholder="Search data"
-                  className="pl-8 sm:w-[300px] md:w-[200px] lg:w-[300px]"
+                  onChange={handleSearchChange}
+                  className="pl-9 w-full"
                 />
               </div>
-            </form>
+              {searchTerm && (
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary">
+                    {filteredData.length} hasil ditemukan
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSearchTerm("")}
+                    className="h-6 px-2 text-xs"
+                  >
+                    Hapus
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2">
-            <Button
-              onClick={handleRefresh}
-              className="mb-4 px-6 py-6 bg-gray-500 text-white rounded-full w-full"
-            >
-              <RefreshCcw className="h-6 w-6 mr-3" />
-              Refresh Data
-            </Button>
-            <Button
-              onClick={handleExport}
-              className="mb-4 px-6 py-6 bg-green-500 text-white rounded-full w-full"
-            >
-              <FileUp className="h-6 w-6 mr-3" />
-              Eksport to Excel
-            </Button>
+
+          {/* Action Buttons */}
+          <Separator />
+          
+          <div className="flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
+            <div className="text-sm text-muted-foreground">
+              {searchTerm 
+                ? `Menampilkan ${filteredItems} dari ${totalItems} data log user (setelah pencarian)`
+                : `Menampilkan ${totalItems} data log user`
+              }
+            </div>
+            
+            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+              <Button
+                variant="outline"
+                onClick={handleRefresh}
+                className="gap-2"
+              >
+                <RefreshCcw className="h-4 w-4" />
+                Refresh
+              </Button>
+              <Button
+                onClick={handleExport}
+                className="gap-2 bg-green-600 hover:bg-green-700"
+              >
+                <FileUp className="h-4 w-4" />
+                Export Excel
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
-      <DataTable columns={columns} data={filteredData} />
+
+      {/* Data Table Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <CardTitle>Daftar Log User</CardTitle>
+              <CardDescription>
+                Detail semua aktivitas pengguna yang tercatat dalam sistem
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-3">
+              <Badge variant="outline" className="text-sm">
+                <Users className="mr-1 h-3 w-3" />
+                {filteredData.length} Aktivitas
+              </Badge>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {data.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
+              <div className="rounded-full bg-muted p-4">
+                <Activity className="h-12 w-12 text-muted-foreground" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold">Tidak ada data log user</h3>
+                <p className="text-muted-foreground max-w-md">
+                  Belum ada aktivitas pengguna yang tercatat. Tunggu hingga ada pengguna yang beraktivitas.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={handleRefresh} variant="outline">
+                  Refresh Data
+                </Button>
+              </div>
+            </div>
+          ) : filteredData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
+              <div className="rounded-full bg-muted p-4">
+                <Search className="h-12 w-12 text-muted-foreground" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold">Tidak ada data yang cocok</h3>
+                <p className="text-muted-foreground max-w-md">
+                  Pencarian {searchTerm} tidak menghasilkan data. Coba kata kunci lain atau reset filter.
+                </p>
+              </div>
+              <Button onClick={() => setSearchTerm("")} variant="outline">
+                Hapus Pencarian
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="rounded-md border">
+                <DataTable 
+                  columns={columns} 
+                  data={filteredData}
+                />
+              </div>
+              <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+                <div>
+                  {`Menampilkan ${Math.min(filteredData.length, 10)} dari ${filteredData.length} baris`}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Download className="h-4 w-4" />
+                  <span>Data siap di-export</span>
+                </div>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };

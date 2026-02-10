@@ -4260,7 +4260,13 @@ export default function ProductionPlanPage() {
             • Uncommit akan mengembalikan stok yang di-reserve
           </AlertDescription>
         </Alert>
-
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>PO Gabungan</AlertTitle>
+          <AlertDescription>
+            • PO Gabungan artinya SPKnya Sama tapi Itemnya berbeda.
+          </AlertDescription>
+        </Alert>
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center">

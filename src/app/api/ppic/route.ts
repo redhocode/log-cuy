@@ -23,7 +23,7 @@ export async function GET(request: Request) {
       INNER JOIN [cp].[dbo].[taPROrderDt] AS dt
         ON hd.[OrderID] = dt.[OrderID]
         AND hd.[OrderType] = dt.[OrderType]
-      WHERE hd.[OrderID] LIKE 'AS%'
+      WHERE hd.[Completed] = '0' AND hd.[OrderID] LIKE 'AS%'
     `;
 
     if (startDate && endDate) {

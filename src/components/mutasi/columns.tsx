@@ -1,31 +1,63 @@
+// File: app/(dashboard)/Mutasi/columns.tsx
 "use client";
 
-import { ColumnDef } from "@tanstack/react-table";
+import { ColumnDef, Row } from "@tanstack/react-table";
 import { ArrowUpDown } from "lucide-react";
 import { Button } from "../ui/button";
 import { MutasiType } from "@/lib/types";
 import { Checkbox } from "../ui/checkbox";
 
-export const columns: ColumnDef<MutasiType>[] = [
+// Definisikan tipe Row yang memiliki properti table
+interface RowWithTable<TData> extends Row<TData> {
+  table: {
+    getSelectedRowModel: () => {
+      rows: Row<TData>[];
+    };
+  };
+}
+
+export const columns = (setSelectedRows?: (rows: MutasiType[]) => void): ColumnDef<MutasiType>[] => [
   {
     id: "select",
-    header: ({ table }) => (
-      <Checkbox
-        checked={
-          table.getIsAllPageRowsSelected() ||
-          (table.getIsSomePageRowsSelected() && "indeterminate")
-        }
-        onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-        aria-label="Select all"
-      />
-    ),
-    cell: ({ row }) => (
-      <Checkbox
-        checked={row.getIsSelected()}
-        onCheckedChange={(value) => row.toggleSelected(!!value)}
-        aria-label="Select row"
-      />
-    ),
+    header: ({ table }) => {
+      if (!setSelectedRows) return null;
+      
+      return (
+        <Checkbox
+          checked={
+            table.getIsAllPageRowsSelected() ||
+            (table.getIsSomePageRowsSelected() && "indeterminate")
+          }
+          onCheckedChange={(value) => {
+            table.toggleAllPageRowsSelected(!!value);
+            if (setSelectedRows) {
+              setSelectedRows(table.getSelectedRowModel().rows.map(row => row.original));
+            }
+          }}
+          aria-label="Select all"
+        />
+      );
+    },
+    cell: ({ row }) => {
+      if (!setSelectedRows) return null;
+      
+      // Type assertion untuk mengakses table
+      const rowWithTable = row as RowWithTable<MutasiType>;
+      
+      return (
+        <Checkbox
+          checked={row.getIsSelected()}
+          onCheckedChange={(value) => {
+            row.toggleSelected(!!value);
+            if (setSelectedRows) {
+              const selectedRows = rowWithTable.table.getSelectedRowModel().rows.map(row => row.original);
+              setSelectedRows(selectedRows);
+            }
+          }}
+          aria-label="Select row"
+        />
+      );
+    },
   },
   {
     id: "index",
@@ -60,17 +92,14 @@ export const columns: ColumnDef<MutasiType>[] = [
       );
     },
   },
-  //{ accessorKey: "MoveType", header: "Move Type" },
   { accessorKey: "Gudang_Asal", header: "Gudang Asal" },
   { accessorKey: "Gudang_Tujuan", header: "Gudang Tujuan" },
+  { accessorKey: "NoRator", header: "No Rator" },
   { accessorKey: "Keterangan", header: "Keterangan" },
-   { accessorKey: "NoRator", header: "No Rator" },
   { accessorKey: "ItemID", header: "ItemID" },
   { accessorKey: "Bags", header: "Bags" },
   { accessorKey: "Kgs", header: "Kgs" },
+//  { accessorKey: "HPPPrice", header: "HPP" },
   { accessorKey: "Kategori", header: "Kategori" },
   { accessorKey: "username", header: "User Name" },
-
- // { accessorKey: "userdatetime", header: "User DateTime" },
-
 ];

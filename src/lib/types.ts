@@ -1,6 +1,7 @@
 
 
 export type ProduksiType = {
+  type: string;
   ProdID: string;
   ProdType: string;
   ProdDate: Date; // Keep as Date for processing
@@ -63,6 +64,7 @@ export type ProduksiType = {
   Nama_PO: string;
   Tipe_Produksi: string;
   Gudang: string;
+  Kategori: string;
 };
 
 export type LbkType = {
@@ -289,6 +291,7 @@ export interface PurchaseType {
   Supplier: string;
   Tanggal: Date;
   Keterangan: string;
+  total_harga: string;
 
 }
 
@@ -331,6 +334,8 @@ export interface masterType{
 }
 
 export interface loguserType{
+  action: string;
+  activity: string;
   Username: string;
   UserDateTime: Date;
   Kgs: number;
