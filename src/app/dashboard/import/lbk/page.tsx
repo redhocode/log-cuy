@@ -16,6 +16,7 @@ import { DataTable } from "@/components/data-table";
 import { columns } from "@/components/lbk/columns";
 import ExcelUploader from "@/components/ExcelUploader";
 import { LbkType } from "@/lib/types";
+import { ColumnDef } from "@tanstack/react-table";
 
 const useAppDispatch = () => useDispatch<AppDispatch>();
 
@@ -86,6 +87,11 @@ const DataProduksiPage: React.FC = () => {
     // Proses data yang diterima sesuai kebutuhan
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  function setSelectedRows(rows: LbkType[]): void {
+    throw new Error("Function not implemented.");
+  }
+
   return (
     <div className="flex flex-col p-14">
       <Card className="mb-4">
@@ -129,7 +135,10 @@ const DataProduksiPage: React.FC = () => {
           />
         </CardContent>
       </Card>
-      <DataTable columns={columns} data={filteredData} />
+     <DataTable 
+                     columns={columns(setSelectedRows) as ColumnDef<LbkType, unknown>[]} 
+                       data={filteredData}
+                     />
     </div>
   );
 };
