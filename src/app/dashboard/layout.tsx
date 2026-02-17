@@ -5,6 +5,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import AppSidebar from "@/components/app-sidebar";
 import Maintenance from "../maintenance/page";
 import { SidebarInset } from "@/components/ui/sidebar";
+import FloatingTelegram from "@/components/FloatingTelegram";
 
 export const metadata: Metadata = {
   title: "Kiw ✖",
@@ -48,6 +49,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <div className="w-full max-w-7xl mx-auto">
                 {children}
               </div>
+              <FloatingTelegram/>
             </main>
           </SidebarInset>
           <Toaster />
