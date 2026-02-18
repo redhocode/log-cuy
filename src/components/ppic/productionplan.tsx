@@ -371,10 +371,10 @@ const ExportPreviewModal: React.FC<{
                           {item["Nama Item 物料名称"]}
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs">
-                          {item["Sum of Total 总需求 (PO)"]?.toLocaleString()}
+                          {item["Sum of Total 总需求 (PO)"]?.toLocaleString() ?? '0'}
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs">
-                          {item["Stock Available 可用库存"]?.toLocaleString()}
+                          {item["Stock Available 可用库存"]?.toLocaleString() ?? '0'}
                         </TableCell>
                         <TableCell
                           className={`text-right font-mono text-xs font-bold ${
@@ -383,7 +383,7 @@ const ExportPreviewModal: React.FC<{
                               : "text-green-600"
                           }`}
                         >
-                          {item["Remaining Stock 剩余库存"]?.toLocaleString()}
+                          {item["Remaining Stock 剩余库存"]?.toLocaleString() ?? '0'}
                         </TableCell>
                         <TableCell className="text-center">
                           <Badge
@@ -445,10 +445,10 @@ const ExportPreviewModal: React.FC<{
                             {item["Nama Item 物料名称"]}
                           </TableCell>
                           <TableCell className="text-right font-mono text-xs text-red-600 font-bold">
-                            {item["Kekurangan 短缺"]?.toLocaleString()}
+                            {item["Kekurangan 短缺"]?.toLocaleString() ?? '0'}
                           </TableCell>
                           <TableCell className="text-right font-mono text-xs">
-                            {item["Stock Available 可用库存"]?.toLocaleString()}
+                            {item["Stock Available 可用库存"]?.toLocaleString() ?? '0'}
                           </TableCell>
                           <TableCell className="text-center text-yellow-600 text-xs">
                             {item["Warning 警告"] || "-"}
@@ -483,13 +483,13 @@ const ExportPreviewModal: React.FC<{
                 <div>
                   <Label>Total Stock Available 总可用库存:</Label>
                   <div className="font-medium">
-                    {previewData.totalStockAvailable.toLocaleString()}
+                    {previewData.totalStockAvailable.toLocaleString() ?? '0'}
                   </div>
                 </div>
                 <div>
                   <Label>Total Pengeluaran 总支出:</Label>
                   <div className="font-medium">
-                    {previewData.totalPengeluaran.toLocaleString()}
+                    {previewData.totalPengeluaran.toLocaleString() ?? '0'}
                   </div>
                 </div>
                 <div>
@@ -1026,7 +1026,7 @@ const SimpleBomTree: React.FC<{
                                 Butuh
                               </div>
                               <div className="font-mono text-sm font-bold text-red-600">
-                                {needed.toLocaleString()}
+                                {needed.toLocaleString() ?? '0'}
                               </div>
                             </div>
                             <div className="text-right">
@@ -1034,7 +1034,7 @@ const SimpleBomTree: React.FC<{
                                 Stok
                               </div>
                               <div className="font-mono text-sm font-bold text-green-600">
-                                {availableStock.toLocaleString()}
+                                {availableStock.toLocaleString() ?? '0'}
                               </div>
                             </div>
                             <div className="text-right">
@@ -1047,7 +1047,7 @@ const SimpleBomTree: React.FC<{
                                 }`}
                               >
                                 {shortage > 0
-                                  ? `-${shortage.toLocaleString()}`
+                                  ? `-${shortage.toLocaleString() ?? '0'}`
                                   : "✓"}
                               </div>
                             </div>
@@ -1223,13 +1223,13 @@ const SimpleBomTree: React.FC<{
                 <div className="text-right">
                   <div className="text-xs text-gray-500">Butuh</div>
                   <div className="font-mono text-sm font-bold text-red-600">
-                    {needed.toLocaleString()}
+                    {needed.toLocaleString() ?? '0'}
                   </div>
                 </div>
                 <div className="text-right">
                   <div className="text-xs text-gray-500">Stok</div>
                   <div className="font-mono text-sm font-bold text-green-600">
-                    {availableStock.toLocaleString()}
+                    {availableStock.toLocaleString() ?? '0'}
                   </div>
                 </div>
                 <div className="text-right">
@@ -1239,7 +1239,7 @@ const SimpleBomTree: React.FC<{
                       shortage > 0 ? "text-red-600" : "text-green-600"
                     }`}
                   >
-                    {shortage > 0 ? `-${shortage.toLocaleString()}` : "✓"}
+                    {shortage > 0 ? `-${shortage.toLocaleString() ?? '0'}` : "✓"}
                   </div>
                 </div>
               </div>
@@ -1473,10 +1473,10 @@ const BomTableView: React.FC<{
                   )}
                   <TableCell className="text-right text-sm">{item.Qty}</TableCell>
                   <TableCell className="text-right text-sm font-mono text-red-600">
-                    {item.needed.toLocaleString()}
+                    {item.needed.toLocaleString() ?? '0'}
                   </TableCell>
                   <TableCell className="text-right text-sm font-mono text-green-600">
-                    {item.availableStock.toLocaleString()}
+                    {item.availableStock.toLocaleString() ?? '0'}
                   </TableCell>
                   <TableCell className="text-right">
                     <Badge
@@ -1484,7 +1484,7 @@ const BomTableView: React.FC<{
                       className="font-mono"
                     >
                       {item.shortage > 0
-                        ? `-${item.shortage.toLocaleString()}`
+                        ? `-${item.shortage.toLocaleString() ?? '0'}`
                         : "Cukup"}
                     </Badge>
                   </TableCell>
@@ -1497,9 +1497,9 @@ const BomTableView: React.FC<{
       <CardFooter className="bg-muted/50">
         <div className="text-sm">
           Total: {materialNeeds.items.length} komponen | Butuh:{" "}
-          {materialNeeds.totalNeeded.toLocaleString()} | Kekurangan:{" "}
+          {materialNeeds.totalNeeded.toLocaleString() ?? '0'} | Kekurangan:{" "}
           <span className="font-bold text-red-600">
-            {materialNeeds.totalShortage.toLocaleString()}
+            {materialNeeds.totalShortage.toLocaleString() ?? '0'}
           </span>
         </div>
       </CardFooter>
@@ -1624,7 +1624,7 @@ const CommittedPOsPanel: React.FC<{
                     Total Qty Reserved
                   </div>
                   <div className="text-2xl font-bold text-orange-600">
-                    {totalReservedQty.toLocaleString()}
+                    {totalReservedQty.toLocaleString() ?? '0'}
                   </div>
                 </CardContent>
               </Card>
@@ -1681,7 +1681,7 @@ const CommittedPOsPanel: React.FC<{
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-bold">
-                        {po.qty.toLocaleString()}
+                        {po.qty.toLocaleString() ?? '0'}
                       </TableCell>
                       <TableCell className="text-sm">
                         {new Date(po.tanggalCommit).toLocaleDateString("id-ID")}
@@ -1694,7 +1694,7 @@ const CommittedPOsPanel: React.FC<{
                       <TableCell className="text-right">
                         <div>{po.totalMaterials} items</div>
                         <div className="text-xs text-muted-foreground">
-                          {po.totalQtyReserved.toLocaleString()} qty
+                          {po.totalQtyReserved.toLocaleString() ?? '0'} qty
                         </div>
                       </TableCell>
                       <TableCell className="text-center">
@@ -1765,7 +1765,7 @@ const CommittedPOsPanel: React.FC<{
                     <div>
                       <Label>Qty</Label>
                       <div className="font-medium text-right">
-                        {commit.qty.toLocaleString()}
+                        {commit.qty.toLocaleString() ?? '0'}
                       </div>
                     </div>
                     <div>
@@ -1777,7 +1777,7 @@ const CommittedPOsPanel: React.FC<{
                     <div>
                       <Label>Qty Reserved</Label>
                       <div className="font-medium text-right">
-                        {commit.totalQtyReserved.toLocaleString()}
+                        {commit.totalQtyReserved.toLocaleString() ?? '0'}
                       </div>
                     </div>
                   </div>
@@ -1799,7 +1799,7 @@ const CommittedPOsPanel: React.FC<{
                     <div>Total Records: {commitDetailDrawer.commits.length}</div>
                     <div>Active: {commitDetailDrawer.commits.filter(c => c.status === "COMMITTED").length}</div>
                     <div>Latest Commit: {commitDetailDrawer.commits[0]?.CommitID}</div>
-                    <div>Total Qty: {commitDetailDrawer.commits.reduce((sum, c) => sum + c.qty, 0).toLocaleString()}</div>
+                    <div>Total Qty: {commitDetailDrawer.commits.reduce((sum, c) => sum + c.qty, 0).toLocaleString() ?? '0'}</div>
                   </div>
                 </AlertDescription>
               </Alert>
@@ -3699,21 +3699,21 @@ export default function ProductionPlanPage() {
             {plan.order.Kode_Barang}
           </TableCell>
           <TableCell className="text-right font-bold">
-            {isCombinedPO ? (
-              <div>
-                <span className="text-purple-600">Gabungan</span>
-                <div className="text-xs text-muted-foreground mt-1">
-                  {plan.order.combinedItems?.map((item, idx) => (
-                    <div key={idx}>
-                      {item.Kode_Barang}: {item.QTY.toLocaleString()}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              plan.order.QTY.toLocaleString()
-            )}
-          </TableCell>
+  {isCombinedPO ? (
+    <div>
+      <span className="text-purple-600">Gabungan</span>
+      <div className="text-xs text-muted-foreground mt-1">
+        {plan.order.combinedItems?.map((item, idx) => (
+          <div key={idx}>
+            {item.Kode_Barang}: {item.QTY?.toLocaleString() ?? '0'}
+          </div>
+        ))}
+      </div>
+    </div>
+  ) : (
+    plan.order.QTY?.toLocaleString() ?? '0'
+  )}
+</TableCell>
           <TableCell>
             {plan.committed ? (
               <div className="flex flex-col items-center gap-1">
@@ -3785,7 +3785,7 @@ export default function ProductionPlanPage() {
                     <CheckCircle2 className="h-3 w-3" />
                   )}
                   {hasShortage
-                    ? `Kurang ${materialNeeds.totalShortage.toLocaleString()}`
+                    ? `Kurang ${materialNeeds.totalShortage.toLocaleString() ?? '0'}`
                     : "Stok Cukup"}
                 </Badge>
                 <span className="text-xs text-muted-foreground mt-1">
@@ -3834,7 +3834,7 @@ export default function ProductionPlanPage() {
                           {isCombinedPO ? (
                             <span> Qty per Item sesuai PO asli</span>
                           ) : (
-                            <span> Qty: {plan.order.QTY.toLocaleString()} unit</span>
+                            <span> Qty: {plan.order.QTY.toLocaleString() ?? '0'} unit</span>
                           )}{" "}
                           | Stok per: {plan.order.Tanggal_Order}
                         </CardDescription>
@@ -3936,7 +3936,7 @@ export default function ProductionPlanPage() {
                             Total Kekurangan
                           </div>
                           <div className="text-2xl font-bold text-red-600">
-                            {materialNeeds?.totalShortage.toLocaleString() || 0}
+                            {materialNeeds?.totalShortage.toLocaleString() ??'0'}
                           </div>
                         </CardContent>
                       </Card>
