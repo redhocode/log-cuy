@@ -35,7 +35,7 @@ export async function GET(request: Request) {
       INNER JOIN [cp].[dbo].[taLocation] AS g ON hd.[LocID] = g.[LocID]
       INNER JOIN [cp].[dbo].[taGoods] AS i ON dt.[ItemID] = i.[ItemID]
       INNER JOIN [cp].[dbo].[taKindofGoods] AS kr ON kr.[KodeJenis] = i.[KodeJenis]
-      WHERE hd.[MoveType] = 'A'
+      WHERE hd.[MoveType] in ('A','P')
     `;
 
   if (startDate && endDate) {
