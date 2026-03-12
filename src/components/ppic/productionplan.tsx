@@ -3181,390 +3181,282 @@ export default function ProductionPlanPage() {
     };
   };
 
-  const exportSelectedToExcel = async (): Promise<void> => {
-    try {
-      setExportLoading(true);
-      setExportProgress({
-        visible: true,
-        current: 0,
-        total: 100,
-        message: "Memulai proses export...",
-      });
+const exportSelectedToExcel = async (): Promise<void> => {
+  try {
+    setExportLoading(true);
+    setExportProgress({
+      visible: true,
+      current: 0,
+      total: 100,
+      message: "Memulai proses export...",
+    });
 
-      const selectedOrders = filteredOrders.filter(
-        (order) => order.selected && !order.committed
-      );
+    const selectedOrders = filteredOrders.filter(
+      (order) => order.selected && !order.committed
+    );
 
-      if (selectedOrders.length === 0) {
-        alert("Tidak ada PO yang dipilih untuk di-export! 没有选择要导出的PO!");
-        return;
+    if (selectedOrders.length === 0) {
+      alert("Tidak ada PO yang dipilih untuk di-export!");
+      return;
+    }
+
+    const wb = XLSX.utils.book_new();
+
+    // ==================== SHEET 1: PO ====================
+    const poData: any[] = [];
+    
+    selectedOrders.forEach((order) => {
+      const isCombined = order.order.combinedItems && order.order.combinedItems.length > 1;
+      
+      if (isCombined) {
+        order.order.combinedItems!.forEach((item) => {
+          poData.push({
+            "No SPK": order.order.No_SPK,
+            "Tanggal": order.order.Tanggal_Order,
+            "Nama PO": item.Nama_PO,
+            "Kode Barang": item.Kode_Barang,
+            "QTY": item.QTY
+          });
+        });
+      } else {
+        poData.push({
+          "No SPK": order.order.No_SPK,
+          "Tanggal": order.order.Tanggal_Order,
+          "Nama PO": order.order.Nama_PO,
+          "Kode Barang": order.order.Kode_Barang,
+          "QTY": order.order.QTY
+        });
       }
+    });
 
-      const wb = XLSX.utils.book_new();
+    const ws1 = XLSX.utils.json_to_sheet(poData);
+    XLSX.utils.book_append_sheet(wb, ws1, "PO");
 
-      const selectedPOData = selectedOrders.flatMap((order) => {
-        const isCombinedPO = order.order.combinedItems && order.order.combinedItems.length > 1;
+    // ==================== SHEET 2: BOM ====================
+    const bomData: any[] = [];
 
-        if (isCombinedPO) {
-          const totalCombinedQty = order.order.combinedItems!.reduce(
-            (sum, item) => sum + item.QTY, 0
-          );
-          
-          return order.order.combinedItems!.map((item, idx) => ({
-            "No SPK 生产订单号": order.order.No_SPK,
-            "Tanggal 日期": order.order.Tanggal_Order,
-            "Nama PO 生产订单名称": item.Nama_PO,
-            "Kode Barang 物料代码": item.Kode_Barang,
-            "QTY per Item 每项数量": item.QTY,
-            "QTY Total Gabungan 合并总数量": totalCombinedQty,
-            "Jenis 类型": "Bagian PO Gabungan 合并PO部分",
-            "Urutan 顺序": idx + 1,
-            "Total Items dalam PO 总数": order.order.combinedItems!.length,
-            "Catatan 备注": `Gabungan ${order.order.combinedItems!.length} item PO (Total QTY: ${totalCombinedQty})`,
-          }));
-        } else {
-          return [
-            {
-              "No SPK 生产订单号": order.order.No_SPK,
-              "Tanggal 日期": order.order.Tanggal_Order,
-              "Nama PO 生产订单名称": order.order.Nama_PO,
-              "Kode Barang 物料代码": order.order.Kode_Barang,
-              "QTY per Item 每项数量": order.order.QTY,
-              "QTY Total Gabungan 合并总数量": order.order.QTY,
-              "Jenis 类型": "PO Biasa 普通PO",
-              "Urutan 顺序": 1,
-              "Total Items dalam PO 总数": 1,
-            },
-          ];
-        }
-      });
+    selectedOrders.forEach((order) => {
+      if (!order.bom || !order.stock) return;
 
-      const ws1 = XLSX.utils.json_to_sheet(selectedPOData);
-      XLSX.utils.book_append_sheet(wb, ws1, "Detail PO PO详情");
+      const isCombined = order.order.combinedItems && order.order.combinedItems.length > 1;
+      
+      if (isCombined) {
+        order.order.combinedItems!.forEach((item) => {
+          // Cari BOM untuk item ini
+          let bomFlat: BomItem[] = [];
+          if (order.bom?.combinedBoms && order.bom.combinedBoms[item.Kode_Barang]) {
+            bomFlat = order.bom.combinedBoms[item.Kode_Barang].flat;
+          } else {
+            bomFlat = order.bom?.flat || [];
+          }
 
-      const fullBomData: any[] = [];
-      let totalINJECTIONItemsRemoved = 0;
-      const bomHierarchyMap = new Map<string, BomItem[]>();
+          // Header
+          bomData.push({
+            "No SPK": order.order.No_SPK,
+            "Kode Barang Jadi": item.Kode_Barang,
+            "Nama Barang Jadi": item.Nama_PO,
+            "QTY PO": item.QTY,
+            "Level": "HEADER",
+            "Kode Komponen": "",
+            "Nama Komponen": "",
+            "Qty per Unit": "",
+            "Total Kebutuhan": "",
+            "Stok Akhir": "",
+            "Stok Wincp": "",
+            "Status": ""
+          });
 
-      for (const order of selectedOrders) {
-        if (!order.bom || !order.stock) {
-          console.warn(`⚠️ Order ${order.order.No_SPK} tidak memiliki BOM atau stock, dilewati`);
-          continue;
-        }
+          // Detail BOM (hanya level > 0)
+          bomFlat
+            .filter(b => b.Level > 0 && !isINJECTIONDepartment(b.Departemen))
+            .forEach(b => {
+              const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
+              const totalNeeded = b.Qty * item.QTY;
+              const stockAkhir = stockItem?.stockAkhir || 0;
+              const stockWincp = stockItem?.physicalStock || 0;
+              const shortage = totalNeeded > stockAkhir;
 
-        const isCombinedPO = order.order.combinedItems && order.order.combinedItems.length > 1;
-
-        if (isCombinedPO) {
-          for (const combinedItem of order.order.combinedItems!) {
-            let bomForThisItem: BomItem[] = [];
-            
-            if (order.bom.combinedBoms && order.bom.combinedBoms[combinedItem.Kode_Barang]) {
-              bomForThisItem = order.bom.combinedBoms[combinedItem.Kode_Barang].flat;
-            } else {
-              bomForThisItem = order.bom.flat || [];
-            }
-
-            if (!bomForThisItem || bomForThisItem.length === 0) {
-              console.warn(`⚠️ Tidak ada BOM untuk item ${combinedItem.Kode_Barang}, dilewati`);
-              continue;
-            }
-
-            bomHierarchyMap.set(combinedItem.Kode_Barang, bomForThisItem);
-
-            const levelBasedNeeds = calculateLevelBasedNeeds(
-              bomForThisItem,
-              combinedItem.QTY,
-              order.stock
-            );
-
-            levelBasedNeeds.items.forEach((item: any) => {
-              if (isINJECTIONDepartment(item.Departemen)) {
-                totalINJECTIONItemsRemoved++;
-                return;
-              }
-
-              const parentItem = item.ParentItemID 
-                ? bomForThisItem.find(bom => bom.ItemID === item.ParentItemID)
-                : null;
-
-              fullBomData.push({
-                "No SPK 生产订单号": order.order.No_SPK,
-                "Sumber PO 来源PO": combinedItem.Kode_Barang,
-                "Nama Sumber PO 来源PO名称": combinedItem.Nama_PO,
-                "Level 层级": item.Level,
-                "Parent Item ID 父项ID": item.ParentItemID || "-",
-                "Nama Parent 父项名称": parentItem?.ItemName || "-",
-                "Kode Item 物料代码": item.ItemID,
-                "Nama Item 物料名称": item.ItemName,
-                "Departemen 部门": item.Departemen || "-",
-                "Jenis 类别": item.NamaJenis || "-",
-                "Base Qty Per Unit 基础每单位数量": item.BaseQtyPerUnit || item.Qty,
-                "Accumulated Qty Per Unit 累计每单位数量": item.AccumulatedQtyPerUnit,
-                "Multiplier Calculation 乘数计算": 
-                  item.Level === 0 ? "1 (Produk Akhir 成品)" :
-                  item.Level === 1 ? `${item.BaseQtyPerUnit} × 1 (Parent: ${combinedItem.Kode_Barang})` :
-                  `${item.BaseQtyPerUnit} × (Parent Multiplier)`,
-                "QTY PO 订单数量": combinedItem.QTY,
-                "Stock Wincp": item.PhysicalStock || 0,
-                "Total Butuh 总需求": item.TotalNeeded,
-                "Stok Tersedia 可用库存": item.AvailableStock,
-                "Kekurangan 短缺": item.Shortage,
-                "Status 状态": item.Shortage > 0 ? "KURANG 不足" : "CUKUP 充足",
-                "Level Path 层级路径": item.LevelPath?.join(" → ") || item.ItemID,
-                "INJEKSI-BB Filter 注塑过滤": "DISERTAKAN 已包含",
-                "Sumber Stok 库存来源": "SaldoAkhir dari API /ppic/stock",
-                "StockAkhir Field 库存字段": item.AvailableStock,
-                "PhysicalStock Field 物理库存字段": order.stock?.find(s => s.itemid === item.ItemID)?.physicalStock || 0,
+              bomData.push({
+                "No SPK": order.order.No_SPK,
+                "Kode Barang Jadi": "",
+                "Nama Barang Jadi": "",
+                "QTY PO": "",
+                "Level": b.Level,
+                "Kode Komponen": b.ItemID,
+                "Nama Komponen": b.ItemName,
+                "Qty per Unit": b.Qty,
+                "Total Kebutuhan": totalNeeded,
+                "Stok Akhir": stockAkhir,
+                "Stok Wincp": stockWincp,
+                "Status": shortage ? "KURANG" : "CUKUP"
               });
             });
-          }
-        } else {
-          const bomForThisItem = order.bom.flat || [];
-          
-          if (bomForThisItem.length === 0) {
-            console.warn(`⚠️ Tidak ada BOM untuk PO ${order.order.No_SPK}, dilewati`);
-            continue;
-          }
 
-          bomHierarchyMap.set(order.order.Kode_Barang, bomForThisItem);
+          // Separator
+          bomData.push({});
+        });
+      } else {
+        // Header
+        bomData.push({
+          "No SPK": order.order.No_SPK,
+          "Kode Barang Jadi": order.order.Kode_Barang,
+          "Nama Barang Jadi": order.order.Nama_PO,
+          "QTY PO": order.order.QTY,
+          "Level": "HEADER",
+          "Kode Komponen": "",
+          "Nama Komponen": "",
+          "Qty per Unit": "",
+          "Total Kebutuhan": "",
+          "Stok Akhir": "",
+          "Stok Wincp": "",
+          "Status": ""
+        });
 
-          const levelBasedNeeds = calculateLevelBasedNeeds(
-            bomForThisItem,
-            order.order.QTY,
-            order.stock
-          );
+        // Detail BOM
+        order.bom.flat
+          .filter(b => b.Level > 0 && !isINJECTIONDepartment(b.Departemen))
+          .forEach(b => {
+            const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
+            const totalNeeded = b.Qty * order.order.QTY;
+            const stockAkhir = stockItem?.stockAkhir || 0;
+            const stockWincp = stockItem?.physicalStock || 0;
+            const shortage = totalNeeded > stockAkhir;
 
-          levelBasedNeeds.items.forEach((item: any) => {
-            if (isINJECTIONDepartment(item.Departemen)) {
-              totalINJECTIONItemsRemoved++;
-              return;
-            }
-
-            const parentItem = item.ParentItemID 
-              ? bomForThisItem.find(bom => bom.ItemID === item.ParentItemID)
-              : null;
-
-            fullBomData.push({
-              "No SPK 生产订单号": order.order.No_SPK,
-              "Sumber PO 来源PO": order.order.Kode_Barang,
-              "Nama Sumber PO 来源PO名称": order.order.Nama_PO,
-              "Level 层级": item.Level,
-              "Parent Item ID 父项ID": item.ParentItemID || "-",
-              "Nama Parent 父项名称": parentItem?.ItemName || "-",
-              "Kode Item 物料代码": item.ItemID,
-              "Nama Item 物料名称": item.ItemName,
-              "Departemen 部门": item.Departemen || "-",
-              "Jenis 类别": item.NamaJenis || "-",
-              "Base Qty Per Unit 基础每单位数量": item.BaseQtyPerUnit || item.Qty,
-              "Accumulated Qty Per Unit 累计每单位数量": item.AccumulatedQtyPerUnit,
-              "Multiplier Calculation 乘数计算": 
-                item.Level === 0 ? "1 (Produk Akhir 成品)" :
-                item.Level === 1 ? `${item.BaseQtyPerUnit} × 1 (Parent: ${order.order.Kode_Barang})` :
-                `${item.BaseQtyPerUnit} × (Parent Multiplier)`,
-              "QTY PO 订单数量": order.order.QTY,
-              "Stock Wincp": item.PhysicalStock || 0,
-              "Total Butuh 总需求": item.TotalNeeded,
-              "Stok Tersedia 可用库存": item.AvailableStock,
-              "Kekurangan 短缺": item.Shortage,
-              "Status 状态": item.Shortage > 0 ? "KURANG 不足" : "CUKUP 充足",
-              "Level Path 层级路径": item.LevelPath?.join(" → ") || item.ItemID,
-              "INJEKSI-BB Filter 注塑过滤": "DISERTAKAN 已包含",
-              "Sumber Stok 库存来源": "SaldoAkhir dari API /ppic/stock",
-              "StockAkhir Field 库存字段": item.AvailableStock,
-              "PhysicalStock Field 物理库存字段": order.stock?.find(s => s.itemid === item.ItemID)?.physicalStock || 0,
+            bomData.push({
+              "No SPK": order.order.No_SPK,
+              "Kode Barang Jadi": "",
+              "Nama Barang Jadi": "",
+              "QTY PO": "",
+              "Level": b.Level,
+              "Kode Komponen": b.ItemID,
+              "Nama Komponen": b.ItemName,
+              "Qty per Unit": b.Qty,
+              "Total Kebutuhan": totalNeeded,
+              "Stok Akhir": stockAkhir,
+              "Stok Wincp": stockWincp,
+              "Status": shortage ? "KURANG" : "CUKUP"
             });
           });
-        }
+
+        bomData.push({});
       }
+    });
 
-      const ws2 = XLSX.utils.json_to_sheet(fullBomData);
-      XLSX.utils.book_append_sheet(wb, ws2, "Full BOM Structure BOM完整结构");
+    const ws2 = XLSX.utils.json_to_sheet(bomData);
+    XLSX.utils.book_append_sheet(wb, ws2, "BOM");
 
-      const materialSummaryData: any[] = [];
-      const materialMap = new Map<string, any>();
+    // ==================== SHEET 3: TOTAL KEBUTUHAN MATERIAL ====================
+    const materialMap = new Map();
 
-      fullBomData.forEach((item) => {
-        if (isINJECTIONDepartment(item["Departemen 部门"])) {
-          return;
-        }
+    selectedOrders.forEach((order) => {
+      if (!order.bom || !order.stock) return;
 
-        const itemKey = item["Kode Item 物料代码"];
-        const existing = materialMap.get(itemKey);
-
-        if (existing) {
-          existing["Total Butuh 总需求"] += item["Total Butuh 总需求"];
-          existing["Jumlah PO Menggunakan 使用PO数"] += 1;
-          
-          const poSource = `${item["No SPK 生产订单号"]} - ${item["Sumber PO 来源PO"]}`;
-          if (!existing["Sumber PO List 来源PO列表"].includes(poSource)) {
-            existing["Sumber PO List 来源PO列表"].push(poSource);
+      const isCombined = order.order.combinedItems && order.order.combinedItems.length > 1;
+      
+      if (isCombined) {
+        order.order.combinedItems!.forEach((item) => {
+          let bomFlat: BomItem[] = [];
+          if (order.bom?.combinedBoms && order.bom.combinedBoms[item.Kode_Barang]) {
+            bomFlat = order.bom.combinedBoms[item.Kode_Barang].flat;
+          } else {
+            bomFlat = order.bom?.flat || [];
           }
 
-          if (item["Level 层级"] > 1) {
-            existing["Contoh Perhitungan Level 层级计算示例"] = 
-              `Level ${item["Level 层级"]}: ${item["Base Qty Per Unit 基础每单位数量"]} × Parent Multiplier = ${item["Accumulated Qty Per Unit 累计每单位数量"]}`;
-          }
-        } else {
-          materialMap.set(itemKey, {
-            "Kode Item 物料代码": item["Kode Item 物料代码"],
-            "Nama Item 物料名称": item["Nama Item 物料名称"],
-            "Departemen 部门": item["Departemen 部门"],
-            "Level 层级": item["Level 层级"],
-            "Base Qty Per Unit 基础每单位数量": item["Base Qty Per Unit 基础每单位数量"],
-            "Accumulated Qty Per Unit 累计每单位数量": item["Accumulated Qty Per Unit 累计每单位数量"],
-            "Contoh Perhitungan 计算示例": item["Multiplier Calculation 乘数计算"],
-            "Stock Wincp":item["Stock Wincp"],
-            "Total Butuh 总需求": item["Total Butuh 总需求"],
-            "Stok Tersedia 可用库存": item["Stok Tersedia 可用库存"],
-            "Kekurangan 短缺": item["Kekurangan 短缺"],
-            "Status 状态": item["Status 状态"],
-            "Jumlah PO Menggunakan 使用PO数": 1,
-            "Sumber PO List 来源PO列表": [`${item["No SPK 生产订单号"]} - ${item["Sumber PO 来源PO"]}`],
-          });
-        }
-      });
-
-      materialMap.forEach((value) => {
-        materialSummaryData.push({
-          ...value,
-          "Sumber PO List 来源PO列表": value["Sumber PO List 来源PO列表"].join(", "),
-          "Perhitungan Akhir 最终计算": 
-            value["Level 层级"] === 1 
-              ? `${value["Base Qty Per Unit 基础每单位数量"]} × QTY PO = ${value["Total Butuh 总需求"]}`
-              : `${value["Accumulated Qty Per Unit 累计每单位数量"]} × QTY PO = ${value["Total Butuh 总需求"]}`,
+          bomFlat
+            .filter(b => b.Level > 0 && !isINJECTIONDepartment(b.Departemen))
+            .forEach(b => {
+              const key = b.ItemID;
+              const totalNeeded = b.Qty * item.QTY;
+              const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
+              const stockAkhir = stockItem?.stockAkhir || 0;
+              const stockWincp = stockItem?.physicalStock || 0;
+              
+              if (materialMap.has(key)) {
+                const existing = materialMap.get(key);
+                existing.totalNeeded += totalNeeded;
+                // Stocknya tetap sama (tidak dijumlah)
+                existing.sources.add(`${order.order.No_SPK} - ${item.Kode_Barang} (${b.Qty} per unit)`);
+              } else {
+                materialMap.set(key, {
+                  kode: b.ItemID,
+                  nama: b.ItemName,
+                  departemen: b.Departemen || "-",
+                  totalNeeded: totalNeeded,
+                  stockAkhir: stockAkhir,
+                  stockWincp: stockWincp,
+                  sources: new Set([`${order.order.No_SPK} - ${item.Kode_Barang} (${b.Qty} per unit)`])
+                });
+              }
+            });
         });
-      });
-
-      const ws3 = XLSX.utils.json_to_sheet(materialSummaryData);
-      XLSX.utils.book_append_sheet(wb, ws3, "Material Summary 物料汇总");
-
-      const levelBreakdownData: any[] = [];
-      const levelAnalysis = new Map<number, { count: number; examples: string[] }>();
-
-      fullBomData.forEach((item) => {
-        if (isINJECTIONDepartment(item["Departemen 部门"])) return;
-
-        const level = item["Level 层级"];
-        const existing = levelAnalysis.get(level) || { count: 0, examples: [] };
-        
-        existing.count++;
-        if (existing.examples.length < 3) {
-          existing.examples.push(
-            `${item["Kode Item 物料代码"]}: ${item["Multiplier Calculation 乘数计算"]}`
-          );
-        }
-        
-        levelAnalysis.set(level, existing);
-
-        if (item["Level 层级"] > 0) {
-          levelBreakdownData.push({
-            "Level 层级": item["Level 层级"],
-            "Kode Item 物料代码": item["Kode Item 物料代码"],
-            "Nama Item 物料名称": item["Nama Item 物料名称"],
-            "Base Qty 基础数量": item["Base Qty Per Unit 基础每单位数量"],
-            "Accumulated Qty 累计数量": item["Accumulated Qty Per Unit 累计每单位数量"],
-            "Multiplier Factor 乘数因子": 
-              item["Level 层级"] === 1 
-                ? "1 (Langsung dari produk akhir 直接从成品)"
-                : `Parent Accumulated Qty (${item["Accumulated Qty Per Unit 累计每单位数量"]} ÷ ${item["Base Qty Per Unit 基础每单位数量"]})`,
-            "Perhitungan 计算": 
-              item["Level 层级"] === 1 
-                ? `${item["Base Qty Per Unit 基础每单位数量"]} × 1 = ${item["Accumulated Qty Per Unit 累计每单位数量"]}`
-                : `${item["Base Qty Per Unit 基础每单位数量"]} × Parent Qty = ${item["Accumulated Qty Per Unit 累计每单位数量"]}`,
-            "Total Butuh 总需求": item["Total Butuh 总需求"],
-            "Contoh 示例": item["Multiplier Calculation 乘数计算"],
+      } else {
+        order.bom.flat
+          .filter(b => b.Level > 0 && !isINJECTIONDepartment(b.Departemen))
+          .forEach(b => {
+            const key = b.ItemID;
+            const totalNeeded = b.Qty * order.order.QTY;
+            const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
+            const stockAkhir = stockItem?.stockAkhir || 0;
+            const stockWincp = stockItem?.physicalStock || 0;
+            
+            if (materialMap.has(key)) {
+              const existing = materialMap.get(key);
+              existing.totalNeeded += totalNeeded;
+              existing.sources.add(`${order.order.No_SPK} - ${order.order.Kode_Barang} (${b.Qty} per unit)`);
+            } else {
+              materialMap.set(key, {
+                kode: b.ItemID,
+                nama: b.ItemName,
+                departemen: b.Departemen || "-",
+                totalNeeded: totalNeeded,
+                stockAkhir: stockAkhir,
+                stockWincp: stockWincp,
+                sources: new Set([`${order.order.No_SPK} - ${order.order.Kode_Barang} (${b.Qty} per unit)`])
+              });
+            }
           });
-        }
+      }
+    });
+
+    const materialData: any[] = [];
+    materialMap.forEach((value) => {
+      const shortage = Math.max(0, value.totalNeeded - value.stockAkhir);
+      materialData.push({
+        "Kode Material": value.kode,
+        "Nama Material": value.nama,
+        "Departemen": value.departemen,
+        "Total Kebutuhan": value.totalNeeded,
+        "Stok Akhir": value.stockAkhir,
+        "Stok Wincp": value.stockWincp,
+        "Kekurangan (vs Stok Akhir)": shortage,
+        "Status": shortage > 0 ? "KURANG" : "CUKUP",
+        "Sumber (SPK - Barang)": Array.from(value.sources).join("; ")
       });
+    });
 
-      const ws4 = XLSX.utils.json_to_sheet(levelBreakdownData);
-      XLSX.utils.book_append_sheet(wb, ws4, "Level Breakdown 层级细分");
+    // Sort by kode
+    materialData.sort((a, b) => a["Kode Material"].localeCompare(b["Kode Material"]));
 
-      const exportSummaryData = [
-        {
-          "Parameter 参数": "Total PO Diexport 总导出PO数",
-          "Nilai 值": selectedOrders.length,
-        },
-        {
-          "Parameter 参数": "Total Item PO 总PO项目数",
-          "Nilai 值": selectedPOData.length,
-        },
-        {
-          "Parameter 参数": "Total BOM Items 总BOM项目数",
-          "Nilai 值": fullBomData.length,
-        },
-        {
-          "Parameter 参数": "PO tanpa BOM 无BOM的PO",
-          "Nilai 值": selectedOrders.filter(o => !o.bom).length,
-        },
-        {
-          "Parameter 参数": "INJEKSI-BB Items Dihapus 注塑项目删除数",
-          "Nilai 值": totalINJECTIONItemsRemoved,
-        },
-        {
-          "Parameter 参数": "Level Distribution 层级分布",
-          "Nilai 值": Array.from(levelAnalysis.entries())
-            .map(([level, data]) => `Level ${level}: ${data.count} items`)
-            .join("; "),
-        },
-        {
-          "Parameter 参数": "Perhitungan Level 2+ 二级以上计算",
-          "Nilai 值": "✓ Qty Level 2 = Base Qty × Parent Accumulated Qty 二级数量 = 基础数量 × 父项累计数量",
-        },
-        {
-          "Parameter 参数": "Contoh Perhitungan 计算示例",
-          "Nilai 值": levelAnalysis.get(2)?.examples[0] || "Tidak ada Level 2 items 无二级项目",
-        },
-        {
-          "Parameter 参数": "Tanggal Export 导出日期",
-          "Nilai 值": new Date().toLocaleDateString("id-ID"),
-        },
-      ];
+    const ws3 = XLSX.utils.json_to_sheet(materialData);
+    XLSX.utils.book_append_sheet(wb, ws3, "Total Kebutuhan Material");
 
-      const ws5 = XLSX.utils.json_to_sheet(exportSummaryData);
-      XLSX.utils.book_append_sheet(wb, ws5, "Export Summary 导出总结");
+    // Simpan file
+    const timestamp = new Date().toISOString().split("T")[0];
+    const filename = `Production_Plan_${timestamp}_${selectedOrders.length}PO.xlsx`;
 
-      const timestamp = new Date().toISOString().split("T")[0];
-      const filename = `Production_Export_Level_Calculation_${timestamp}_${selectedOrders.length}.xlsx`;
+    XLSX.writeFile(wb, filename);
 
-      XLSX.writeFile(wb, filename);
+    setExportProgress({ visible: false, current: 0, total: 0, message: "" });
+    alert(`✅ Export berhasil!\nFile: ${filename}`);
 
-      setTimeout(() => {
-        setExportProgress({
-          visible: false,
-          current: 0,
-          total: 0,
-          message: "",
-        });
-
-        const level2Example = fullBomData.find(item => item["Level 层级"] === 2);
-        const exampleMsg = level2Example 
-          ? `\n\n📊 Contoh Perhitungan Level 2 二级计算示例:\n` +
-            `Item: ${level2Example["Kode Item 物料代码"]}\n` +
-            `Base Qty: ${level2Example["Base Qty Per Unit 基础每单位数量"]}\n` +
-            `Parent Multiplier: ${level2Example["Accumulated Qty Per Unit 累计每单位数量"] / level2Example["Base Qty Per Unit 基础每单位数量"]}\n` +
-            `Accumulated Qty: ${level2Example["Accumulated Qty Per Unit 累计每单位数量"]}\n` +
-            `Total Butuh: ${level2Example["Total Butuh 总需求"]}`
-          : "";
-
-        alert(
-          `✅ Export berhasil! (Dengan perhitungan Level)\nFile: ${filename}\n\n` +
-            `Total PO: ${selectedOrders.length}\n` +
-            `PO tanpa BOM: ${selectedOrders.filter(o => !o.bom).length}\n` +
-            `Total BOM Items: ${fullBomData.length}\n` +
-            `INJEKSI-BB Items Dihapus: ${totalINJECTIONItemsRemoved}\n` +
-            `Material Summary Items: ${materialSummaryData.length}\n` +
-            exampleMsg
-        );
-      }, 1000);
-    } catch (error) {
-      console.error("❌ [EXPORT] Error dalam export:", error);
-      alert("Gagal mengekspor data. Silakan coba lagi. 导出失败，请重试");
-      setExportProgress({ visible: false, current: 0, total: 0, message: "" });
-    } finally {
-      setExportLoading(false);
-    }
-  };
+  } catch (error) {
+    console.error("Error export:", error);
+    alert("Gagal mengekspor data");
+    setExportProgress({ visible: false, current: 0, total: 0, message: "" });
+  } finally {
+    setExportLoading(false);
+  }
+};
 
   const OrderRow = ({
     plan,
