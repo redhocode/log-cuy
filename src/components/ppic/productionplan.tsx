@@ -3214,8 +3214,8 @@ const exportSelectedToExcel = async (): Promise<void> => {
             "No SPK": order.order.No_SPK,
             "Tanggal": order.order.Tanggal_Order,
             "Nama PO": item.Nama_PO,
-            "Kode Barang": item.Kode_Barang,
-            "QTY": item.QTY
+            "Kode Barang Jadi": item.Kode_Barang,
+            "QTY PO": item.QTY
           });
         });
       } else {
@@ -3223,8 +3223,8 @@ const exportSelectedToExcel = async (): Promise<void> => {
           "No SPK": order.order.No_SPK,
           "Tanggal": order.order.Tanggal_Order,
           "Nama PO": order.order.Nama_PO,
-          "Kode Barang": order.order.Kode_Barang,
-          "QTY": order.order.QTY
+          "Kode Barang Jadi": order.order.Kode_Barang,
+          "QTY PO": order.order.QTY
         });
       }
     });
@@ -3234,9 +3234,10 @@ const exportSelectedToExcel = async (): Promise<void> => {
 
     // ==================== SHEET 2: BOM ====================
     const bomData: any[] = [];
+    let totalINJECTIONRemoved = 0;
 
     selectedOrders.forEach((order) => {
-      if (!order.bom || !order.stock) return;
+      if (!order.bom) return;
 
       const isCombined = order.order.combinedItems && order.order.combinedItems.length > 1;
       
@@ -3250,7 +3251,12 @@ const exportSelectedToExcel = async (): Promise<void> => {
             bomFlat = order.bom?.flat || [];
           }
 
-          // Header
+          // Filter out INJEKSI-BB
+          const filteredBom = bomFlat.filter(b => !isINJECTIONDepartment(b.Departemen));
+          const removedCount = bomFlat.length - filteredBom.length;
+          totalINJECTIONRemoved += removedCount;
+
+          // Header untuk PO
           bomData.push({
             "No SPK": order.order.No_SPK,
             "Kode Barang Jadi": item.Kode_Barang,
@@ -3261,23 +3267,21 @@ const exportSelectedToExcel = async (): Promise<void> => {
             "Nama Komponen": "",
             "Qty per Unit": "",
             "Total Kebutuhan": "",
-            "Stok Akhir": "",
-            "Stok Wincp": "",
+            "Stok": "",
             "Status": ""
           });
 
-          // Detail BOM (hanya level > 0)
-          bomFlat
-            .filter(b => b.Level > 0 && !isINJECTIONDepartment(b.Departemen))
+          // Detail BOM
+          filteredBom
+            .filter(b => b.Level > 0)
             .forEach(b => {
               const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
               const totalNeeded = b.Qty * item.QTY;
-              const stockAkhir = stockItem?.stockAkhir || 0;
-              const stockWincp = stockItem?.physicalStock || 0;
-              const shortage = totalNeeded > stockAkhir;
+              const stock = stockItem?.stockAkhir || 0;
+              const shortage = totalNeeded > stock;
 
               bomData.push({
-                "No SPK": order.order.No_SPK,
+                "No SPK": "",
                 "Kode Barang Jadi": "",
                 "Nama Barang Jadi": "",
                 "QTY PO": "",
@@ -3286,8 +3290,7 @@ const exportSelectedToExcel = async (): Promise<void> => {
                 "Nama Komponen": b.ItemName,
                 "Qty per Unit": b.Qty,
                 "Total Kebutuhan": totalNeeded,
-                "Stok Akhir": stockAkhir,
-                "Stok Wincp": stockWincp,
+                "Stok": stock,
                 "Status": shortage ? "KURANG" : "CUKUP"
               });
             });
@@ -3296,7 +3299,12 @@ const exportSelectedToExcel = async (): Promise<void> => {
           bomData.push({});
         });
       } else {
-        // Header
+        // Filter out INJEKSI-BB
+        const filteredBom = order.bom.flat.filter(b => !isINJECTIONDepartment(b.Departemen));
+        const removedCount = order.bom.flat.length - filteredBom.length;
+        totalINJECTIONRemoved += removedCount;
+
+        // Header untuk PO
         bomData.push({
           "No SPK": order.order.No_SPK,
           "Kode Barang Jadi": order.order.Kode_Barang,
@@ -3307,23 +3315,21 @@ const exportSelectedToExcel = async (): Promise<void> => {
           "Nama Komponen": "",
           "Qty per Unit": "",
           "Total Kebutuhan": "",
-          "Stok Akhir": "",
-          "Stok Wincp": "",
+          "Stok": "",
           "Status": ""
         });
 
         // Detail BOM
-        order.bom.flat
-          .filter(b => b.Level > 0 && !isINJECTIONDepartment(b.Departemen))
+        filteredBom
+          .filter(b => b.Level > 0)
           .forEach(b => {
             const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
             const totalNeeded = b.Qty * order.order.QTY;
-            const stockAkhir = stockItem?.stockAkhir || 0;
-            const stockWincp = stockItem?.physicalStock || 0;
-            const shortage = totalNeeded > stockAkhir;
+            const stock = stockItem?.stockAkhir || 0;
+            const shortage = totalNeeded > stock;
 
             bomData.push({
-              "No SPK": order.order.No_SPK,
+              "No SPK": "",
               "Kode Barang Jadi": "",
               "Nama Barang Jadi": "",
               "QTY PO": "",
@@ -3332,8 +3338,7 @@ const exportSelectedToExcel = async (): Promise<void> => {
               "Nama Komponen": b.ItemName,
               "Qty per Unit": b.Qty,
               "Total Kebutuhan": totalNeeded,
-              "Stok Akhir": stockAkhir,
-              "Stok Wincp": stockWincp,
+              "Stok": stock,
               "Status": shortage ? "KURANG" : "CUKUP"
             });
           });
@@ -3349,7 +3354,7 @@ const exportSelectedToExcel = async (): Promise<void> => {
     const materialMap = new Map();
 
     selectedOrders.forEach((order) => {
-      if (!order.bom || !order.stock) return;
+      if (!order.bom) return;
 
       const isCombined = order.order.combinedItems && order.order.combinedItems.length > 1;
       
@@ -3365,26 +3370,27 @@ const exportSelectedToExcel = async (): Promise<void> => {
           bomFlat
             .filter(b => b.Level > 0 && !isINJECTIONDepartment(b.Departemen))
             .forEach(b => {
-              const key = b.ItemID;
+              const key = `${b.ItemID}`; // Hanya pakai kode item
               const totalNeeded = b.Qty * item.QTY;
               const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
-              const stockAkhir = stockItem?.stockAkhir || 0;
+              const stock = stockItem?.stockAkhir || 0;
               const stockWincp = stockItem?.physicalStock || 0;
+              const reserved = stockItem?.reservedQty || 0;
               
               if (materialMap.has(key)) {
                 const existing = materialMap.get(key);
                 existing.totalNeeded += totalNeeded;
-                // Stocknya tetap sama (tidak dijumlah)
-                existing.sources.add(`${order.order.No_SPK} - ${item.Kode_Barang} (${b.Qty} per unit)`);
+                existing.sumber.add(`${order.order.No_SPK} - ${item.Kode_Barang} (${b.Qty} per unit)`);
               } else {
                 materialMap.set(key, {
                   kode: b.ItemID,
                   nama: b.ItemName,
                   departemen: b.Departemen || "-",
                   totalNeeded: totalNeeded,
-                  stockAkhir: stockAkhir,
+                  stock: stock,
                   stockWincp: stockWincp,
-                  sources: new Set([`${order.order.No_SPK} - ${item.Kode_Barang} (${b.Qty} per unit)`])
+                  reserved: reserved,
+                  sumber: new Set([`${order.order.No_SPK} - ${item.Kode_Barang} (${b.Qty} per unit)`])
                 });
               }
             });
@@ -3393,25 +3399,27 @@ const exportSelectedToExcel = async (): Promise<void> => {
         order.bom.flat
           .filter(b => b.Level > 0 && !isINJECTIONDepartment(b.Departemen))
           .forEach(b => {
-            const key = b.ItemID;
+            const key = `${b.ItemID}`; // Hanya pakai kode item
             const totalNeeded = b.Qty * order.order.QTY;
             const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
-            const stockAkhir = stockItem?.stockAkhir || 0;
+            const stock = stockItem?.stockAkhir || 0;
             const stockWincp = stockItem?.physicalStock || 0;
+            const reserved = stockItem?.reservedQty || 0;
             
             if (materialMap.has(key)) {
               const existing = materialMap.get(key);
               existing.totalNeeded += totalNeeded;
-              existing.sources.add(`${order.order.No_SPK} - ${order.order.Kode_Barang} (${b.Qty} per unit)`);
+              existing.sumber.add(`${order.order.No_SPK} - ${order.order.Kode_Barang} (${b.Qty} per unit)`);
             } else {
               materialMap.set(key, {
                 kode: b.ItemID,
                 nama: b.ItemName,
                 departemen: b.Departemen || "-",
                 totalNeeded: totalNeeded,
-                stockAkhir: stockAkhir,
+                stock: stock,
                 stockWincp: stockWincp,
-                sources: new Set([`${order.order.No_SPK} - ${order.order.Kode_Barang} (${b.Qty} per unit)`])
+                reserved: reserved,
+                sumber: new Set([`${order.order.No_SPK} - ${order.order.Kode_Barang} (${b.Qty} per unit)`])
               });
             }
           });
@@ -3420,17 +3428,23 @@ const exportSelectedToExcel = async (): Promise<void> => {
 
     const materialData: any[] = [];
     materialMap.forEach((value) => {
-      const shortage = Math.max(0, value.totalNeeded - value.stockAkhir);
+      const shortage = Math.max(0, value.totalNeeded - value.stock);
+      const sisaStok = value.stock - value.reserved;
+      const shortageSisa = Math.max(0, value.totalNeeded - sisaStok);
+      
       materialData.push({
         "Kode Material": value.kode,
         "Nama Material": value.nama,
         "Departemen": value.departemen,
         "Total Kebutuhan": value.totalNeeded,
-        "Stok Akhir": value.stockAkhir,
+        "Stok Akhir": value.stock,
         "Stok Wincp": value.stockWincp,
-        "Kekurangan (vs Stok Akhir)": shortage,
+        "PO Lain": value.reserved,
+        "Sisa Stok (Stok - Reserved)": sisaStok,
+        "Kekurangan": shortage,
+        "Kekurangan (Setelah Reserved)": shortageSisa,
         "Status": shortage > 0 ? "KURANG" : "CUKUP",
-        "Sumber (SPK - Barang)": Array.from(value.sources).join("; ")
+        "Sumber": Array.from(value.sumber).join("\n")
       });
     });
 
@@ -3447,7 +3461,11 @@ const exportSelectedToExcel = async (): Promise<void> => {
     XLSX.writeFile(wb, filename);
 
     setExportProgress({ visible: false, current: 0, total: 0, message: "" });
-    alert(`✅ Export berhasil!\nFile: ${filename}`);
+    
+    alert(`✅ Export berhasil!\nFile: ${filename}\n\n` +
+          `📦 Total PO: ${selectedOrders.length}\n` +
+          `🔢 Total Material: ${materialData.length}\n` +
+          `🗑️ INJEKSI-BB Dihapus: ${totalINJECTIONRemoved}`);
 
   } catch (error) {
     console.error("Error export:", error);
@@ -3457,7 +3475,6 @@ const exportSelectedToExcel = async (): Promise<void> => {
     setExportLoading(false);
   }
 };
-
   const OrderRow = ({
     plan,
     index,
