@@ -3232,6 +3232,36 @@ const exportSelectedToExcel = async (): Promise<void> => {
     const ws1 = XLSX.utils.json_to_sheet(poData);
     XLSX.utils.book_append_sheet(wb, ws1, "PO");
 
+    // ==================== FUNGSI UNTUK MENGHITUNG TOTAL KEBUTUHAN BOM BERTINGKAT ====================
+    
+    // Fungsi untuk mencari parent dari suatu item
+    const findParent = (itemId: string, flatBom: BomItem[]): BomItem | undefined => {
+      const item = flatBom.find(b => b.ItemID === itemId);
+      if (item && item.ParentItemID) {
+        return flatBom.find(b => b.ItemID === item.ParentItemID);
+      }
+      return undefined;
+    };
+
+    // Fungsi untuk menghitung akumulasi qty (level 2 harus dikalikan dengan parent level 1)
+    const calculateAccumulatedQty = (item: BomItem, flatBom: BomItem[]): number => {
+      let qty = item.Qty;
+      let currentItem = item;
+      
+      // Naik ke atas sampai level 1
+      while (currentItem.Level > 1 && currentItem.ParentItemID) {
+        const parent = flatBom.find(b => b.ItemID === currentItem.ParentItemID);
+        if (parent) {
+          qty = qty * parent.Qty;
+          currentItem = parent;
+        } else {
+          break;
+        }
+      }
+      
+      return qty;
+    };
+
     // ==================== SHEET 2: BOM ====================
     const bomData: any[] = [];
     let totalINJECTIONRemoved = 0;
@@ -3265,20 +3295,28 @@ const exportSelectedToExcel = async (): Promise<void> => {
             "Level": "HEADER",
             "Kode Komponen": "",
             "Nama Komponen": "",
-            "Qty per Unit": "",
+            "Qty per Unit (BOM)": "",
+            "Accumulated Qty": "",
             "Total Kebutuhan": "",
             "Stok": "",
             "Status": ""
           });
 
-          // Detail BOM
-          filteredBom
+          // Detail BOM - Urutkan berdasarkan level
+          const sortedBom = [...filteredBom].sort((a, b) => a.Level - b.Level);
+          
+          sortedBom
             .filter(b => b.Level > 0)
             .forEach(b => {
               const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
-              const totalNeeded = b.Qty * item.QTY;
+              const accumulatedQty = calculateAccumulatedQty(b, filteredBom);
+              const totalNeeded = accumulatedQty * item.QTY;
               const stock = stockItem?.stockAkhir || 0;
               const shortage = totalNeeded > stock;
+              
+              // Cari parent untuk menampilkan informasi
+              const parent = findParent(b.ItemID, filteredBom);
+              const parentInfo = parent ? ` (dari ${parent.ItemID} x ${parent.Qty})` : "";
 
               bomData.push({
                 "No SPK": "",
@@ -3288,10 +3326,12 @@ const exportSelectedToExcel = async (): Promise<void> => {
                 "Level": b.Level,
                 "Kode Komponen": b.ItemID,
                 "Nama Komponen": b.ItemName,
-                "Qty per Unit": b.Qty,
+                "Qty per Unit (BOM)": b.Qty,
+                "Accumulated Qty": accumulatedQty,
                 "Total Kebutuhan": totalNeeded,
                 "Stok": stock,
-                "Status": shortage ? "KURANG" : "CUKUP"
+                "Status": shortage ? "KURANG" : "CUKUP",
+                "Keterangan": b.Level === 1 ? "Langsung dari produk jadi" : `Perhitungan: ${b.Qty} x ${parent?.Qty || 1}${parentInfo}`
               });
             });
 
@@ -3313,20 +3353,28 @@ const exportSelectedToExcel = async (): Promise<void> => {
           "Level": "HEADER",
           "Kode Komponen": "",
           "Nama Komponen": "",
-          "Qty per Unit": "",
+          "Qty per Unit (BOM)": "",
+          "Accumulated Qty": "",
           "Total Kebutuhan": "",
           "Stok": "",
           "Status": ""
         });
 
-        // Detail BOM
-        filteredBom
+        // Detail BOM - Urutkan berdasarkan level
+        const sortedBom = [...filteredBom].sort((a, b) => a.Level - b.Level);
+        
+        sortedBom
           .filter(b => b.Level > 0)
           .forEach(b => {
             const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
-            const totalNeeded = b.Qty * order.order.QTY;
+            const accumulatedQty = calculateAccumulatedQty(b, filteredBom);
+            const totalNeeded = accumulatedQty * order.order.QTY;
             const stock = stockItem?.stockAkhir || 0;
             const shortage = totalNeeded > stock;
+            
+            // Cari parent untuk menampilkan informasi
+            const parent = findParent(b.ItemID, filteredBom);
+            const parentInfo = parent ? ` (dari ${parent.ItemID} x ${parent.Qty})` : "";
 
             bomData.push({
               "No SPK": "",
@@ -3336,10 +3384,12 @@ const exportSelectedToExcel = async (): Promise<void> => {
               "Level": b.Level,
               "Kode Komponen": b.ItemID,
               "Nama Komponen": b.ItemName,
-              "Qty per Unit": b.Qty,
+              "Qty per Unit (BOM)": b.Qty,
+              "Accumulated Qty": accumulatedQty,
               "Total Kebutuhan": totalNeeded,
               "Stok": stock,
-              "Status": shortage ? "KURANG" : "CUKUP"
+              "Status": shortage ? "KURANG" : "CUKUP",
+              "Keterangan": b.Level === 1 ? "Langsung dari produk jadi" : `Perhitungan: ${b.Qty} x ${parent?.Qty || 1}${parentInfo}`
             });
           });
 
@@ -3367,11 +3417,14 @@ const exportSelectedToExcel = async (): Promise<void> => {
             bomFlat = order.bom?.flat || [];
           }
 
-          bomFlat
-            .filter(b => b.Level > 0 && !isINJECTIONDepartment(b.Departemen))
+          const filteredBom = bomFlat.filter(b => !isINJECTIONDepartment(b.Departemen));
+          
+          filteredBom
+            .filter(b => b.Level > 0)
             .forEach(b => {
-              const key = `${b.ItemID}`; // Hanya pakai kode item
-              const totalNeeded = b.Qty * item.QTY;
+              const key = b.ItemID;
+              const accumulatedQty = calculateAccumulatedQty(b, filteredBom);
+              const totalNeeded = accumulatedQty * item.QTY;
               const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
               const stock = stockItem?.stockAkhir || 0;
               const stockWincp = stockItem?.physicalStock || 0;
@@ -3380,7 +3433,7 @@ const exportSelectedToExcel = async (): Promise<void> => {
               if (materialMap.has(key)) {
                 const existing = materialMap.get(key);
                 existing.totalNeeded += totalNeeded;
-                existing.sumber.add(`${order.order.No_SPK} - ${item.Kode_Barang} (${b.Qty} per unit)`);
+                existing.sumber.add(`${order.order.No_SPK} - ${item.Kode_Barang} (Level ${b.Level}: ${b.Qty} per unit, accum: ${accumulatedQty})`);
               } else {
                 materialMap.set(key, {
                   kode: b.ItemID,
@@ -3390,17 +3443,20 @@ const exportSelectedToExcel = async (): Promise<void> => {
                   stock: stock,
                   stockWincp: stockWincp,
                   reserved: reserved,
-                  sumber: new Set([`${order.order.No_SPK} - ${item.Kode_Barang} (${b.Qty} per unit)`])
+                  sumber: new Set([`${order.order.No_SPK} - ${item.Kode_Barang} (Level ${b.Level}: ${b.Qty} per unit, accum: ${accumulatedQty})`])
                 });
               }
             });
         });
       } else {
-        order.bom.flat
-          .filter(b => b.Level > 0 && !isINJECTIONDepartment(b.Departemen))
+        const filteredBom = order.bom.flat.filter(b => !isINJECTIONDepartment(b.Departemen));
+        
+        filteredBom
+          .filter(b => b.Level > 0)
           .forEach(b => {
-            const key = `${b.ItemID}`; // Hanya pakai kode item
-            const totalNeeded = b.Qty * order.order.QTY;
+            const key = b.ItemID;
+            const accumulatedQty = calculateAccumulatedQty(b, filteredBom);
+            const totalNeeded = accumulatedQty * order.order.QTY;
             const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
             const stock = stockItem?.stockAkhir || 0;
             const stockWincp = stockItem?.physicalStock || 0;
@@ -3409,7 +3465,7 @@ const exportSelectedToExcel = async (): Promise<void> => {
             if (materialMap.has(key)) {
               const existing = materialMap.get(key);
               existing.totalNeeded += totalNeeded;
-              existing.sumber.add(`${order.order.No_SPK} - ${order.order.Kode_Barang} (${b.Qty} per unit)`);
+              existing.sumber.add(`${order.order.No_SPK} - ${order.order.Kode_Barang} (Level ${b.Level}: ${b.Qty} per unit, accum: ${accumulatedQty})`);
             } else {
               materialMap.set(key, {
                 kode: b.ItemID,
@@ -3419,7 +3475,7 @@ const exportSelectedToExcel = async (): Promise<void> => {
                 stock: stock,
                 stockWincp: stockWincp,
                 reserved: reserved,
-                sumber: new Set([`${order.order.No_SPK} - ${order.order.Kode_Barang} (${b.Qty} per unit)`])
+                sumber: new Set([`${order.order.No_SPK} - ${order.order.Kode_Barang} (Level ${b.Level}: ${b.Qty} per unit, accum: ${accumulatedQty})`])
               });
             }
           });
@@ -3439,7 +3495,7 @@ const exportSelectedToExcel = async (): Promise<void> => {
         "Total Kebutuhan": value.totalNeeded,
         "Stok Akhir": value.stock,
         "Stok Wincp": value.stockWincp,
-        "PO Lain": value.reserved,
+        "Reserved PO Lain": value.reserved,
         "Sisa Stok (Stok - Reserved)": sisaStok,
         "Kekurangan": shortage,
         "Kekurangan (Setelah Reserved)": shortageSisa,
