@@ -61,7 +61,7 @@ const items = [
 
 const Items2 = [
   { href: "/dashboard/ppic", label: "PPIC", icon: ClipboardList },
-  { href: "/dashboard/spk", label: "SPK", icon: FileText },
+  { href: "/dashboard/spk", label: "SPK/SO", icon: FileText },
   { href: "/dashboard/purchase", label: "Pembelian", icon: ShoppingCart },
   { href: "/dashboard/penerimaan", label: "Penerimaan", icon: Truck },
   { href: "/dashboard/pengeluaran", label: "Penjualan", icon: BarChart },

@@ -1,0 +1,54 @@
+// lib/features/stockSlice.ts
+import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import axios from "axios";
+
+interface StockItem {
+  itemid: string;
+  itemname: string;
+  stockAkhir: number;
+  satuan?: string;
+  kodeJenis?: string;
+}
+
+interface StockState {
+  data: StockItem[];
+  loading: boolean;
+  error: string | null;
+}
+
+const initialState: StockState = {
+  data: [],
+  loading: false,
+  error: null,
+};
+
+export const fetchStockData = createAsyncThunk(
+  "stock/fetchStockData",
+  async (filters?: { search?: string; kodeJenis?: string }) => {
+    const response = await axios.get("/api/stock", { params: filters });
+    return response.data;
+  }
+);
+
+const stockSlice = createSlice({
+  name: "stock",
+  initialState,
+  reducers: {},
+  extraReducers: (builder) => {
+    builder
+      .addCase(fetchStockData.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchStockData.fulfilled, (state, action) => {
+        state.loading = false;
+        state.data = action.payload;
+      })
+      .addCase(fetchStockData.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message || "Failed to fetch stock data";
+      });
+  },
+});
+
+export default stockSlice.reducer;

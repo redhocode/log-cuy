@@ -17,7 +17,8 @@ import trackpoReducer from "./features/trackpoSlice";
 import returReducer from "./features/returSlice";
 import glbarangReducer from "./features/glbarangSlice";
 import supplierReducer from "./features/supplierSlice";
-
+import productionReducer from "./features/productionSlice";
+import stockReducer from "./features/stockSlice";
 export const makeStore = () => {
   return configureStore({
     reducer: {
@@ -38,6 +39,8 @@ export const makeStore = () => {
       retur: returReducer,
       glbarang: glbarangReducer,
       supplier: supplierReducer,
+      production: productionReducer,
+      stock: stockReducer
     },
   });
 };

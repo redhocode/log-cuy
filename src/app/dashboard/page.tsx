@@ -18,14 +18,26 @@ import {
   Database,
   Download,
   GitBranch,
-  Heart
+  Heart,
+  AlertTriangle,
+  CheckCircle,
 } from "lucide-react";
-// import StockList from "@/components/stock/stocklist";
+import { useDispatch, useSelector } from "react-redux";
+import { RootState, AppDispatch } from "@/lib/store";
+import { fetchSpkData } from "@/lib/features/spkSlice";
+import Loading from "@/app/loading";
+
+const useAppDispatch = () => useDispatch<AppDispatch>();
 
 const DashboardPage = () => {
   const router = useRouter();
+  const dispatch = useAppDispatch();
   const [userName, setUserName] = useState<string | null>(null);
   const [loginTime, setLoginTime] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+
+  const spkState = useSelector((state: RootState) => state.spk);
+  const spkData = Array.isArray(spkState?.data) ? spkState.data : [];
 
   useEffect(() => {
     const user = localStorage.getItem("user");
@@ -53,26 +65,37 @@ const DashboardPage = () => {
         router.push("/auth/login");
       }
     }
-  }, [router]);
 
-  // Statistik contoh (bisa diganti dengan data real)
+    const fetchData = async () => {
+      setLoading(true);
+      await dispatch(fetchSpkData({}));
+      setLoading(false);
+    };
+    fetchData();
+  }, [router, dispatch]);
+
+  const totalSPK = spkData.length;
+  const completedSPK = spkData.filter((item: any) => item.Completed === true).length;
+  const pendingSPK = totalSPK - completedSPK;
+  const completionRate = totalSPK > 0 ? ((completedSPK / totalSPK) * 100).toFixed(1) : 0;
+
   const stats = [
-    { label: "Total Stock", value: "1,234", change: "+12%", icon: Package, color: "blue" },
-    { label: "Produksi Hari Ini", value: "56", change: "3 line aktif", icon: Factory, color: "green" },
-    { label: "Pending PO", value: "23", change: "2 perlu perhatian", icon: FileText, color: "amber" },
-    { label: "Total Supplier", value: "48", change: "5 aktif hari ini", icon: BarChart3, color: "purple" },
+    { label: "Total SPK", value: totalSPK, change: `${completionRate}% selesai`, icon: FileText, color: "blue" },
+    { label: "SPK Selesai", value: completedSPK, change: `${pendingSPK} pending`, icon: CheckCircle, color: "green" },
+    { label: "SPK Proses", value: pendingSPK, change: "Belum selesai", icon: Clock, color: "amber" },
+    { label: "Akses Cepat", value: "3 Menu", change: "Klik tombol di bawah", icon: Database, color: "purple" },
   ];
 
   const quickActions = [
-    { label: "Data Produksi", path: '/dashboard/data', color: "primary", icon: Database },
-    { label: "Stock Gudang", path: '/dashboard/stock', color: "blue", icon: Package },
-    { label: "PO Produksi", path: '/dashboard/spk', color: "green", icon: FileText },
-    { label: "Laporan", path: '/dashboard/report', color: "purple", icon: Download },
+    { label: "Data SPK", path: '/dashboard/spk', color: "primary", icon: FileText, description: "Kelola Surat Perintah Kerja" },
+    { label: "Stock Gudang", path: '/dashboard/stock', color: "blue", icon: Package, description: "Monitoring stok barang" },
+    { label: "Data Produksi", path: '/dashboard/production', color: "green", icon: Factory, description: "Lihat produksi harian" },
+    { label: "Laporan", path: '/dashboard/report', color: "purple", icon: Download, description: "Export laporan data" },
   ];
 
   const systemUpdates = [
     { status: "normal", text: "Sistem berjalan normal", color: "text-green-500", bg: "bg-green-500" },
-    { status: "update", text: "Update terakhir: 2 jam yang lalu", color: "text-blue-500", bg: "bg-blue-500" },
+    { status: "update", text: `Update terakhir: ${loginTime}`, color: "text-blue-500", bg: "bg-blue-500" },
     { status: "backup", text: "Backup otomatis: 00:00 WIB", color: "text-amber-500", bg: "bg-amber-500" },
   ];
 
@@ -82,6 +105,8 @@ const DashboardPage = () => {
     { icon: "📱", text: "Akses sistem dari mobile dengan scan QR code" },
     { icon: "🛡️", text: "Selalu logout setelah menggunakan sistem" },
   ];
+
+  if (loading) return <Loading />;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 p-4 md:p-6">
@@ -113,7 +138,8 @@ const DashboardPage = () => {
               <span>Login: {loginTime}</span>
             </Badge>
             <Badge variant="outline" className="flex items-center gap-1 text-xs">
-              v2.0.1 Production
+              <Database className="w-3 h-3" />
+              <span>v2.0.1 Production</span>
             </Badge>
           </div>
         </div>
@@ -199,26 +225,6 @@ const DashboardPage = () => {
               </div>
             </div>
 
-            {/* Stock List Section */}
-            {/* <div>
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <Package className="w-5 h-5 text-primary" />
-                  Stock Terbaru
-                </h3>
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => router.push('/dashboard/stock')}
-                >
-                  Lihat Semua
-                </Button>
-              </div>
-              <div className="overflow-x-auto rounded-lg border">
-                <StockList />
-              </div>
-            </div> */}
-
             {/* Information Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* System Updates */}
@@ -272,7 +278,6 @@ const DashboardPage = () => {
               <p className="mt-1">Terakhir login: {loginTime}</p>
             </div>
             
-            {/* Attribution Section */}
             <div className="flex flex-col items-center gap-2">
               <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                 <Heart className="w-4 h-4 text-red-500" />

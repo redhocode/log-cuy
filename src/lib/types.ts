@@ -244,12 +244,21 @@ export interface Spktype {
   UserDateTime: string;
   rjn: string;
   ItemIDDetail: string;
-  nama_PO: string;
+  Nama_PO: string;
   Tanggal_Order: Date;
   Keterangan: string;
   Departemen: string;
   No_SPK: string;
+  Completed?: boolean;
+  FinishedDate?: string;
 }
+export interface SpkUpdateRequest {
+  No_SPK: string;
+  Completed: boolean;
+  FinishedDate?: Date | null;
+}
+
+2
 export interface stockType {
   MoveID: string;
   MoveType: string;

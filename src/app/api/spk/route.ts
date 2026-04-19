@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
 import sql from "mssql";
 import { Spktype } from "@/lib/types";
-// SQL Server Configuration
 import { getPool } from "@/lib/config";
- import * as XLSX from "xlsx";
-
-// Define a type for the record structure
+import * as XLSX from "xlsx";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -20,16 +17,18 @@ export async function GET(request: Request) {
         hd.[OrderID] AS No_SPK,
         hd.[OrderDate] AS Tanggal_Order,
         hd.[Remark] AS Nama_PO,
-        d.[PRDeptName] AS Departemen
-        FROM [cp].[dbo].[taPROrder] AS hd
-        LEFT JOIN [cp].[dbo].[taPROrderDt] AS dt ON hd.[OrderID] = dt.[OrderID] AND hd.[OrderType] = dt.[OrderType]
-        LEFT JOIN [cp].[dbo].[taDeptPROrder] AS d ON hd.[PRDeptID] = d.[PRDeptID]
-        `;
+        d.[PRDeptName] AS Departemen,
+        ISNULL(hd.[Completed], 0) AS Completed,
+        CONVERT(VARCHAR, hd.[FinishedDate], 120) AS FinishedDate
+      FROM [cp].[dbo].[taPROrder] AS hd
+      LEFT JOIN [cp].[dbo].[taPROrderDt] AS dt ON hd.[OrderID] = dt.[OrderID] AND hd.[OrderType] = dt.[OrderType]
+      LEFT JOIN [cp].[dbo].[taDeptPROrder] AS d ON hd.[PRDeptID] = d.[PRDeptID]
+    `;
 
-   if (startDate && endDate) {
-  query += ` WHERE CONVERT(DATE, hd.[OrderDate]) >= @StartDate 
-            AND CONVERT(DATE, hd.[OrderDate]) <= @EndDate`;
-}
+    if (startDate && endDate) {
+      query += ` WHERE CONVERT(DATE, hd.[OrderDate]) >= @StartDate 
+                AND CONVERT(DATE, hd.[OrderDate]) <= @EndDate`;
+    }
 
     query += ` ORDER BY hd.[OrderDate] DESC`;
 
@@ -42,32 +41,130 @@ export async function GET(request: Request) {
 
     const result = await requestQuery.query<Spktype>(query);
 
-    // Format the HeaderProdDate to show only the date part
     const formattedRecords = result.recordset.map((record) => ({
       ...record,
       Tanggal_Order: record.Tanggal_Order.toISOString().split("T")[0],
-      // PRDeptID:
-      //   record.PRDeptID === "PL"
-      //     ? "Platting"
-      //     : record.PRDeptID === "IN"
-      //     ? "Injeksi"
-      //     : record.PRDeptID
-      //     ? "Molding" 
-      //     : record.PRDeptID === "MO"
-      //     ? "Assembly"
-      //     : record.PRDeptID === "AS"
-      //     ? "Spary" 
-      //     : record.PRDeptID === "SP"
+      Completed: record.Completed === true,
+      FinishedDate: record.FinishedDate || null
     }));
 
     return NextResponse.json(formattedRecords);
-    // return NextResponse.json(result.recordset);
   } catch (error) {
     console.error("Error fetching data:", error);
     return NextResponse.json({ error: "Error fetching data" }, { status: 500 });
   }
 }
 
+// Endpoint untuk update status Completed
+export async function PUT(request: Request) {
+  try {
+    const body = await request.json();
+    const { No_SPK, Completed } = body;
+
+    if (!No_SPK) {
+      return NextResponse.json(
+        { error: "No_SPK is required" },
+        { status: 400 }
+      );
+    }
+
+    const pool = await getPool();
+    const now = new Date();
+
+    const requestQuery = pool.request();
+    requestQuery.input("OrderID", sql.VarChar, No_SPK);
+    requestQuery.input("Completed", sql.Bit, Completed ? 1 : 0);
+    
+    // Jika Completed = true, set FinishedDate ke sekarang, jika false set ke NULL
+    if (Completed) {
+      requestQuery.input("FinishedDate", sql.DateTime, now);
+    } else {
+      requestQuery.input("FinishedDate", sql.DateTime, null);
+    }
+
+    const result = await requestQuery.query(`
+      UPDATE [cp].[dbo].[taPROrder]
+      SET 
+        Completed = @Completed,
+        FinishedDate = @FinishedDate
+      WHERE OrderID = @OrderID
+    `);
+
+    return NextResponse.json({
+      success: true,
+      message: Completed ? "SPK ditandai selesai" : "Status SPK dibatalkan",
+      No_SPK,
+      Completed,
+      FinishedDate: Completed ? now.toISOString() : null
+    });
+  } catch (error) {
+    console.error("Error updating SPK:", error);
+    return NextResponse.json(
+      { error: "Error updating SPK status" },
+      { status: 500 }
+    );
+  }
+}
+
+// Bulk update untuk multiple SPK
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json();
+    const { spkList, Completed } = body;
+
+    if (!spkList || spkList.length === 0) {
+      return NextResponse.json(
+        { error: "SPK list is required" },
+        { status: 400 }
+      );
+    }
+
+    const pool = await getPool();
+    const now = new Date();
+    const transaction = new sql.Transaction(pool);
+    await transaction.begin();
+
+    try {
+      const updatePromises = spkList.map(async (spk: string) => {
+        const requestQuery = new sql.Request(transaction);
+        requestQuery.input("OrderID", sql.VarChar, spk);
+        requestQuery.input("Completed", sql.Bit, Completed ? 1 : 0);
+        
+        if (Completed) {
+          requestQuery.input("FinishedDate", sql.DateTime, now);
+        } else {
+          requestQuery.input("FinishedDate", sql.DateTime, null);
+        }
+
+        await requestQuery.query(`
+          UPDATE [cp].[dbo].[taPROrder]
+          SET 
+            Completed = @Completed,
+            FinishedDate = @FinishedDate
+          WHERE OrderID = @OrderID
+        `);
+      });
+
+      await Promise.all(updatePromises);
+      await transaction.commit();
+
+      return NextResponse.json({
+        success: true,
+        message: `${spkList.length} SPK berhasil diupdate`,
+        updatedCount: spkList.length
+      });
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
+  } catch (error) {
+    console.error("Error bulk updating SPK:", error);
+    return NextResponse.json(
+      { error: "Error updating SPK status" },
+      { status: 500 }
+    );
+  }
+}
 export async function POST(request: Request) {
   try {
     const body = await request.formData();
