@@ -10,6 +10,7 @@ interface BomData {
   ParentItemName: string | null;
   ItemID: string;
   ItemName: string;
+  ItemName2: string;
   Qty: number;
   CumulativeQty: number;
   Departemen: string;

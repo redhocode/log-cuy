@@ -149,6 +149,7 @@ interface ProductionOrder {
 interface BomItem {
   ItemID: string;
   ItemName: string;
+  ItemName2: string;
   Qty: number;
   Level: number;
   Departemen: string;
@@ -207,6 +208,7 @@ interface CommittedPO {
 interface MaterialUsageItem {
   itemId: string;
   itemName: string;
+  itemName2: string;
   qtyPerUnit: number;
   totalNeeded: number;
   stockBefore: number;
@@ -220,6 +222,7 @@ interface StockReservation {
   reservationID: number;
   CommitID: number;
   itemID: string;
+  itemName2: string;
   itemName: string;
   reservedQty: number;
   reservationDate: string;
@@ -244,6 +247,8 @@ interface ExportPreviewData {
   itemsWithPengeluaran: number;
   totalStockAvailable: number;
   selectedOrdersCount: number;
+  bomData?: any[];  
+  totalINJECTIONRemoved?: number;  
 }
 
 interface ExportData {
@@ -266,6 +271,7 @@ const isINJECTIONDepartment = (departemen?: string): boolean => {
 };
 
 // ==================== KOMPONEN PREVIEW EXPORT ====================
+
 const ExportPreviewModal: React.FC<{
   previewData: ExportPreviewData | null;
   isOpen: boolean;
@@ -273,11 +279,49 @@ const ExportPreviewModal: React.FC<{
   onConfirmExport: () => void;
   exportLoading: boolean;
 }> = ({ previewData, isOpen, onClose, onConfirmExport, exportLoading }) => {
+  const [activeTab, setActiveTab] = useState<'stock' | 'bom'>('stock');
+  
   if (!isOpen || !previewData) return null;
+
+  // Default values untuk menghindari undefined
+  const totalINJECTIONRemoved = previewData.totalINJECTIONRemoved ?? 0;
+  const bomData = previewData.bomData ?? [];
+  const totalStockAvailable = previewData.totalStockAvailable ?? 0;
+  const totalPengeluaran = previewData.totalPengeluaran ?? 0;
+  const itemsWithPengeluaran = previewData.itemsWithPengeluaran ?? 0;
+
+  // Group BOM data by product
+  const groupedBomData = () => {
+    if (!bomData || bomData.length === 0) return [];
+    
+    const groups: any[] = [];
+    let currentGroup: any[] = [];
+    
+    bomData.forEach((row: any) => {
+      if (row.Level === "HEADER") {
+        if (currentGroup.length > 0) {
+          groups.push([...currentGroup]);
+          currentGroup = [];
+        }
+        groups.push([row]);
+      } else if (row.Level !== undefined && row.Level !== "") {
+        currentGroup.push(row);
+      }
+    });
+    
+    if (currentGroup.length > 0) {
+      groups.push([...currentGroup]);
+    }
+    
+    return groups;
+  };
+
+  const groupedBom = groupedBomData();
+  const totalBomItems = bomData.filter((b: any) => b.Level !== "HEADER").length;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5" />
@@ -288,9 +332,35 @@ const ExportPreviewModal: React.FC<{
           </DialogDescription>
         </DialogHeader>
 
+        {/* Tabs */}
+        <div className="flex gap-2 border-b pb-2">
+          <button
+            onClick={() => setActiveTab('stock')}
+            className={`px-4 py-2 rounded-lg transition-colors ${
+              activeTab === 'stock' 
+                ? 'bg-blue-600 text-white' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <Package className="h-4 w-4 inline mr-2" />
+            Stock Summary 库存汇总
+          </button>
+          <button
+            onClick={() => setActiveTab('bom')}
+            className={`px-4 py-2 rounded-lg transition-colors ${
+              activeTab === 'bom' 
+                ? 'bg-blue-600 text-white' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <Layers className="h-4 w-4 inline mr-2" />
+            BOM Structure BOM结构 ({totalBomItems} items)
+          </button>
+        </div>
+
         <div className="space-y-6">
           {/* Summary Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <Card>
               <CardContent className="pt-6">
                 <div className="text-sm font-medium text-muted-foreground">
@@ -329,135 +399,295 @@ const ExportPreviewModal: React.FC<{
                 </div>
               </CardContent>
             </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-sm font-medium text-muted-foreground">
+                  Total Komponen 总组件
+                </div>
+                <div className="text-2xl font-bold text-purple-600">
+                  {totalBomItems}
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
-          {/* Stock Summary Table */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">
-                Stock Summary 库存汇总 ({previewData.stockSummary.length} items)
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto max-h-96">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Kode Item 物料代码</TableHead>
-                      <TableHead>Nama Item 物料名称</TableHead>
-                      <TableHead className="text-right">Sum of Total 总需求</TableHead>
-                      <TableHead className="text-right">Stock Available 可用库存</TableHead>
-                      <TableHead className="text-right">Remaining Stock 剩余库存</TableHead>
-                      <TableHead className="text-center">Status 状态</TableHead>
-                      <TableHead className="text-center">Warning 警告</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {previewData.stockSummary.slice(0, 50).map((item, idx) => (
-                      <TableRow
-                        key={idx}
-                        className={
-                          item["Remaining Stock 剩余库存"] < 0
-                            ? "bg-red-50"
-                            : item["Warning 警告"]
-                            ? "bg-yellow-50"
-                            : ""
-                        }
-                      >
-                        <TableCell className="font-mono text-xs">
-                          {item["Kode Item 物料代码"]}
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          {item["Nama Item 物料名称"]}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-xs">
-                          {item["Sum of Total 总需求 (PO)"]?.toLocaleString() ?? '0'}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-xs">
-                          {item["Stock Available 可用库存"]?.toLocaleString() ?? '0'}
-                        </TableCell>
-                        <TableCell
-                          className={`text-right font-mono text-xs font-bold ${
-                            item["Remaining Stock 剩余库存"] < 0
-                              ? "text-red-600"
-                              : "text-green-600"
-                          }`}
-                        >
-                          {item["Remaining Stock 剩余库存"]?.toLocaleString() ?? '0'}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge
-                            variant={
-                              item["Status 状态"] === "CUKUP 充足"
-                                ? "default"
-                                : "destructive"
+          {/* Tab Content: Stock Summary */}
+          {activeTab === 'stock' && (
+            <>
+              {/* Stock Summary Table */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">
+                    Stock Summary 库存汇总 ({previewData.stockSummary.length} items)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto max-h-96">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Kode Item 物料代码</TableHead>
+                          <TableHead>Nama Item 物料名称</TableHead>
+                          <TableHead className="text-right">Sum of Total 总需求</TableHead>
+                          <TableHead className="text-right">Stock Available 可用库存</TableHead>
+                          <TableHead className="text-right">Remaining Stock 剩余库存</TableHead>
+                          <TableHead className="text-center">Status 状态</TableHead>
+                          <TableHead className="text-center">Warning 警告</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {previewData.stockSummary.slice(0, 50).map((item, idx) => (
+                          <TableRow
+                            key={idx}
+                            className={
+                              item["Remaining Stock 剩余库存"] < 0
+                                ? "bg-red-50"
+                                : item["Warning 警告"]
+                                ? "bg-yellow-50"
+                                : ""
                             }
-                            className="text-xs"
                           >
-                            {item["Status 状态"]}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center text-yellow-600 text-xs">
-                          {item["Warning 警告"] || "-"}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                {previewData.stockSummary.length > 50 && (
-                  <div className="mt-2 text-center text-sm text-muted-foreground">
-                    Menampilkan 50 dari {previewData.stockSummary.length} items.
-                    显示前50条，共{previewData.stockSummary.length}个项目
+                            <TableCell className="font-mono text-xs">
+                              {item["Kode Item 物料代码"]}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              {item["Nama Item 物料名称"]}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-xs">
+                              {item["Sum of Total 总需求 (PO)"]?.toLocaleString() ?? '0'}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-xs">
+                              {item["Stock Available 可用库存"]?.toLocaleString() ?? '0'}
+                            </TableCell>
+                            <TableCell
+                              className={`text-right font-mono text-xs font-bold ${
+                                item["Remaining Stock 剩余库存"] < 0
+                                  ? "text-red-600"
+                                  : "text-green-600"
+                              }`}
+                            >
+                              {item["Remaining Stock 剩余库存"]?.toLocaleString() ?? '0'}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge
+                                variant={
+                                  item["Status 状态"] === "CUKUP 充足"
+                                    ? "default"
+                                    : "destructive"
+                                }
+                                className="text-xs"
+                              >
+                                {item["Status 状态"]}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-center text-yellow-600 text-xs">
+                              {item["Warning 警告"] || "-"}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                    {previewData.stockSummary.length > 50 && (
+                      <div className="mt-2 text-center text-sm text-muted-foreground">
+                        Menampilkan 50 dari {previewData.stockSummary.length} items.
+                        显示前50条，共{previewData.stockSummary.length}个项目
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
 
-          {/* Problem Items */}
-          {previewData.problemItems.length > 0 && (
-            <Card className="border-red-200">
+              {/* Problem Items */}
+              {previewData.problemItems.length > 0 && (
+                <Card className="border-red-200">
+                  <CardHeader>
+                    <CardTitle className="text-lg text-red-800 flex items-center gap-2">
+                      <AlertTriangle className="h-5 w-5" />
+                      Problem Items 问题项目 ({previewData.problemItems.length} items)
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto max-h-64">
+                      <Table>
+                        <TableHeader className="bg-red-50">
+                          <TableRow>
+                            <TableHead>Kode Item 物料代码</TableHead>
+                            <TableHead>Nama Item 物料名称</TableHead>
+                            <TableHead className="text-right">Kekurangan 短缺</TableHead>
+                            <TableHead className="text-right">Stock Available 可用库存</TableHead>
+                            <TableHead className="text-center">Warning 警告</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {previewData.problemItems.slice(0, 20).map((item, idx) => (
+                            <TableRow key={idx} className="bg-red-50">
+                              <TableCell className="font-mono text-xs">
+                                {item["Kode Item 物料代码"]}
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                {item["Nama Item 物料名称"]}
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-xs text-red-600 font-bold">
+                                {item["Kekurangan 短缺"]?.toLocaleString() ?? '0'}
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-xs">
+                                {item["Stock Available 可用库存"]?.toLocaleString() ?? '0'}
+                              </TableCell>
+                              <TableCell className="text-center text-yellow-600 text-xs">
+                                {item["Warning 警告"] || "-"}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          )}
+
+          {/* Tab Content: BOM Structure */}
+          {activeTab === 'bom' && (
+            <Card>
               <CardHeader>
-                <CardTitle className="text-lg text-red-800 flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5" />
-                  Problem Items 问题项目 ({previewData.problemItems.length} items)
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Layers className="h-5 w-5" />
+                  BOM Structure - Bill of Materials BOM结构
                 </CardTitle>
+                <CardDescription>
+                  Struktur komponen untuk setiap produk yang dipilih
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto max-h-64">
-                  <Table>
-                    <TableHeader className="bg-red-50">
-                      <TableRow>
-                        <TableHead>Kode Item 物料代码</TableHead>
-                        <TableHead>Nama Item 物料名称</TableHead>
-                        <TableHead className="text-right">Kekurangan 短缺</TableHead>
-                        <TableHead className="text-right">Stock Available 可用库存</TableHead>
-                        <TableHead className="text-center">Warning 警告</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {previewData.problemItems.slice(0, 20).map((item, idx) => (
-                        <TableRow key={idx} className="bg-red-50">
-                          <TableCell className="font-mono text-xs">
-                            {item["Kode Item 物料代码"]}
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            {item["Nama Item 物料名称"]}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-xs text-red-600 font-bold">
-                            {item["Kekurangan 短缺"]?.toLocaleString() ?? '0'}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-xs">
-                            {item["Stock Available 可用库存"]?.toLocaleString() ?? '0'}
-                          </TableCell>
-                          <TableCell className="text-center text-yellow-600 text-xs">
-                            {item["Warning 警告"] || "-"}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                <div className="space-y-6 max-h-[500px] overflow-y-auto">
+                  {groupedBom.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      Tidak ada data BOM untuk ditampilkan
+                    </div>
+                  ) : (
+                    groupedBom.map((group, groupIdx) => {
+                      const header = group.find((r: any) => r.Level === "HEADER");
+                      const details = group.filter((r: any) => r.Level !== "HEADER" && r.Level !== "");
+                      
+                      if (!header) return null;
+                      
+                      return (
+                        <div key={groupIdx} className="border rounded-lg overflow-hidden">
+                          {/* Header Produk */}
+                          <div className="bg-blue-50 p-4 border-b">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                              <div>
+                                <div className="text-xs text-gray-600">No SPK</div>
+                                <div className="font-medium">{header["No SPK"] || "-"}</div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-gray-600">Kode Barang Jadi</div>
+                                <div className="font-mono text-sm font-medium">{header["Kode Barang Jadi"] || "-"}</div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-gray-600">Nama Barang Jadi</div>
+                                <div className="font-medium">{header["Nama Barang Jadi"] || "-"}</div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-gray-600">QTY PO</div>
+                                <div className="font-medium">{header["QTY PO"] || "-"}</div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Tabel Komponen */}
+                          <div className="overflow-x-auto">
+                            <Table>
+                              <TableHeader className="bg-gray-50">
+                                <TableRow>
+                                  <TableHead className="w-16 text-center">Level</TableHead>
+                                  <TableHead>Kode Komponen</TableHead>
+                                  <TableHead>Nama Komponen (Indonesia)</TableHead>
+                                  <TableHead>Nama Komponen (China) 中文名称</TableHead>
+                                  <TableHead className="text-right">Qty/Unit</TableHead>
+                                  <TableHead className="text-right">Acc Qty</TableHead>
+                                  <TableHead className="text-right">Total Kebutuhan</TableHead>
+                                  <TableHead className="text-right">Stok</TableHead>
+                                  <TableHead className="text-center">Status</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {details.length === 0 ? (
+                                  <TableRow>
+                                    <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
+                                      Tidak ada komponen untuk produk ini
+                                    </td>
+                                  </TableRow>
+                                ) : (
+                                  details.map((row: any, idx: number) => (
+                                    <TableRow key={idx} className="hover:bg-gray-50">
+                                      <TableCell className="text-center">
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                          row.Level === 1 ? 'bg-blue-100 text-blue-800' :
+                                          row.Level === 2 ? 'bg-green-100 text-green-800' :
+                                          'bg-gray-100 text-gray-800'
+                                        }`}>
+                                          L{row.Level}
+                                        </span>
+                                      </TableCell>
+                                      <TableCell className="font-mono text-xs">
+                                        {row["Kode Komponen"]}
+                                      </TableCell>
+                                      <TableCell className="text-xs">
+                                        {row["Nama Komponen"]}
+                                      </TableCell>
+                                      <TableCell className="text-xs text-gray-600">
+                                        {row["Nama Komponen China"] || row["Nama China"] || "-"}
+                                      </TableCell>
+                                      <TableCell className="text-right text-xs">
+                                        {row["Qty per Unit (BOM)"]}
+                                      </TableCell>
+                                      <TableCell className="text-right text-xs">
+                                        {row["Accumulated Qty"]}
+                                      </TableCell>
+                                      <TableCell className="text-right text-xs font-medium">
+                                        {row["Total Kebutuhan"]}
+                                      </TableCell>
+                                      <TableCell className="text-right text-xs">
+                                        {row["Stok"]}
+                                      </TableCell>
+                                      <TableCell className="text-center">
+                                        <Badge
+                                          variant={row["Status"] === "KURANG" ? "destructive" : "default"}
+                                          className="text-xs"
+                                        >
+                                          {row["Status"] || "CUKUP"}
+                                        </Badge>
+                                      </TableCell>
+                                    </TableRow>
+                                  ))
+                                )}
+                              </TableBody>
+                            </Table>
+                          </div>
+
+                          {/* Footer Produk */}
+                          <div className="bg-gray-50 p-3 text-sm text-gray-600 border-t">
+                            Total komponen: <span className="font-semibold">{details.length}</span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
+
+                {/* INJECTION Info - Menggunakan default value */}
+                {totalINJECTIONRemoved > 0 && (
+                  <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-5 w-5 text-yellow-600" />
+                      <div className="text-sm text-yellow-800">
+                        <span className="font-semibold">Informasi:</span> {totalINJECTIONRemoved} komponen dengan departemen INJECTION tidak ditampilkan
+                      </div>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
@@ -483,18 +713,18 @@ const ExportPreviewModal: React.FC<{
                 <div>
                   <Label>Total Stock Available 总可用库存:</Label>
                   <div className="font-medium">
-                    {previewData.totalStockAvailable.toLocaleString() ?? '0'}
+                    {totalStockAvailable.toLocaleString()}
                   </div>
                 </div>
                 <div>
                   <Label>Total Pengeluaran 总支出:</Label>
                   <div className="font-medium">
-                    {previewData.totalPengeluaran.toLocaleString() ?? '0'}
+                    {totalPengeluaran.toLocaleString()}
                   </div>
                 </div>
                 <div>
                   <Label>Items dengan Pengeluaran 有支出项目:</Label>
-                  <div className="font-medium">{previewData.itemsWithPengeluaran}</div>
+                  <div className="font-medium">{itemsWithPengeluaran}</div>
                 </div>
                 <div>
                   <Label>Periode R 期间R:</Label>
@@ -534,7 +764,6 @@ const ExportPreviewModal: React.FC<{
     </Dialog>
   );
 };
-
 // ==================== FUNGSI BANTU ====================
 
 // FUNGSI: Filter hanya komponen (bukan barang jadinya)
@@ -2325,6 +2554,7 @@ const commitPO = async (index: number): Promise<void> => {
           materialUsage.push({
             itemId: bomItem.ItemID,
             itemName: bomItem.ItemName,
+            itemName2: bomItem.ItemName2,
             qtyPerUnit: bomItem.Qty,
             totalNeeded: needed,
             stockBefore: availableStock,
@@ -2354,6 +2584,7 @@ const commitPO = async (index: number): Promise<void> => {
         materialUsage.push({
           itemId: bomItem.ItemID,
           itemName: bomItem.ItemName,
+          itemName2: bomItem.ItemName2,
           qtyPerUnit: bomItem.Qty,
           totalNeeded: needed,
           stockBefore: availableStock,
@@ -3036,6 +3267,7 @@ const commitPO = async (index: number): Promise<void> => {
             stockSummary.push({
               "Kode Item 物料代码": item.ItemID,
               "Nama Item 物料名称": item.ItemName,
+              "Nama Item China" : item.ItemName2 || "-",
               "Departemen 部门": item.Departemen || "-",
               "Sum of Total 总需求 (PO)": item.needed,
               "Stock Available 可用库存": stockAvailable,
@@ -3293,130 +3525,171 @@ const exportSelectedToExcel = async (): Promise<void> => {
       return qty;
     };
 
-    // ==================== SHEET 2: BOM ====================
-    const bomData: any[] = [];
-    let totalINJECTIONRemoved = 0;
+   // ==================== SHEET 2: BOM ====================
+const bomData: any[] = [];
+let totalINJECTIONRemoved = 0;
 
-    for (const order of selectedOrders) {
-      if (!order.bom) continue;
+for (const order of selectedOrders) {
+  if (!order.bom) continue;
 
-      const isCombined = order.order.combinedItems && order.order.combinedItems.length > 1;
-      
-      if (isCombined) {
-        for (const item of order.order.combinedItems!) {
-          let bomFlat: BomItem[] = [];
-          if (order.bom?.combinedBoms && order.bom.combinedBoms[item.Kode_Barang]) {
-            bomFlat = order.bom.combinedBoms[item.Kode_Barang].flat;
-          } else {
-            bomFlat = order.bom?.flat || [];
-          }
-
-          const filteredBom = bomFlat.filter(b => !isINJECTIONDepartment(b.Departemen));
-          const removedCount = bomFlat.length - filteredBom.length;
-          totalINJECTIONRemoved += removedCount;
-
-          // Header
-          bomData.push({
-            "No SPK": order.order.No_SPK,
-            "Kode Barang Jadi": item.Kode_Barang,
-            "Nama Barang Jadi": item.Nama_PO,
-            "QTY PO": item.QTY,
-            "Level": "HEADER",
-            "Kode Komponen": "",
-            "Nama Komponen": "",
-            "Qty per Unit (BOM)": "",
-            "Accumulated Qty": "",
-            "Total Kebutuhan": "",
-            "Stok": "",
-            "Status": ""
-          });
-
-          const sortedBom = [...filteredBom].sort((a, b) => a.Level - b.Level);
-          
-          for (const b of sortedBom.filter(b => b.Level > 0)) {
-            const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
-            const accumulatedQty = calculateAccumulatedQty(b, filteredBom);
-            const totalNeeded = accumulatedQty * item.QTY;
-            const stock = stockItem?.stockAkhir || 0;
-            const shortage = totalNeeded > stock;
-            
-            const parent = findParent(b.ItemID, filteredBom);
-            const parentInfo = parent ? ` (dari ${parent.ItemID} x ${parent.Qty})` : "";
-
-            bomData.push({
-              "No SPK": "",
-              "Kode Barang Jadi": "",
-              "Nama Barang Jadi": "",
-              "QTY PO": "",
-              "Level": b.Level,
-              "Kode Komponen": b.ItemID,
-              "Nama Komponen": b.ItemName,
-              "Qty per Unit (BOM)": b.Qty,
-              "Accumulated Qty": accumulatedQty,
-              "Total Kebutuhan": totalNeeded,
-              "Stok": stock,
-              "Status": shortage ? "KURANG" : "CUKUP",
-              "Keterangan": b.Level === 1 ? "Langsung dari produk jadi" : `Perhitungan: ${b.Qty} x ${parent?.Qty || 1}${parentInfo}`
-            });
-          }
-
-          bomData.push({});
-        }
+  const isCombined = order.order.combinedItems && order.order.combinedItems.length > 1;
+  
+  if (isCombined) {
+    for (const item of order.order.combinedItems!) {
+      let bomFlat: BomItem[] = [];
+      if (order.bom?.combinedBoms && order.bom.combinedBoms[item.Kode_Barang]) {
+        bomFlat = order.bom.combinedBoms[item.Kode_Barang].flat;
       } else {
-        const filteredBom = order.bom.flat.filter(b => !isINJECTIONDepartment(b.Departemen));
-        const removedCount = order.bom.flat.length - filteredBom.length;
-        totalINJECTIONRemoved += removedCount;
+        bomFlat = order.bom?.flat || [];
+      }
+
+      const filteredBom = bomFlat.filter(b => !isINJECTIONDepartment(b.Departemen));
+      const removedCount = bomFlat.length - filteredBom.length;
+      totalINJECTIONRemoved += removedCount;
+
+      // Header - KONSISTEN gunakan "Nama Komponen China"
+      bomData.push({
+        "No SPK": order.order.No_SPK,
+        "Kode Barang Jadi": item.Kode_Barang,
+        "Nama Barang Jadi": item.Nama_PO,
+        "QTY PO": item.QTY,
+        "Level": "HEADER",
+        "Kode Komponen": "",
+        "Nama Komponen": "",
+        "Nama Komponen China": "",  // KONSISTEN
+        "Qty per Unit (BOM)": "",
+        "Accumulated Qty": "",
+        "Total Kebutuhan": "",
+        "Stok": "",
+        "Status": ""
+      });
+
+      const sortedBom = [...filteredBom].sort((a, b) => a.Level - b.Level);
+      
+      for (const b of sortedBom.filter(b => b.Level > 0)) {
+        const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
+        const accumulatedQty = calculateAccumulatedQty(b, filteredBom);
+        const totalNeeded = accumulatedQty * item.QTY;
+        const stock = stockItem?.stockAkhir || 0;
+        const shortage = totalNeeded > stock;
+        
+        const parent = findParent(b.ItemID, filteredBom);
+        const parentInfo = parent ? ` (dari ${parent.ItemID} x ${parent.Qty})` : "";
 
         bomData.push({
-          "No SPK": order.order.No_SPK,
-          "Kode Barang Jadi": order.order.Kode_Barang,
-          "Nama Barang Jadi": order.order.Nama_PO,
-          "QTY PO": order.order.QTY,
-          "Level": "HEADER",
-          "Kode Komponen": "",
-          "Nama Komponen": "",
-          "Qty per Unit (BOM)": "",
-          "Accumulated Qty": "",
-          "Total Kebutuhan": "",
-          "Stok": "",
-          "Status": ""
+          "No SPK": "",
+          "Kode Barang Jadi": "",
+          "Nama Barang Jadi": "",
+          "QTY PO": "",
+          "Level": b.Level,
+          "Kode Komponen": b.ItemID,
+          "Nama Komponen": b.ItemName,
+          "Nama Komponen China": b.ItemName2 || "",  // KONSISTEN - gunakan nama kolom yang sama
+          "Qty per Unit (BOM)": b.Qty,
+          "Accumulated Qty": accumulatedQty,
+          "Total Kebutuhan": totalNeeded,
+          "Stok": stock,
+          "Status": shortage ? "KURANG" : "CUKUP",
+          "Keterangan": b.Level === 1 ? "Langsung dari produk jadi" : `Perhitungan: ${b.Qty} x ${parent?.Qty || 1}${parentInfo}`
         });
-
-        const sortedBom = [...filteredBom].sort((a, b) => a.Level - b.Level);
-        
-        for (const b of sortedBom.filter(b => b.Level > 0)) {
-          const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
-          const accumulatedQty = calculateAccumulatedQty(b, filteredBom);
-          const totalNeeded = accumulatedQty * order.order.QTY;
-          const stock = stockItem?.stockAkhir || 0;
-          const shortage = totalNeeded > stock;
-          
-          const parent = findParent(b.ItemID, filteredBom);
-          const parentInfo = parent ? ` (dari ${parent.ItemID} x ${parent.Qty})` : "";
-
-          bomData.push({
-            "No SPK": "",
-            "Kode Barang Jadi": "",
-            "Nama Barang Jadi": "",
-            "QTY PO": "",
-            "Level": b.Level,
-            "Kode Komponen": b.ItemID,
-            "Nama Komponen": b.ItemName,
-            "Qty per Unit (BOM)": b.Qty,
-            "Accumulated Qty": accumulatedQty,
-            "Total Kebutuhan": totalNeeded,
-            "Stok": stock,
-            "Status": shortage ? "KURANG" : "CUKUP",
-            "Keterangan": b.Level === 1 ? "Langsung dari produk jadi" : `Perhitungan: ${b.Qty} x ${parent?.Qty || 1}${parentInfo}`
-          });
-        }
-
-        bomData.push({});
       }
+
+      bomData.push({}); // Baris kosong separator
+    }
+  } else {
+    const filteredBom = order.bom.flat.filter(b => !isINJECTIONDepartment(b.Departemen));
+    const removedCount = order.bom.flat.length - filteredBom.length;
+    totalINJECTIONRemoved += removedCount;
+
+    bomData.push({
+      "No SPK": order.order.No_SPK,
+      "Kode Barang Jadi": order.order.Kode_Barang,
+      "Nama Barang Jadi": order.order.Nama_PO,
+      "QTY PO": order.order.QTY,
+      "Level": "HEADER",
+      "Kode Komponen": "",
+      "Nama Komponen": "",
+      "Nama Komponen China": "",  // KONSISTEN
+      "Qty per Unit (BOM)": "",
+      "Accumulated Qty": "",
+      "Total Kebutuhan": "",
+      "Stok": "",
+      "Status": ""
+    });
+
+    const sortedBom = [...filteredBom].sort((a, b) => a.Level - b.Level);
+    
+    for (const b of sortedBom.filter(b => b.Level > 0)) {
+      const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
+      const accumulatedQty = calculateAccumulatedQty(b, filteredBom);
+      const totalNeeded = accumulatedQty * order.order.QTY;
+      const stock = stockItem?.stockAkhir || 0;
+      const shortage = totalNeeded > stock;
+      
+      const parent = findParent(b.ItemID, filteredBom);
+      const parentInfo = parent ? ` (dari ${parent.ItemID} x ${parent.Qty})` : "";
+
+      bomData.push({
+        "No SPK": "",
+        "Kode Barang Jadi": "",
+        "Nama Barang Jadi": "",
+        "QTY PO": "",
+        "Level": b.Level,
+        "Kode Komponen": b.ItemID,
+        "Nama Komponen": b.ItemName,
+        "Nama Komponen China": b.ItemName2 || "",  // KONSISTEN
+        "Qty per Unit (BOM)": b.Qty,
+        "Accumulated Qty": accumulatedQty,
+        "Total Kebutuhan": totalNeeded,
+        "Stok": stock,
+        "Status": shortage ? "KURANG" : "CUKUP",
+        "Keterangan": b.Level === 1 ? "Langsung dari produk jadi" : `Perhitungan: ${b.Qty} x ${parent?.Qty || 1}${parentInfo}`
+      });
     }
 
-    const ws2 = XLSX.utils.json_to_sheet(bomData);
-    XLSX.utils.book_append_sheet(wb, ws2, "BOM");
+    bomData.push({}); // Baris kosong separator
+  }
+}
+
+// Tambahkan row total INJECTION yang dihapus
+bomData.push({});
+bomData.push({
+  "No SPK": "INFORMASI",
+  "Kode Barang Jadi": "",
+  "Nama Barang Jadi": "",
+  "QTY PO": "",
+  "Level": "",
+  "Kode Komponen": "",
+  "Nama Komponen": `* Komponen dengan departemen INJECTION tidak ditampilkan (${totalINJECTIONRemoved} item dihapus)`,
+  "Nama Komponen China": "",  // KONSISTEN
+  "Qty per Unit (BOM)": "",
+  "Accumulated Qty": "",
+  "Total Kebutuhan": "",
+  "Stok": "",
+  "Status": ""
+});
+
+const ws2 = XLSX.utils.json_to_sheet(bomData);
+
+// Atur lebar kolom untuk sheet BOM
+ws2['!cols'] = [
+  { wch: 12 }, // No SPK
+  { wch: 15 }, // Kode Barang Jadi
+  { wch: 30 }, // Nama Barang Jadi
+  { wch: 10 }, // QTY PO
+  { wch: 8 },  // Level
+  { wch: 15 }, // Kode Komponen
+  { wch: 35 }, // Nama Komponen
+  { wch: 35 }, // Nama Komponen China  // PASTIKAN LEBAR KOLOM INI
+  { wch: 15 }, // Qty per Unit (BOM)
+  { wch: 15 }, // Accumulated Qty
+  { wch: 15 }, // Total Kebutuhan
+  { wch: 12 }, // Stok
+  { wch: 10 }, // Status
+  { wch: 40 }, // Keterangan
+];
+
+XLSX.utils.book_append_sheet(wb, ws2, "BOM");
 // ==================== SHEET 3: TOTAL KEBUTUHAN MATERIAL ====================
 const materialMap = new Map();
 
@@ -3492,6 +3765,7 @@ for (const order of selectedOrders) {
           materialMap.set(key, {
             kode: b.ItemID,
             nama: b.ItemName,
+            nama_china: b.ItemName2 || "-",
             departemen: b.Departemen || "-",
             totalNeeded: totalNeeded,
             stockAkhir: stockAkhir,
@@ -3535,6 +3809,7 @@ for (const order of selectedOrders) {
         materialMap.set(key, {
           kode: b.ItemID,
           nama: b.ItemName,
+          nama_china: b.ItemName2 || "-",
           departemen: b.Departemen || "-",
           totalNeeded: totalNeeded,
           stockAkhir: stockAkhir,
@@ -3554,6 +3829,7 @@ for (const [itemId, data] of reservationsByItem) {
     materialMap.set(itemId, {
       kode: itemId,
       nama: data.itemName,
+      
       departemen: "RESERVED ONLY",
       totalNeeded: 0,
       stockAkhir: 0,
@@ -3570,6 +3846,7 @@ for (const [_, value] of materialMap) {
   materialData.push({
     "Kode Material": value.kode,
     "Nama Material": value.nama,
+    "Nama China": value.nama_china,
     "Departemen": value.departemen,
     "Total Kebutuhan": value.totalNeeded,
     "Stok Akhir": value.stockAkhir,
@@ -3590,6 +3867,7 @@ const ws3 = XLSX.utils.json_to_sheet(materialData);
 const colWidths3 = [
   { wch: 15 }, // Kode Material
   { wch: 40 }, // Nama Material
+  { wch: 40}, //Nama China
   { wch: 20 }, // Departemen
   { wch: 15 }, // Total Kebutuhan
   { wch: 15 }, // Stok Akhir
@@ -3717,7 +3995,7 @@ alert(`✅ Export berhasil!\nFile: ${filename}\n\n` +
               <span className="font-medium">{plan.order.No_SPK}</span>
               {isCombinedPO && (
                 <Badge variant="secondary" className="text-xs">
-                  {combinedCount} PO
+                  {combinedCount} Item
                 </Badge>
               )}
               {plan.CommitID && (
