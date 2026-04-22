@@ -3939,9 +3939,9 @@ const exportSelectedToExcel = async (): Promise<void> => {
                 bahan: masterData.bahan,
                 departemen: b.Departemen || "UNKNOWN",
                 totalNeeded: totalNeeded,
-                stockAkhir: stockAkhir,
                 stockWincp: stockWincp,
                 reserved: reservedQty,
+                stockAkhir: stockAkhir,
                 reservedBy: reservedByText,
                 kekurangan: kekurangan
               });
@@ -3984,9 +3984,9 @@ const exportSelectedToExcel = async (): Promise<void> => {
               bahan: masterData.bahan,
               departemen: b.Departemen || "UNKNOWN",
               totalNeeded: totalNeeded,
-              stockAkhir: stockAkhir,
               stockWincp: stockWincp,
               reserved: reservedQty,
+              stockAkhir: stockAkhir,
               reservedBy: reservedByText,
               kekurangan: kekurangan
             });
@@ -4008,9 +4008,9 @@ const exportSelectedToExcel = async (): Promise<void> => {
           bahan: masterData.bahan,
           departemen: "RESERVED ONLY",
           totalNeeded: 0,
-          stockAkhir: 0,
           stockWincp: 0,
           reserved: data.totalQty,
+          stockAkhir: 0,
           reservedBy: Array.from(data.spkList).map(spk => `• ${spk}`).join("\n"),
           kekurangan: 0
         });
@@ -4036,9 +4036,9 @@ for (const [key, value] of materialMap) {
       "Bahan",
       "Departemen",
       "Total Kebutuhan",
-      "Stok Akhir",
       "Stok Wincp (Real)",
       "Reserved (Qty PO Lain)",
+      "Stok Akhir",
       "Reserved Oleh SPK",
       "Kekurangan",
       "Status"
@@ -4064,9 +4064,9 @@ for (const [key, value] of materialMap) {
         value.bahan,
         value.departemen,
         value.totalNeeded,
-        value.stockAkhir,
         value.stockWincp,
         value.reserved,
+        value.stockAkhir,
         value.reservedBy,
         value.kekurangan,
         value.kekurangan > 0 ? "KURANG" : "CUKUP"
