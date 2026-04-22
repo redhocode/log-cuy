@@ -4016,6 +4016,11 @@ const exportSelectedToExcel = async (): Promise<void> => {
         });
       }
     }
+for (const [key, value] of materialMap) {
+  if (value.departemen === "RESERVED ONLY") {
+    materialMap.delete(key);
+  }
+}
 
     // Buat materialData dengan urutan kolom: Barang Jadi di A, QTY PO di B
     const materialDataRows: any[][] = [];
