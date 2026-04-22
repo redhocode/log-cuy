@@ -12,6 +12,7 @@ interface BomData {
   ItemName: string;
   ItemName2: string;
   BahanQty: number;
+  BahanPackSatuan: string; // Tambahkan ini
   Departemen: string;
   NamaJenis: string;
 }
@@ -40,12 +41,7 @@ export async function GET(request: Request) {
     const pool = await getPool();
     let result;
 
-    // SELALU gunakan stored procedure rpBOM untuk semua kasus
-    // Karena stored procedure sudah di-optimize dan cepat
-    
     if (searchType === 'itemname' && itemid && itemid.trim() !== "" && itemid !== "%") {
-      // Untuk pencarian berdasarkan nama, kita perlu menggunakan query LIKE
-      // Karena stored procedure hanya support pencarian berdasarkan ID
       console.log("Searching by item name using query:", itemid);
       result = await pool
         .request()
@@ -59,7 +55,8 @@ export async function GET(request: Request) {
             dt.ItemID, 
             ISNULL(gdt.ItemName, '') AS ItemName,
             ISNULL(gdt.ItemName2, '') AS ItemName2, 
-            ISNULL(dt.BahanQty, 0) AS BahanQty, 
+            ISNULL(dt.BahanQty, 0) AS BahanQty,
+            ISNULL(dt.BahanPackSatuan, '') AS BahanPackSatuan,  -- TAMBAHKAN INI
             ISNULL(gdt.Mark, '') AS Departemen,
             ISNULL(got.NamaJenis, '') AS NamaJenis
           FROM taPackingHD hd
@@ -71,8 +68,6 @@ export async function GET(request: Request) {
           ORDER BY hd.ItemID, dt.ItemID
         `);
     } else {
-      // Untuk semua kasus lainnya (semua data atau pencarian berdasarkan ID)
-      // Gunakan stored procedure rpBOM yang cepat
       let searchParam = "%";
       if (itemid && itemid.trim() !== "" && itemid !== "%") {
         searchParam = `%${itemid}%`;
@@ -87,22 +82,9 @@ export async function GET(request: Request) {
         .execute("dbo.rpBOM");
     }
 
-    console.log(`Query returned ${result.recordset.length} records in ${result.recordset.length > 0 ? 'success' : 'no data'}`);
-    
-    if (result.recordset.length > 0) {
-      const sample = result.recordset[0];
-      console.log("Sample record:", {
-        itemidHD: sample.itemidHD,
-        itemnamehd: sample.itemnamehd,
-        itemnamehd2: sample.itemnamehd2,
-        ItemID: sample.ItemID,
-        ItemName: sample.ItemName,
-        ItemName2: sample.ItemName2,
-        BahanQty: sample.BahanQty
-      });
-    }
+    console.log(`Query returned ${result.recordset.length} records`);
 
-    // Transform data
+    // Transform data - PASTIKAN BahanPackSatuan diambil
     const transformedData = result.recordset.map((row: any) => ({
       TransID: row.TransID,
       itemidHD: row.itemidHD,
@@ -112,13 +94,13 @@ export async function GET(request: Request) {
       ItemName: row.ItemName || "",
       ItemName2: row.ItemName2 || "",
       BahanQty: row.BahanQty || 0,
+      BahanPackSatuan: row.BahanPackSatuan || "",  // TAMBAHKAN INI
       Departemen: row.Departemen || "",
       NamaJenis: row.NamaJenis || ""
     }));
 
-    console.log(`Transformed ${transformedData.length} records for frontend`);
+    console.log("Sample with satuan:", transformedData[0]?.BahanPackSatuan);
 
-    // Store in cache
     cache.set(cacheKey, {
       data: transformedData,
       timestamp: Date.now()
@@ -134,7 +116,7 @@ export async function GET(request: Request) {
     
     let errorMessage = "Terjadi kesalahan server.";
     if (error instanceof Error) {
-      errorMessage = error.message;
+      errorMessage = error.message; 
     }
     
     return NextResponse.json(
@@ -146,6 +128,213 @@ export async function GET(request: Request) {
       { status: 500 }
     );
   }
+}
+// app/api/bom/route.ts - Tambahkan method PUT
+export async function PUT(request: Request) {
+  try {
+    const body = await request.json();
+    const { TransID, ItemID, newItemID, BahanQty, BahanPackSatuan, action } = body;
+
+    console.log("PUT request received:", { TransID, ItemID, newItemID, BahanQty, BahanPackSatuan, action });
+
+    if (!TransID || !ItemID) {
+      return NextResponse.json(
+        { error: "TransID dan ItemID diperlukan" },
+        { status: 400 }
+      );
+    }
+
+    const pool = await getPool();
+
+    if (action === 'delete') {
+      // Delete komponen
+      const result = await pool
+        .request()
+        .input("TransID", sql.VarChar(7), TransID)
+        .input("ItemID", sql.VarChar(25), ItemID)
+        .query(`
+          DELETE FROM taPackingDT 
+          WHERE TransID = @TransID AND ItemID = @ItemID
+        `);
+
+      if (result.rowsAffected[0] === 0) {
+        return NextResponse.json(
+          { error: "Komponen tidak ditemukan" },
+          { status: 404 }
+        );
+      }
+
+      clearCache();
+
+      return NextResponse.json({
+        success: true,
+        message: "Komponen berhasil dihapus",
+        TransID,
+        ItemID
+      });
+    } 
+    else if (action === 'update') {
+      // Update komponen
+      const updateItemID = newItemID || ItemID;
+      
+      // Cek apakah perlu update ItemID (rename)
+      if (updateItemID !== ItemID) {
+        // Delete old and insert new
+        const transaction = new sql.Transaction(pool);
+        await transaction.begin();
+        
+        try {
+          // Delete old
+          await transaction.request()
+            .input("TransID", sql.VarChar(7), TransID)
+            .input("ItemID", sql.VarChar(25), ItemID)
+            .query(`DELETE FROM taPackingDT WHERE TransID = @TransID AND ItemID = @ItemID`);
+          
+          // Insert new
+          await transaction.request()
+            .input("TransID", sql.VarChar(7), TransID)
+            .input("ItemID", sql.VarChar(25), updateItemID)
+            .input("BahanQty", sql.Decimal(18, 5), BahanQty)
+            .input("BahanPackSatuan", sql.VarChar(10), BahanPackSatuan || null)
+            .query(`
+              INSERT INTO taPackingDT (TransID, ItemID, BahanQty, BahanPackSatuan)
+              VALUES (@TransID, @ItemID, @BahanQty, @BahanPackSatuan)
+            `);
+          
+          await transaction.commit();
+        } catch (error) {
+          await transaction.rollback();
+          throw error;
+        }
+      } else {
+        // Just update quantity and satuan
+        const result = await pool
+          .request()
+          .input("TransID", sql.VarChar(7), TransID)
+          .input("ItemID", sql.VarChar(25), ItemID)
+          .input("BahanQty", sql.Decimal(18, 5), BahanQty)
+          .input("BahanPackSatuan", sql.VarChar(10), BahanPackSatuan || null)
+          .query(`
+            UPDATE taPackingDT 
+            SET BahanQty = @BahanQty, BahanPackSatuan = @BahanPackSatuan
+            WHERE TransID = @TransID AND ItemID = @ItemID
+          `);
+
+        if (result.rowsAffected[0] === 0) {
+          return NextResponse.json(
+            { error: "Komponen tidak ditemukan" },
+            { status: 404 }
+          );
+        }
+      }
+
+      clearCache();
+
+      return NextResponse.json({
+        success: true,
+        message: "Komponen berhasil diupdate",
+        TransID,
+        ItemID: updateItemID,
+        BahanQty,
+        BahanPackSatuan
+      });
+    }
+    else {
+      return NextResponse.json(
+        { error: "Action tidak valid. Gunakan 'update' atau 'delete'" },
+        { status: 400 }
+      );
+    }
+
+  } catch (error) {
+    console.error("Error updating BOM:", error);
+    return NextResponse.json(
+      { error: "Gagal mengupdate BOM", details: String(error) },
+      { status: 500 }
+    );
+  }
+}
+// PATCH untuk bulk update atau add component
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json();
+    const { action, TransID, components } = body;
+
+    console.log("PATCH request:", { action, TransID, components });
+
+    const pool = await getPool();
+
+    if (action === 'add' && components && Array.isArray(components)) {
+      // Add multiple components
+      const transaction = new sql.Transaction(pool);
+      await transaction.begin();
+
+      try {
+        for (const comp of components) {
+          const { ItemID, BahanQty, BahanPackSatuan } = comp;
+          
+          // Cek apakah komponen sudah ada
+          const checkResult = await transaction.request()
+            .input("TransID", sql.VarChar(7), TransID)
+            .input("ItemID", sql.VarChar(25), ItemID)
+            .query(`
+              SELECT COUNT(*) as count FROM taPackingDT 
+              WHERE TransID = @TransID AND ItemID = @ItemID
+            `);
+          
+          if (checkResult.recordset[0].count > 0) {
+            await transaction.rollback();
+            return NextResponse.json({
+              success: false,
+              message: `Komponen ${ItemID} sudah ada dalam BOM ini`
+            }, { status: 400 });
+          }
+          
+          await transaction.request()
+            .input("TransID", sql.VarChar(7), TransID)
+            .input("ItemID", sql.VarChar(25), ItemID)
+            .input("BahanQty", sql.Decimal(18, 5), BahanQty || 0)
+            .input("BahanPackSatuan", sql.VarChar(10), BahanPackSatuan || null)
+            .query(`
+              INSERT INTO taPackingDT (TransID, ItemID, BahanQty, BahanPackSatuan)
+              VALUES (@TransID, @ItemID, @BahanQty, @BahanPackSatuan)
+            `);
+        }
+
+        await transaction.commit();
+        
+        // Clear cache after update
+        clearCache();
+
+        return NextResponse.json({
+          success: true,
+          message: `${components.length} komponen berhasil ditambahkan`,
+          TransID
+        });
+      } catch (error) {
+        await transaction.rollback();
+        throw error;
+      }
+    }
+    else {
+      return NextResponse.json(
+        { error: "Action tidak valid. Gunakan 'add'" },
+        { status: 400 }
+      );
+    }
+
+  } catch (error) {
+    console.error("Error in BOM operation:", error);
+    return NextResponse.json(
+      { error: "Gagal memproses BOM", details: String(error) },
+      { status: 500 }
+    );
+  }
+}
+// Function to clear cache
+function clearCache() {
+  cache.clear();
+  console.log("[CACHE CLEARED] All cache entries removed after update");
 }
 
 // Clear expired cache entries
