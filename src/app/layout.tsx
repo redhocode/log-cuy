@@ -43,9 +43,9 @@ export default function RootLayout({
   //   return <Maintenance />;
   // }
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`} suppressHydrationWarning
       >
         
         <Toaster />

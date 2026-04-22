@@ -32,6 +32,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
   
   return (
+       
+   
     <StoreProvider>
       <SidebarProvider>
         <div className="flex min-h-screen w-full">
