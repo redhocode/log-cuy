@@ -19,6 +19,7 @@ import glbarangReducer from "./features/glbarangSlice";
 import supplierReducer from "./features/supplierSlice";
 import productionReducer from "./features/productionSlice";
 import stockReducer from "./features/stockSlice";
+import bomReducer from "./features/bomSlice"
 export const makeStore = () => {
   return configureStore({
     reducer: {
@@ -40,7 +41,8 @@ export const makeStore = () => {
       glbarang: glbarangReducer,
       supplier: supplierReducer,
       production: productionReducer,
-      stock: stockReducer
+      stock: stockReducer,
+      bom: bomReducer 
     },
   });
 };

@@ -777,7 +777,43 @@ const filterOutINJECTIONDepartments = (bomItems: BomItem[]): BomItem[] => {
     return !dept.includes('INJEKSI-BB');
   });
 };
-
+// ==================== FUNGSI UNTUK AMBIL DATA MASTER ====================
+const fetchMasterDataForItems = async (itemIds: string[]): Promise<Map<string, any>> => {
+  const masterDataMap = new Map<string, any>();
+  
+  // Hapus duplikasi
+  const uniqueItemIds = Array.from(new Set(itemIds));
+  
+  for (const itemId of uniqueItemIds) {
+    try {
+      const response = await axios.get(`/api/master?check=true&itemId=${encodeURIComponent(itemId)}`);
+      
+      if (response.data.success && response.data.exists && response.data.data) {
+        const masterItem = response.data.data;
+        masterDataMap.set(itemId, {
+          spec: masterItem.Spec || "-",
+          warna: masterItem.warna || "-",
+          bahan: masterItem.bahan || "-" // Atau bisa menggunakan field lain jika ada
+        });
+      } else {
+        masterDataMap.set(itemId, {
+          spec: "-",
+          warna: "-",
+          bahan: "-"
+        });
+      }
+    } catch (error) {
+      console.error(`Error fetching master data for ${itemId}:`, error);
+      masterDataMap.set(itemId, {
+        spec: "-",
+        warna: "-",
+        bahan: "-"
+      });
+    }
+  }
+  
+  return masterDataMap;
+};
 // FUNGSI: Build tree structure dari flat BOM
 const buildTreeStructure = (flatBom: BomItem[]): BomItem[] => {
   if (!flatBom || flatBom.length === 0) return [];
@@ -1740,9 +1776,15 @@ const CommittedPOsPanel: React.FC<{
   committedPOs: CommittedPO[];
   stockReservations: StockReservation[];
   onRefresh: () => void;
-}> = ({ committedPOs, stockReservations, onRefresh }) => {
-  const [expanded, setExpanded] = useState(false);
+  onUncommit?: (noSPK: string) => void;
+}> = ({ committedPOs, stockReservations, onRefresh, onUncommit }) => {
+  const [expanded, setExpanded] = useState(true);
   const [showUnique, setShowUnique] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [uncommitting, setUncommitting] = useState<string | null>(null);
 
   const [commitDetailDrawer, setCommitDetailDrawer] = useState({
     open: false,
@@ -1762,13 +1804,36 @@ const CommittedPOsPanel: React.FC<{
     });
   };
 
+  // Filter data berdasarkan search dan status
+  const filteredPOs = useMemo(() => {
+    let filtered = committedPOs;
+
+    // Filter berdasarkan search
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(
+        (po) =>
+          po.noSPK.toLowerCase().includes(term) ||
+          po.namaPO.toLowerCase().includes(term) ||
+          po.kodeBarang.toLowerCase().includes(term)
+      );
+    }
+
+    // Filter berdasarkan status
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((po) => po.status === statusFilter);
+    }
+
+    return filtered;
+  }, [committedPOs, searchTerm, statusFilter]);
+
+  // Unique or all data
   const displayedPOs = useMemo(() => {
     if (showUnique) {
       const poMap = new Map<string, CommittedPO>();
 
-      committedPOs.forEach((po) => {
+      filteredPOs.forEach((po) => {
         const existingPO = poMap.get(po.noSPK);
-
         if (!existingPO || po.CommitID > existingPO.CommitID) {
           poMap.set(po.noSPK, po);
         }
@@ -1776,9 +1841,65 @@ const CommittedPOsPanel: React.FC<{
 
       return Array.from(poMap.values()).sort((a, b) => b.CommitID - a.CommitID);
     } else {
-      return committedPOs.sort((a, b) => b.CommitID - a.CommitID);
+      return filteredPOs.sort((a, b) => b.CommitID - a.CommitID);
     }
-  }, [committedPOs, showUnique]);
+  }, [filteredPOs, showUnique]);
+
+  // Pagination
+  const totalPages = Math.ceil(displayedPOs.length / itemsPerPage);
+  const paginatedPOs = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return displayedPOs.slice(startIndex, endIndex);
+  }, [displayedPOs, currentPage, itemsPerPage]);
+
+  const goToPage = (page: number) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+  };
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, showUnique]);
+
+  const handleUncommit = async (noSPK: string) => {
+    if (!confirm(`Apakah Anda yakin ingin uncommit PO ${noSPK}? Stok akan dikembalikan.`)) {
+      return;
+    }
+
+    setUncommitting(noSPK);
+
+    try {
+      const response = await fetch("/api/ppic/uncommit-po", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          noSPK: noSPK,
+          userID: "system",
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || "Unknown error from server");
+      }
+
+      alert(`✅ PO ${noSPK} berhasil di-uncommit! Stok telah dikembalikan.`);
+      onRefresh();
+    } catch (error: any) {
+      console.error(`❌ Gagal uncommit PO ${noSPK}:`, error);
+      alert(`❌ Gagal uncommit PO: ${error.message || "Unknown error"}`);
+    } finally {
+      setUncommitting(null);
+    }
+  };
 
   const activeReservations = stockReservations.filter(
     (r) => r.status === "RESERVED"
@@ -1789,22 +1910,46 @@ const CommittedPOsPanel: React.FC<{
     0
   );
 
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisiblePages = 5;
+
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    const endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+
+    if (endPage - startPage + 1 < maxVisiblePages) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      pages.push(i);
+    }
+
+    return pages;
+  };
+
+  const startIndex = (currentPage - 1) * itemsPerPage + 1;
+  const endIndex = Math.min(currentPage * itemsPerPage, displayedPOs.length);
+
   return (
     <Card>
       <CardHeader>
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center flex-wrap gap-4">
           <CardTitle className="flex items-center gap-2">
             <ClipboardList className="h-5 w-5" />
             History PO yang Sudah Di-commit
             {showUnique && " (Unique by No SPK)"}
           </CardTitle>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button
               variant={showUnique ? "default" : "outline"}
               size="sm"
-              onClick={() => setShowUnique(!showUnique)}
+              onClick={() => {
+                setShowUnique(!showUnique);
+                setCurrentPage(1);
+              }}
             >
-              {showUnique ? "Show All" : "Show Unique"}
+              {showUnique ? "Show Unique" : "Show All"}
             </Button>
             <Button
               variant="outline"
@@ -1853,7 +1998,7 @@ const CommittedPOsPanel: React.FC<{
                     Total Qty Reserved
                   </div>
                   <div className="text-2xl font-bold text-orange-600">
-                    {totalReservedQty.toLocaleString() ?? '0'}
+                    {totalReservedQty.toLocaleString()}
                   </div>
                 </CardContent>
               </Card>
@@ -1872,12 +2017,49 @@ const CommittedPOsPanel: React.FC<{
               </Card>
             </div>
 
+            {/* Filter Section */}
+            <div className="flex flex-col sm:flex-row gap-4 mb-4">
+              <div className="flex-1">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    placeholder="Cari berdasarkan No SPK, Nama PO, atau Kode Barang..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-8"
+                  />
+                </div>
+              </div>
+              <div className="w-48">
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filter Status" />
+                  </SelectTrigger>
+                  <SelectContent >
+                    <SelectItem value="all">Semua Status</SelectItem>
+                    <SelectItem value="COMMITTED">Committed</SelectItem>
+                    <SelectItem value="UNCOMMITTED">Uncommitted</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {searchTerm && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSearchTerm("")}
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+
             <Alert className="mb-4">
               <Info className="h-4 w-4" />
               <AlertTitle>Info Mode Tampilan</AlertTitle>
               <AlertDescription>
                 {showUnique
-                  ? `Menampilkan ${displayedPOs.length} data unik (berdasarkan No SPK) dari total ${committedPOs.length} records.`
+                  ? `Menampilkan ${displayedPOs.length} data unik (berdasarkan No SPK) dari total ${filteredPOs.length} records.`
                   : `Menampilkan semua ${displayedPOs.length} records commit.`}
               </AlertDescription>
             </Alert>
@@ -1897,63 +2079,150 @@ const CommittedPOsPanel: React.FC<{
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {displayedPOs.map((po, index) => (
-                    // Gunakan key kombinasi CommitID + index untuk memastikan unik
-                    <TableRow key={`${po.CommitID}-${index}`}>
-                      <TableCell className="font-mono text-xs">
-                        {po.CommitID}
-                      </TableCell>
-                      <TableCell className="font-medium">{po.noSPK}</TableCell>
-                      <TableCell>
-                        <div className="font-medium">{po.namaPO}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {po.kodeBarang}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right font-bold">
-                        {po.qty.toLocaleString() ?? '0'}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {new Date(po.tanggalCommit).toLocaleDateString("id-ID")}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge variant={po.status === "COMMITTED" ? "default" : "secondary"}>
-                          {po.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div>{po.totalMaterials} items</div>
-                        <div className="text-xs text-muted-foreground">
-                          {po.totalQtyReserved.toLocaleString() ?? '0'} qty
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openCommitDetailDrawer(po.noSPK)}
-                          className="gap-1"
-                        >
-                          <Eye className="h-3 w-3" />
-                          Detail
-                        </Button>
-                      </TableCell>
+                  {paginatedPOs.length === 0 ? (
+                    <TableRow>
+                      <td colSpan={8} className="text-center py-8 text-muted-foreground">
+                        Tidak ada data PO yang di-commit
+                      </td>
                     </TableRow>
-                  ))}
+                  ) : (
+                    paginatedPOs.map((po, index) => (
+                      <TableRow key={`${po.CommitID}-${index}`}>
+                        <TableCell className="font-mono text-xs">
+                          {po.CommitID}
+                        </TableCell>
+                        <TableCell className="font-medium">{po.noSPK}</TableCell>
+                        <TableCell>
+                          <div className="font-medium">{po.namaPO}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {po.kodeBarang}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-bold">
+                          {po.qty.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {new Date(po.tanggalCommit).toLocaleDateString("id-ID")}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant={po.status === "COMMITTED" ? "default" : "secondary"}>
+                            {po.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div>{po.totalMaterials} items</div>
+                          <div className="text-xs text-muted-foreground">
+                            {po.totalQtyReserved.toLocaleString()} qty
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openCommitDetailDrawer(po.noSPK)}
+                              className="gap-1"
+                            >
+                              <Eye className="h-3 w-3" />
+                              Detail
+                            </Button>
+                            {po.status === "COMMITTED" && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleUncommit(po.noSPK)}
+                                disabled={uncommitting === po.noSPK}
+                                className="gap-1"
+                              >
+                                {uncommitting === po.noSPK ? (
+                                  <RefreshCw className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3 w-3" />
+                                )}
+                                Uncommit
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </div>
-          </CardContent>
-          <CardFooter>
-            {displayedPOs.length === 0 && (
-              <div className="text-center w-full text-muted-foreground">
-                Tidak ada PO yang di-commit
+
+            {/* Pagination */}
+            {displayedPOs.length > 0 && (
+              <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-4">
+                <div className="text-sm text-muted-foreground">
+                  Menampilkan {startIndex}-{endIndex} dari {displayedPOs.length} data
+                  {searchTerm && (
+                    <span className="text-primary ml-2">
+                      (Hasil pencarian untuk "{searchTerm}")
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="itemsPerPage" className="text-sm">
+                      Items per page:
+                    </Label>
+                    <Select
+                      value={itemsPerPage.toString()}
+                      onValueChange={(value) => {
+                        setItemsPerPage(parseInt(value));
+                        setCurrentPage(1);
+                      }}
+                    >
+                      <SelectTrigger className="w-20">
+                        <SelectValue placeholder="10" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="5">5</SelectItem>
+                        <SelectItem value="10">10</SelectItem>
+                        <SelectItem value="20">20</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <Pagination>
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          onClick={() => goToPage(currentPage - 1)}
+                          className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
+                        />
+                      </PaginationItem>
+                      
+                      {getPageNumbers().map((page) => (
+                        <PaginationItem key={page}>
+                          <PaginationLink
+                            onClick={() => goToPage(page)}
+                            isActive={currentPage === page}
+                          >
+                            {page}
+                          </PaginationLink>
+                        </PaginationItem>
+                      ))}
+                      
+                      <PaginationItem>
+                        <PaginationNext
+                          onClick={() => goToPage(currentPage + 1)}
+                          className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                </div>
               </div>
             )}
-          </CardFooter>
+          </CardContent>
         </>
       )}
 
+      {/* Detail Drawer */}
       <Sheet
         open={commitDetailDrawer.open}
         onOpenChange={(open) =>
@@ -1995,7 +2264,7 @@ const CommittedPOsPanel: React.FC<{
                     <div>
                       <Label>Qty</Label>
                       <div className="font-medium text-right">
-                        {commit.qty.toLocaleString() ?? '0'}
+                        {commit.qty.toLocaleString()}
                       </div>
                     </div>
                     <div>
@@ -2007,7 +2276,7 @@ const CommittedPOsPanel: React.FC<{
                     <div>
                       <Label>Qty Reserved</Label>
                       <div className="font-medium text-right">
-                        {commit.totalQtyReserved.toLocaleString() ?? '0'}
+                        {commit.totalQtyReserved.toLocaleString()}
                       </div>
                     </div>
                   </div>
@@ -2029,7 +2298,7 @@ const CommittedPOsPanel: React.FC<{
                     <div>Total Records: {commitDetailDrawer.commits.length}</div>
                     <div>Active: {commitDetailDrawer.commits.filter(c => c.status === "COMMITTED").length}</div>
                     <div>Latest Commit: {commitDetailDrawer.commits[0]?.CommitID}</div>
-                    <div>Total Qty: {commitDetailDrawer.commits.reduce((sum, c) => sum + c.qty, 0).toLocaleString() ?? '0'}</div>
+                    <div>Total Qty: {commitDetailDrawer.commits.reduce((sum, c) => sum + c.qty, 0).toLocaleString()}</div>
                   </div>
                 </AlertDescription>
               </Alert>
@@ -2040,7 +2309,6 @@ const CommittedPOsPanel: React.FC<{
     </Card>
   );
 };
-
 // ==================== KOMPONEN UTAMA ====================
 export default function ProductionPlanPage() {
   const [orders, setOrders] = useState<ProductionPlan[]>([]);
@@ -2251,46 +2519,44 @@ export default function ProductionPlanPage() {
     );
   }, [committedPOs]);
 
-  const loadCommittedPOs = async (): Promise<void> => {
-    try {
-      const response = await fetch("/api/ppic/committed-pos", {
-        cache: "no-store",
-      });
+const loadCommittedPOs = async (): Promise<void> => {
+  try {
+    const response = await fetch("/api/ppic/committed-pos", {
+      cache: "no-store",
+    });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-
-      if (result.success) {
-        const newCommittedPOs = result.data.committedPOs || [];
-        const newReservations = result.data.reservations || [];
-
-        setCommittedPOs(newCommittedPOs);
-        setStockReservations(newReservations);
-
-        setTimeout(() => {
-          syncCommitStatus();
-        }, 100);
-      }
-    } catch (error) {
-      console.error("Error loading committed POs:", error);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
-  };
 
-  const refreshAllData = useCallback(async (): Promise<void> => {
-    try {
-      setLoading(true);
-      await loadCommittedPOs();
+    const result = await response.json();
+
+    if (result.success) {
+      const newCommittedPOs = result.data.committedPOs || [];
+      const newReservations = result.data.reservations || [];
+
+      setCommittedPOs(newCommittedPOs);
+      setStockReservations(newReservations);
+
+      // Refresh orders setelah mendapatkan data commit terbaru
       await fetchOrders(dateFilter.startDate, dateFilter.endDate);
-    } catch (error) {
-      console.error("Error refreshAllData:", error);
-    } finally {
-      setLoading(false);
     }
-  }, [dateFilter.startDate, dateFilter.endDate]);
+  } catch (error) {
+    console.error("Error loading committed POs:", error);
+  }
+};
 
+const refreshAllData = useCallback(async (): Promise<void> => {
+  try {
+    setLoading(true);
+    await loadCommittedPOs();
+    await fetchOrders(dateFilter.startDate, dateFilter.endDate);
+  } catch (error) {
+    console.error("Error refreshAllData:", error);
+  } finally {
+    setLoading(false);
+  }
+}, [dateFilter.startDate, dateFilter.endDate]);
   // ==================== FUNGSI PAGINATION ====================
 
   const paginatedOrders = useMemo(() => {
@@ -2315,68 +2581,77 @@ export default function ProductionPlanPage() {
 
   // ==================== FUNGSI LAINNYA ====================
 
-  const fetchOrders = async (startDate?: string, endDate?: string) => {
-    try {
-      setLoading(true);
-      setError("");
+const fetchOrders = async (startDate?: string, endDate?: string) => {
+  try {
+    setLoading(true);
+    setError("");
 
-      let url = "/api/ppic";
-      const params = new URLSearchParams();
+    let url = "/api/ppic";
+    const params = new URLSearchParams();
 
-      if (startDate) params.append("startDate", startDate);
-      if (endDate) params.append("endDate", endDate);
+    if (startDate) params.append("startDate", startDate);
+    if (endDate) params.append("endDate", endDate);
 
-      if (params.toString()) {
-        url += `?${params.toString()}`;
-      }
-
-      const response = await axios.get<ProductionOrder[]>(url);
-      const combinedOrders = combineDuplicatePOs(response.data);
-
-      const productionPlans: ProductionPlan[] = combinedOrders.map((order) => {
-        const existingOrder = orders.find(
-          (o) => o.order.No_SPK === order.No_SPK,
-        );
-        const committedPO = committedPOs.find(
-          (po) => po.noSPK === order.No_SPK && po.status === "COMMITTED",
-        );
-
-        const isCommitted = existingOrder?.committed ?? !!committedPO;
-        const CommitID = existingOrder?.CommitID ?? committedPO?.CommitID;
-
-        return {
-          order: {
-            ...order,
-            QTY: order.QTY || 0,
-            originalOrders: order.combinedItems || [order],
-          },
-          expanded: existingOrder?.expanded ?? false,
-          loading: false,
-          selected: existingOrder?.selected ?? false,
-          loadingBom: false,
-          viewMode: existingOrder?.viewMode ?? "table",
-          committed: isCommitted,
-          CommitID: CommitID,
-          bom: existingOrder?.bom,
-          stock: existingOrder?.stock,
-          stockLastUpdated: existingOrder?.stockLastUpdated,
-        };
-      });
-
-      setOrders(productionPlans);
-      setCurrentPage(1);
-    } catch (err: unknown) {
-      console.error("Error fetchOrders:", err);
-      if (err instanceof Error) {
-        setError("Gagal mengambil data produksi: " + err.message);
-      } else {
-        setError("Gagal mengambil data produksi: Unknown error");
-      }
-    } finally {
-      setLoading(false);
+    if (params.toString()) {
+      url += `?${params.toString()}`;
     }
-  };
 
+    const response = await axios.get<ProductionOrder[]>(url);
+    const combinedOrders = combineDuplicatePOs(response.data);
+
+    // Ambil daftar PO yang sudah di-commit
+    const committedSPKs = new Set(
+      committedPOs
+        .filter(po => po.status === "COMMITTED")
+        .map(po => po.noSPK)
+    );
+
+    // FILTER: Hanya tampilkan PO yang BELUM di-commit
+    const filteredOrders = combinedOrders.filter(order => !committedSPKs.has(order.No_SPK));
+
+    const productionPlans: ProductionPlan[] = filteredOrders.map((order) => {
+      const existingOrder = orders.find(
+        (o) => o.order.No_SPK === order.No_SPK,
+      );
+      const committedPO = committedPOs.find(
+        (po) => po.noSPK === order.No_SPK && po.status === "COMMITTED",
+      );
+
+      const isCommitted = existingOrder?.committed ?? !!committedPO;
+      const CommitID = existingOrder?.CommitID ?? committedPO?.CommitID;
+
+      return {
+        order: {
+          ...order,
+          QTY: order.QTY || 0,
+          originalOrders: order.combinedItems || [order],
+        },
+        expanded: existingOrder?.expanded ?? false,
+        loading: false,
+        selected: existingOrder?.selected ?? false,
+        loadingBom: false,
+        viewMode: existingOrder?.viewMode ?? "table",
+        committed: isCommitted,
+        CommitID: CommitID,
+        bom: existingOrder?.bom,
+        stock: existingOrder?.stock,
+        stockLastUpdated: existingOrder?.stockLastUpdated,
+      };
+    });
+
+    setOrders(productionPlans);
+    setCurrentPage(1);
+  } catch (err: unknown) {
+    console.error("Error fetchOrders:", err);
+    if (err instanceof Error) {
+      setError("Gagal mengambil data produksi: " + err.message);
+    } else {
+      setError("Gagal mengambil data produksi: Unknown error");
+    }
+  } finally {
+    setLoading(false);
+  }
+};
   const handleDateFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setDateFilter((prev) => ({
@@ -2499,143 +2774,47 @@ const commitPO = async (index: number): Promise<void> => {
   setCommitting(plan.order.No_SPK);
 
   try {
-    const materialUsage: MaterialUsageItem[] = [];
+    // ... kode commit yang sudah ada ...
 
-    // Fungsi untuk menghitung akumulasi qty dari BOM bertingkat
-    const calculateAccumulatedQtyForCommit = (itemId: string, bomFlat: BomItem[]): number => {
-      const item = bomFlat.find(b => b.ItemID === itemId);
-      if (!item) return 0;
-      
-      // Level 0 (produk jadi) selalu 1
-      if (item.Level === 0) return 1;
-      
-      // Level 1 langsung dari produk jadi
-      if (item.Level === 1) return item.Qty;
-      
-      // Level > 1: cari parent dan kalikan
-      if (item.Level > 1 && item.ParentItemID) {
-        const parent = bomFlat.find(b => b.ItemID === item.ParentItemID);
-        if (parent) {
-          const parentQty = calculateAccumulatedQtyForCommit(parent.ItemID, bomFlat);
-          return item.Qty * parentQty;
-        }
-      }
-      
-      return item.Qty;
-    };
-
-    if (plan.order.combinedItems && plan.order.combinedItems.length > 1) {
-      for (const combinedItem of plan.order.combinedItems) {
-        let bomForThisItem: BomItem[] = [];
-        if (
-          plan.bom.combinedBoms &&
-          plan.bom.combinedBoms[combinedItem.Kode_Barang]
-        ) {
-          bomForThisItem = plan.bom.combinedBoms[combinedItem.Kode_Barang].flat;
-        } else {
-          bomForThisItem = plan.bom.flat;
-        }
-
-        // Hanya komponen (Level > 0) dan filter INJEKSI-BB
-        const componentsOnly = bomForThisItem.filter(b => b.Level > 0 && !isINJECTIONDepartment(b.Departemen));
-
-        for (const bomItem of componentsOnly) {
-          // Hitung akumulasi qty dengan mempertimbangkan parent
-          const accumulatedQty = calculateAccumulatedQtyForCommit(bomItem.ItemID, bomForThisItem);
-          const needed = accumulatedQty * combinedItem.QTY;
-          
-          const availableStock =
-            plan.stock?.find((s) => s.itemid === bomItem.ItemID)?.stockAkhir || 0;
-          const usedQty = needed;
-          const stockAfter = availableStock - usedQty;
-
-          console.log(`Commit: ${bomItem.ItemID} - Base Qty: ${bomItem.Qty}, Accumulated: ${accumulatedQty}, PO Qty: ${combinedItem.QTY}, Total Needed: ${needed}`);
-
-          materialUsage.push({
-            itemId: bomItem.ItemID,
-            itemName: bomItem.ItemName,
-            itemName2: bomItem.ItemName2,
-            qtyPerUnit: bomItem.Qty,
-            totalNeeded: needed,
-            stockBefore: availableStock,
-            stockAfter: stockAfter,
-            qtyUsed: usedQty,
-            departemen: bomItem.Departemen,
-            level: bomItem.Level,
-          });
-        }
-      }
-    } else {
-      // PO Biasa
-      const componentsOnly = plan.bom.flat.filter(b => b.Level > 0 && !isINJECTIONDepartment(b.Departemen));
-
-      for (const bomItem of componentsOnly) {
-        // Hitung akumulasi qty dengan mempertimbangkan parent
-        const accumulatedQty = calculateAccumulatedQtyForCommit(bomItem.ItemID, plan.bom.flat);
-        const needed = accumulatedQty * plan.order.QTY;
-        
-        const availableStock =
-          plan.stock?.find((s) => s.itemid === bomItem.ItemID)?.stockAkhir || 0;
-        const usedQty = needed;
-        const stockAfter = availableStock - usedQty;
-
-        console.log(`Commit: ${bomItem.ItemID} - Base Qty: ${bomItem.Qty}, Accumulated: ${accumulatedQty}, PO Qty: ${plan.order.QTY}, Total Needed: ${needed}`);
-
-        materialUsage.push({
-          itemId: bomItem.ItemID,
-          itemName: bomItem.ItemName,
-          itemName2: bomItem.ItemName2,
-          qtyPerUnit: bomItem.Qty,
-          totalNeeded: needed,
-          stockBefore: availableStock,
-          stockAfter: stockAfter,
-          qtyUsed: usedQty,
-          departemen: bomItem.Departemen,
-          level: bomItem.Level,
-        });
-      }
-    }
-
-    const materialsWithShortage = materialUsage.filter(
-      (m) => m.stockBefore < m.qtyUsed,
-    ).length;
-
-    if (materialsWithShortage > 0) {
-      const shortageMaterials = materialUsage
-        .filter((m) => m.stockBefore < m.qtyUsed)
-        .map(
-          (m) =>
-            `• ${m.itemId}: Butuh ${m.qtyUsed}, Stok ${m.stockBefore} (Kurang ${
-              m.qtyUsed - m.stockBefore
-            })`,
-        )
-        .join("\n");
-
-      const userConfirmed = confirm(
-        `⚠️ PERHATIAN: Ada ${materialsWithShortage} material dengan stok tidak cukup:\n\n${shortageMaterials}\n\nApakah Anda yakin tetap ingin commit PO? Stok akan dicatat sebagai minus.`,
+    // Setelah commit berhasil, refresh data
+    await refreshAllData();
+    
+    setTimeout(() => {
+      forceRefreshUI();
+      alert(
+        // `✅ PO berhasil di-commit!\nCommit ID: ${result.CommitID}\n${materialUsage.length} material di-reserve\nTotal Reserved Qty: ${materialUsage.reduce((sum, item) => sum + item.qtyUsed, 0)}`,
       );
+    }, 100);
+  } catch (error: any) {
+    console.error(`❌ Gagal commit PO ${plan.order.No_SPK}:`, error);
+    alert(`❌ Gagal commit PO: ${error.message || "Unknown error"}`);
+  } finally {
+    setCommitting(null);
+  }
+};
+const uncommitPO = async (index: number): Promise<void> => {
+  const globalIndex = (currentPage - 1) * itemsPerPage + index;
+  const plan = filteredOrders[globalIndex];
 
-      if (!userConfirmed) {
-        setCommitting(null);
-        return;
-      }
-    }
+  if (
+    !confirm(
+      `Apakah Anda yakin ingin uncommit PO ${plan.order.No_SPK}? Stok akan dikembalikan.`,
+    )
+  ) {
+    return;
+  }
 
-    const response = await fetch("/api/ppic/commit-po", {
+  setCommitting(plan.order.No_SPK);
+
+  try {
+    const response = await fetch("/api/ppic/uncommit-po", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         noSPK: plan.order.No_SPK,
-        kodeBarang: plan.order.Kode_Barang,
-        namaPO: plan.order.Nama_PO,
-        qty: plan.order.QTY,
         userID: "system",
-        materialUsage: materialUsage,
-        isCombinedPO:
-          plan.order.combinedItems && plan.order.combinedItems.length > 1,
-        combinedItems: plan.order.combinedItems,
       }),
     });
 
@@ -2649,129 +2828,20 @@ const commitPO = async (index: number): Promise<void> => {
       throw new Error(result.error || "Unknown error from server");
     }
 
-    const newCommittedPO: CommittedPO = {
-      CommitID: result.CommitID,
-      noSPK: plan.order.No_SPK,
-      kodeBarang: plan.order.Kode_Barang,
-      namaPO: plan.order.Nama_PO,
-      qty: plan.order.QTY,
-      tanggalCommit: new Date().toISOString(),
-      userID: "system",
-      status: "COMMITTED",
-      totalMaterials: materialUsage.length,
-      totalQtyReserved: materialUsage.reduce(
-        (sum, item) => sum + item.qtyUsed,
-        0,
-      ),
-    };
-
-    setCommittedPOs((prev) => [...prev, newCommittedPO]);
-
-    setOrders((prev) =>
-      prev.map((item) =>
-        item.order.No_SPK === plan.order.No_SPK
-          ? {
-              ...item,
-              committed: true,
-              CommitID: result.CommitID,
-              selected: false,
-            }
-          : item,
-      ),
-    );
+    // Refresh data setelah uncommit
+    await refreshAllData();
 
     setTimeout(() => {
       forceRefreshUI();
-      alert(
-        `✅ PO berhasil di-commit!\nCommit ID: ${result.CommitID}\n${materialUsage.length} material di-reserve\nTotal Reserved Qty: ${materialUsage.reduce((sum, item) => sum + item.qtyUsed, 0)}`,
-      );
+      alert("✅ PO berhasil di-uncommit! Stok telah dikembalikan.");
     }, 100);
   } catch (error: any) {
-    console.error(`❌ Gagal commit PO ${plan.order.No_SPK}:`, error);
-    alert(`❌ Gagal commit PO: ${error.message || "Unknown error"}`);
+    console.error(`❌ Gagal uncommit PO ${plan.order.No_SPK}:`, error);
+    alert(`❌ Gagal uncommit PO: ${error.message || "Unknown error"}`);
   } finally {
     setCommitting(null);
   }
 };
-  const uncommitPO = async (index: number): Promise<void> => {
-    const globalIndex = (currentPage - 1) * itemsPerPage + index;
-    const plan = filteredOrders[globalIndex];
-
-    if (
-      !confirm(
-        `Apakah Anda yakin ingin uncommit PO ${plan.order.No_SPK}? Stok akan dikembalikan.`,
-      )
-    ) {
-      return;
-    }
-
-    setCommitting(plan.order.No_SPK);
-
-    try {
-      const response = await fetch("/api/ppic/uncommit-po", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          noSPK: plan.order.No_SPK,
-          userID: "system",
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-      }
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.error || "Unknown error from server");
-      }
-
-      setOrders((prev) =>
-        prev.map((item) =>
-          item.order.No_SPK === plan.order.No_SPK
-            ? {
-                ...item,
-                committed: false,
-                CommitID: undefined,
-                selected: false,
-              }
-            : item,
-        ),
-      );
-
-      setCommittedPOs((prev) =>
-        prev.filter(
-          (po) =>
-            !(po.noSPK === plan.order.No_SPK && po.status === "COMMITTED"),
-        ),
-      );
-
-      setTimeout(() => {
-        forceRefreshUI();
-        alert("✅ PO berhasil di-uncommit! Stok telah dikembalikan.");
-      }, 100);
-    } catch (error: any) {
-      console.error(`❌ Gagal uncommit PO ${plan.order.No_SPK}:`, error);
-      alert(`❌ Gagal uncommit PO: ${error.message || "Unknown error"}`);
-
-      setOrders((prev) =>
-        prev.map((item) =>
-          item.order.No_SPK === plan.order.No_SPK
-            ? {
-                ...item,
-                committed: true,
-              }
-            : item,
-        ),
-      );
-    } finally {
-      setCommitting(null);
-    }
-  };
-
   const resetCommittedPOs = async () => {
     if (
       !confirm(
@@ -3453,7 +3523,6 @@ const exportSelectedToExcel = async (): Promise<void> => {
       message: "Memulai proses export...",
     });
 
-    // Ambil data committedPOs dan stockReservations dari state
     const currentCommittedPOs = committedPOs;
     const currentStockReservations = stockReservations;
 
@@ -3463,6 +3532,8 @@ const exportSelectedToExcel = async (): Promise<void> => {
 
     if (selectedOrders.length === 0) {
       alert("Tidak ada PO yang dipilih untuk di-export!");
+      setExportLoading(false);
+      setExportProgress({ visible: false, current: 0, total: 0, message: "" });
       return;
     }
 
@@ -3496,10 +3567,10 @@ const exportSelectedToExcel = async (): Promise<void> => {
     });
 
     const ws1 = XLSX.utils.json_to_sheet(poData);
+    ws1["!cols"] = [{ wch: 15 }, { wch: 12 }, { wch: 40 }, { wch: 15 }, { wch: 12 }];
     XLSX.utils.book_append_sheet(wb, ws1, "PO");
 
-    // ==================== FUNGSI UNTUK MENGHITUNG TOTAL KEBUTUHAN BOM BERTINGKAT ====================
-    
+    // ==================== FUNGSI BANTU ====================
     const findParent = (itemId: string, flatBom: BomItem[]): BomItem | undefined => {
       const item = flatBom.find(b => b.ItemID === itemId);
       if (item && item.ParentItemID) {
@@ -3525,91 +3596,177 @@ const exportSelectedToExcel = async (): Promise<void> => {
       return qty;
     };
 
-   // ==================== SHEET 2: BOM ====================
-const bomData: any[] = [];
-let totalINJECTIONRemoved = 0;
-
-for (const order of selectedOrders) {
-  if (!order.bom) continue;
-
-  const isCombined = order.order.combinedItems && order.order.combinedItems.length > 1;
-  
-  if (isCombined) {
-    for (const item of order.order.combinedItems!) {
-      let bomFlat: BomItem[] = [];
-      if (order.bom?.combinedBoms && order.bom.combinedBoms[item.Kode_Barang]) {
-        bomFlat = order.bom.combinedBoms[item.Kode_Barang].flat;
-      } else {
-        bomFlat = order.bom?.flat || [];
-      }
-
-      const filteredBom = bomFlat.filter(b => !isINJECTIONDepartment(b.Departemen));
-      const removedCount = bomFlat.length - filteredBom.length;
-      totalINJECTIONRemoved += removedCount;
-
-      // Header - KONSISTEN gunakan "Nama Komponen China"
-      bomData.push({
-        "No SPK": order.order.No_SPK,
-        "Kode Barang Jadi": item.Kode_Barang,
-        "Nama Barang Jadi": item.Nama_PO,
-        "QTY PO": item.QTY,
-        "Level": "HEADER",
-        "Kode Komponen": "",
-        "Nama Komponen": "",
-        "Nama Komponen China": "",  // KONSISTEN
-        "Qty per Unit (BOM)": "",
-        "Accumulated Qty": "",
-        "Total Kebutuhan": "",
-        "Stok": "",
-        "Status": ""
-      });
-
-      const sortedBom = [...filteredBom].sort((a, b) => a.Level - b.Level);
+    // ==================== FUNGSI AMBIL DATA MASTER ====================
+    const fetchMasterDataForItems = async (itemIds: string[]): Promise<Map<string, any>> => {
+      const masterDataMap = new Map<string, any>();
+      const uniqueItemIds = Array.from(new Set(itemIds));
       
-      for (const b of sortedBom.filter(b => b.Level > 0)) {
-        const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
-        const accumulatedQty = calculateAccumulatedQty(b, filteredBom);
-        const totalNeeded = accumulatedQty * item.QTY;
-        const stock = stockItem?.stockAkhir || 0;
-        const shortage = totalNeeded > stock;
-        
-        const parent = findParent(b.ItemID, filteredBom);
-        const parentInfo = parent ? ` (dari ${parent.ItemID} x ${parent.Qty})` : "";
+      for (const itemId of uniqueItemIds) {
+        try {
+          const response = await axios.get(`/api/master?check=true&itemId=${encodeURIComponent(itemId)}`);
+          
+          if (response.data.success && response.data.exists && response.data.data) {
+            const masterItem = response.data.data;
+            masterDataMap.set(itemId, {
+              spec: masterItem.Spec || "-",
+              warna: masterItem.warna || "-",
+              bahan: masterItem.bahan || "-"
+            });
+          } else {
+            masterDataMap.set(itemId, {
+              spec: "-",
+              warna: "-",
+              bahan: "-"
+            });
+          }
+        } catch (error) {
+          console.error(`Error fetching master data for ${itemId}:`, error);
+          masterDataMap.set(itemId, {
+            spec: "-",
+            warna: "-",
+            bahan: "-"
+          });
+        }
+      }
+      
+      return masterDataMap;
+    };
+
+    // ==================== SHEET 2: BOM ====================
+    const bomData: any[] = [];
+    let totalINJECTIONRemoved = 0;
+
+    for (const order of selectedOrders) {
+      if (!order.bom) continue;
+
+      const isCombined = order.order.combinedItems && order.order.combinedItems.length > 1;
+      
+      if (isCombined) {
+        for (const item of order.order.combinedItems!) {
+          let bomFlat: BomItem[] = [];
+          if (order.bom?.combinedBoms && order.bom.combinedBoms[item.Kode_Barang]) {
+            bomFlat = order.bom.combinedBoms[item.Kode_Barang].flat;
+          } else {
+            bomFlat = order.bom?.flat || [];
+          }
+
+          const filteredBom = bomFlat.filter(b => !isINJECTIONDepartment(b.Departemen));
+          const removedCount = bomFlat.length - filteredBom.length;
+          totalINJECTIONRemoved += removedCount;
+
+          bomData.push({
+            "No SPK": order.order.No_SPK,
+            "Kode Barang Jadi": item.Kode_Barang,
+            "Nama Barang Jadi": item.Nama_PO,
+            "QTY PO": item.QTY,
+            "Level": "HEADER",
+            "Kode Komponen": "",
+            "Nama Komponen": "",
+            "Nama Komponen China": "",
+            "Qty per Unit (BOM)": "",
+            "Accumulated Qty": "",
+            "Total Kebutuhan": "",
+            "Stok": "",
+            "Status": ""
+          });
+
+          const sortedBom = [...filteredBom].sort((a, b) => a.Level - b.Level);
+          
+          for (const b of sortedBom.filter(b => b.Level > 0)) {
+            const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
+            const accumulatedQty = calculateAccumulatedQty(b, filteredBom);
+            const totalNeeded = accumulatedQty * item.QTY;
+            const stock = stockItem?.stockAkhir || 0;
+            const shortage = totalNeeded > stock;
+            
+            const parent = findParent(b.ItemID, filteredBom);
+            const parentInfo = parent ? ` (dari ${parent.ItemID} x ${parent.Qty})` : "";
+
+            bomData.push({
+              "No SPK": "",
+              "Kode Barang Jadi": "",
+              "Nama Barang Jadi": "",
+              "QTY PO": "",
+              "Level": b.Level,
+              "Kode Komponen": b.ItemID,
+              "Nama Komponen": b.ItemName,
+              "Nama Komponen China": b.ItemName2 || "",
+              "Qty per Unit (BOM)": b.Qty,
+              "Accumulated Qty": accumulatedQty,
+              "Total Kebutuhan": totalNeeded,
+              "Stok": stock,
+              "Status": shortage ? "KURANG" : "CUKUP",
+              "Keterangan": b.Level === 1 ? "Langsung dari produk jadi" : `Perhitungan: ${b.Qty} x ${parent?.Qty || 1}${parentInfo}`
+            });
+          }
+
+          bomData.push({});
+        }
+      } else {
+        const filteredBom = order.bom.flat.filter(b => !isINJECTIONDepartment(b.Departemen));
+        const removedCount = order.bom.flat.length - filteredBom.length;
+        totalINJECTIONRemoved += removedCount;
 
         bomData.push({
-          "No SPK": "",
-          "Kode Barang Jadi": "",
-          "Nama Barang Jadi": "",
-          "QTY PO": "",
-          "Level": b.Level,
-          "Kode Komponen": b.ItemID,
-          "Nama Komponen": b.ItemName,
-          "Nama Komponen China": b.ItemName2 || "",  // KONSISTEN - gunakan nama kolom yang sama
-          "Qty per Unit (BOM)": b.Qty,
-          "Accumulated Qty": accumulatedQty,
-          "Total Kebutuhan": totalNeeded,
-          "Stok": stock,
-          "Status": shortage ? "KURANG" : "CUKUP",
-          "Keterangan": b.Level === 1 ? "Langsung dari produk jadi" : `Perhitungan: ${b.Qty} x ${parent?.Qty || 1}${parentInfo}`
+          "No SPK": order.order.No_SPK,
+          "Kode Barang Jadi": order.order.Kode_Barang,
+          "Nama Barang Jadi": order.order.Nama_PO,
+          "QTY PO": order.order.QTY,
+          "Level": "HEADER",
+          "Kode Komponen": "",
+          "Nama Komponen": "",
+          "Nama Komponen China": "",
+          "Qty per Unit (BOM)": "",
+          "Accumulated Qty": "",
+          "Total Kebutuhan": "",
+          "Stok": "",
+          "Status": ""
         });
+
+        const sortedBom = [...filteredBom].sort((a, b) => a.Level - b.Level);
+        
+        for (const b of sortedBom.filter(b => b.Level > 0)) {
+          const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
+          const accumulatedQty = calculateAccumulatedQty(b, filteredBom);
+          const totalNeeded = accumulatedQty * order.order.QTY;
+          const stock = stockItem?.stockAkhir || 0;
+          const shortage = totalNeeded > stock;
+          
+          const parent = findParent(b.ItemID, filteredBom);
+          const parentInfo = parent ? ` (dari ${parent.ItemID} x ${parent.Qty})` : "";
+
+          bomData.push({
+            "No SPK": "",
+            "Kode Barang Jadi": "",
+            "Nama Barang Jadi": "",
+            "QTY PO": "",
+            "Level": b.Level,
+            "Kode Komponen": b.ItemID,
+            "Nama Komponen": b.ItemName,
+            "Nama Komponen China": b.ItemName2 || "",
+            "Qty per Unit (BOM)": b.Qty,
+            "Accumulated Qty": accumulatedQty,
+            "Total Kebutuhan": totalNeeded,
+            "Stok": stock,
+            "Status": shortage ? "KURANG" : "CUKUP",
+            "Keterangan": b.Level === 1 ? "Langsung dari produk jadi" : `Perhitungan: ${b.Qty} x ${parent?.Qty || 1}${parentInfo}`
+          });
+        }
+
+        bomData.push({});
       }
-
-      bomData.push({}); // Baris kosong separator
     }
-  } else {
-    const filteredBom = order.bom.flat.filter(b => !isINJECTIONDepartment(b.Departemen));
-    const removedCount = order.bom.flat.length - filteredBom.length;
-    totalINJECTIONRemoved += removedCount;
 
+    bomData.push({});
     bomData.push({
-      "No SPK": order.order.No_SPK,
-      "Kode Barang Jadi": order.order.Kode_Barang,
-      "Nama Barang Jadi": order.order.Nama_PO,
-      "QTY PO": order.order.QTY,
-      "Level": "HEADER",
+      "No SPK": "INFORMASI",
+      "Kode Barang Jadi": "",
+      "Nama Barang Jadi": "",
+      "QTY PO": "",
+      "Level": "",
       "Kode Komponen": "",
-      "Nama Komponen": "",
-      "Nama Komponen China": "",  // KONSISTEN
+      "Nama Komponen": `* Komponen dengan departemen INJECTION tidak ditampilkan (${totalINJECTIONRemoved} item dihapus)`,
+      "Nama Komponen China": "",
       "Qty per Unit (BOM)": "",
       "Accumulated Qty": "",
       "Total Kebutuhan": "",
@@ -3617,290 +3774,436 @@ for (const order of selectedOrders) {
       "Status": ""
     });
 
-    const sortedBom = [...filteredBom].sort((a, b) => a.Level - b.Level);
-    
-    for (const b of sortedBom.filter(b => b.Level > 0)) {
-      const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
-      const accumulatedQty = calculateAccumulatedQty(b, filteredBom);
-      const totalNeeded = accumulatedQty * order.order.QTY;
-      const stock = stockItem?.stockAkhir || 0;
-      const shortage = totalNeeded > stock;
-      
-      const parent = findParent(b.ItemID, filteredBom);
-      const parentInfo = parent ? ` (dari ${parent.ItemID} x ${parent.Qty})` : "";
+    const ws2 = XLSX.utils.json_to_sheet(bomData);
+    ws2['!cols'] = [
+      { wch: 12 }, { wch: 15 }, { wch: 30 }, { wch: 10 }, { wch: 8 },
+      { wch: 15 }, { wch: 35 }, { wch: 35 }, { wch: 15 }, { wch: 15 },
+      { wch: 15 }, { wch: 12 }, { wch: 10 }, { wch: 40 }
+    ];
+    XLSX.utils.book_append_sheet(wb, ws2, "BOM");
 
-      bomData.push({
-        "No SPK": "",
-        "Kode Barang Jadi": "",
-        "Nama Barang Jadi": "",
-        "QTY PO": "",
-        "Level": b.Level,
-        "Kode Komponen": b.ItemID,
-        "Nama Komponen": b.ItemName,
-        "Nama Komponen China": b.ItemName2 || "",  // KONSISTEN
-        "Qty per Unit (BOM)": b.Qty,
-        "Accumulated Qty": accumulatedQty,
-        "Total Kebutuhan": totalNeeded,
-        "Stok": stock,
-        "Status": shortage ? "KURANG" : "CUKUP",
-        "Keterangan": b.Level === 1 ? "Langsung dari produk jadi" : `Perhitungan: ${b.Qty} x ${parent?.Qty || 1}${parentInfo}`
-      });
+    // ==================== SHEET 3: TOTAL KEBUTUHAN MATERIAL ====================
+    
+    // Kumpulkan semua material yang dibutuhkan
+    const materialMap = new Map<string, any>();
+    const reservationsByItem = new Map<string, { totalQty: number; spkList: Set<string>; itemName: string }>();
+
+    // Kumpulkan reservasi
+    for (const reservation of currentStockReservations) {
+      if (reservation.status !== "RESERVED") continue;
+      if (reservation.reservedQty <= 0) continue;
+      
+      const noSPK = reservation.noSPK;
+      if (!noSPK) continue;
+      
+      const itemId = reservation.itemID;
+      const itemName = reservation.itemName || itemId;
+      
+      if (!reservationsByItem.has(itemId)) {
+        reservationsByItem.set(itemId, {
+          totalQty: 0,
+          spkList: new Set(),
+          itemName: itemName
+        });
+      }
+      
+      const itemData = reservationsByItem.get(itemId)!;
+      itemData.totalQty += reservation.reservedQty;
+      itemData.spkList.add(noSPK);
     }
 
-    bomData.push({}); // Baris kosong separator
-  }
-}
+    // Kumpulkan semua ItemID untuk mengambil data master
+    const allItemIdsNeeded: string[] = [];
 
-// Tambahkan row total INJECTION yang dihapus
-bomData.push({});
-bomData.push({
-  "No SPK": "INFORMASI",
-  "Kode Barang Jadi": "",
-  "Nama Barang Jadi": "",
-  "QTY PO": "",
-  "Level": "",
-  "Kode Komponen": "",
-  "Nama Komponen": `* Komponen dengan departemen INJECTION tidak ditampilkan (${totalINJECTIONRemoved} item dihapus)`,
-  "Nama Komponen China": "",  // KONSISTEN
-  "Qty per Unit (BOM)": "",
-  "Accumulated Qty": "",
-  "Total Kebutuhan": "",
-  "Stok": "",
-  "Status": ""
-});
-
-const ws2 = XLSX.utils.json_to_sheet(bomData);
-
-// Atur lebar kolom untuk sheet BOM
-ws2['!cols'] = [
-  { wch: 12 }, // No SPK
-  { wch: 15 }, // Kode Barang Jadi
-  { wch: 30 }, // Nama Barang Jadi
-  { wch: 10 }, // QTY PO
-  { wch: 8 },  // Level
-  { wch: 15 }, // Kode Komponen
-  { wch: 35 }, // Nama Komponen
-  { wch: 35 }, // Nama Komponen China  // PASTIKAN LEBAR KOLOM INI
-  { wch: 15 }, // Qty per Unit (BOM)
-  { wch: 15 }, // Accumulated Qty
-  { wch: 15 }, // Total Kebutuhan
-  { wch: 12 }, // Stok
-  { wch: 10 }, // Status
-  { wch: 40 }, // Keterangan
-];
-
-XLSX.utils.book_append_sheet(wb, ws2, "BOM");
-// ==================== SHEET 3: TOTAL KEBUTUHAN MATERIAL ====================
-const materialMap = new Map();
-
-// Langsung gunakan data dari stockReservations untuk informasi reserved
-const reservationsByItem = new Map<string, { totalQty: number; spkList: Set<string>; itemName: string }>();
-
-for (const reservation of stockReservations) {
-  if (reservation.status !== "RESERVED") continue;
-  if (reservation.reservedQty <= 0) continue;
-  
-  const noSPK = reservation.noSPK;
-  if (!noSPK) continue;
-  
-  const itemId = reservation.itemID;
-  const itemName = reservation.itemName || itemId;
-  
-  if (!reservationsByItem.has(itemId)) {
-    reservationsByItem.set(itemId, {
-      totalQty: 0,
-      spkList: new Set(),
-      itemName: itemName
-    });
-  }
-  
-  const itemData = reservationsByItem.get(itemId)!;
-  itemData.totalQty += reservation.reservedQty;
-  itemData.spkList.add(noSPK);
-}
-
-// Proses setiap order untuk menghitung kebutuhan
-for (const order of selectedOrders) {
-  if (!order.bom) continue;
-
-  const isCombined = order.order.combinedItems && order.order.combinedItems.length > 1;
-  
-  if (isCombined) {
-    for (const item of order.order.combinedItems!) {
-      let bomFlat: BomItem[] = [];
-      if (order.bom?.combinedBoms && order.bom.combinedBoms[item.Kode_Barang]) {
-        bomFlat = order.bom.combinedBoms[item.Kode_Barang].flat;
-      } else {
-        bomFlat = order.bom?.flat || [];
-      }
-
-      const filteredBom = bomFlat.filter(b => !isINJECTIONDepartment(b.Departemen));
+    for (const order of selectedOrders) {
+      if (!order.bom) continue;
+      const isCombined = order.order.combinedItems && order.order.combinedItems.length > 1;
       
-      for (const b of filteredBom.filter(b => b.Level > 0)) {
-        const key = b.ItemID;
-        const totalNeeded = b.Qty * item.QTY;
-        const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
-        
-        // Ambil data dari stockItem (sudah termasuk perhitungan stok akhir)
-        const stockAkhir = stockItem?.stockAkhir || 0;
-        const stockWincp = stockItem?.physicalStock || 0;
-        
-        // Ambil data reservasi (PO lain yang sudah reserve)
-        const reservedData = reservationsByItem.get(b.ItemID);
-        let reservedQty = 0;
-        let reservedByText = "-";
-        
-        if (reservedData) {
-          reservedQty = reservedData.totalQty;
-          reservedByText = Array.from(reservedData.spkList).map(spk => `• ${spk}`).join("\n");
+      if (isCombined) {
+        for (const item of order.order.combinedItems!) {
+          let bomFlat: BomItem[] = [];
+          if (order.bom?.combinedBoms && order.bom.combinedBoms[item.Kode_Barang]) {
+            bomFlat = order.bom.combinedBoms[item.Kode_Barang].flat;
+          } else {
+            bomFlat = order.bom?.flat || [];
+          }
+          const filteredBom = bomFlat.filter(b => !isINJECTIONDepartment(b.Departemen));
+          for (const b of filteredBom.filter(b => b.Level > 0)) {
+            allItemIdsNeeded.push(b.ItemID);
+          }
         }
-        
-        // Kekurangan = jika total kebutuhan > stok akhir (stok akhir sudah dikurangi reserved)
-        const kekurangan = Math.max(0, totalNeeded - stockAkhir);
-        
-        if (materialMap.has(key)) {
-          const existing = materialMap.get(key);
-          existing.totalNeeded += totalNeeded;
-        } else {
-          materialMap.set(key, {
-            kode: b.ItemID,
-            nama: b.ItemName,
-            nama_china: b.ItemName2 || "-",
-            departemen: b.Departemen || "-",
-            totalNeeded: totalNeeded,
-            stockAkhir: stockAkhir,
-            stockWincp: stockWincp,
-            reserved: reservedQty,
-            reservedBy: reservedByText,
-            kekurangan: kekurangan
+      } else {
+        const filteredBom = order.bom.flat.filter(b => !isINJECTIONDepartment(b.Departemen));
+        for (const b of filteredBom.filter(b => b.Level > 0)) {
+          allItemIdsNeeded.push(b.ItemID);
+        }
+      }
+    }
+
+    // Ambil data master untuk semua ItemID yang dibutuhkan
+    const masterDataMap = await fetchMasterDataForItems(allItemIdsNeeded);
+
+    // Mapping material ke PO
+    const materialToPOs = new Map<string, Array<{ noSPK: string; kodeBarang: string; namaBarang: string; qtyPO: number }>>();
+
+    for (const order of selectedOrders) {
+      if (!order.bom) continue;
+      const isCombined = order.order.combinedItems && order.order.combinedItems.length > 1;
+      
+      if (isCombined) {
+        for (const item of order.order.combinedItems!) {
+          let bomFlat: BomItem[] = [];
+          if (order.bom?.combinedBoms && order.bom.combinedBoms[item.Kode_Barang]) {
+            bomFlat = order.bom.combinedBoms[item.Kode_Barang].flat;
+          } else {
+            bomFlat = order.bom?.flat || [];
+          }
+          const filteredBom = bomFlat.filter(b => !isINJECTIONDepartment(b.Departemen));
+          
+          for (const b of filteredBom.filter(b => b.Level > 0)) {
+            const key = b.ItemID;
+            if (!materialToPOs.has(key)) {
+              materialToPOs.set(key, []);
+            }
+            materialToPOs.get(key)!.push({
+              noSPK: order.order.No_SPK,
+              kodeBarang: item.Kode_Barang,
+              namaBarang: item.Nama_PO,
+              qtyPO: item.QTY
+            });
+          }
+        }
+      } else {
+        const filteredBom = order.bom.flat.filter(b => !isINJECTIONDepartment(b.Departemen));
+        for (const b of filteredBom.filter(b => b.Level > 0)) {
+          const key = b.ItemID;
+          if (!materialToPOs.has(key)) {
+            materialToPOs.set(key, []);
+          }
+          materialToPOs.get(key)!.push({
+            noSPK: order.order.No_SPK,
+            kodeBarang: order.order.Kode_Barang,
+            namaBarang: order.order.Nama_PO,
+            qtyPO: order.order.QTY
           });
         }
       }
     }
-  } else {
-    const filteredBom = order.bom.flat.filter(b => !isINJECTIONDepartment(b.Departemen));
-    
-    for (const b of filteredBom.filter(b => b.Level > 0)) {
-      const key = b.ItemID;
-      const totalNeeded = b.Qty * order.order.QTY;
-      const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
+
+    // Proses setiap order untuk menghitung kebutuhan
+    for (const order of selectedOrders) {
+      if (!order.bom) continue;
+      const isCombined = order.order.combinedItems && order.order.combinedItems.length > 1;
       
-      // Ambil data dari stockItem (sudah termasuk perhitungan stok akhir)
-      const stockAkhir = stockItem?.stockAkhir || 0;
-      const stockWincp = stockItem?.physicalStock || 0;
-      
-      // Ambil data reservasi (PO lain yang sudah reserve)
-      const reservedData = reservationsByItem.get(b.ItemID);
-      let reservedQty = 0;
-      let reservedByText = "-";
-      
-      if (reservedData) {
-        reservedQty = reservedData.totalQty;
-        reservedByText = Array.from(reservedData.spkList).map(spk => `• ${spk}`).join("\n");
-      }
-      
-      // Kekurangan = jika total kebutuhan > stok akhir (stok akhir sudah dikurangi reserved)
-      const kekurangan = Math.max(0, totalNeeded - stockAkhir);
-      
-      if (materialMap.has(key)) {
-        const existing = materialMap.get(key);
-        existing.totalNeeded += totalNeeded;
+      if (isCombined) {
+        for (const item of order.order.combinedItems!) {
+          let bomFlat: BomItem[] = [];
+          if (order.bom?.combinedBoms && order.bom.combinedBoms[item.Kode_Barang]) {
+            bomFlat = order.bom.combinedBoms[item.Kode_Barang].flat;
+          } else {
+            bomFlat = order.bom?.flat || [];
+          }
+          const filteredBom = bomFlat.filter(b => !isINJECTIONDepartment(b.Departemen));
+          
+          for (const b of filteredBom.filter(b => b.Level > 0)) {
+            const key = b.ItemID;
+            const totalNeeded = b.Qty * item.QTY;
+            const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
+            const stockAkhir = stockItem?.stockAkhir || 0;
+            const stockWincp = stockItem?.physicalStock || 0;
+            
+            const reservedData = reservationsByItem.get(b.ItemID);
+            let reservedQty = 0;
+            let reservedByText = "-";
+            if (reservedData) {
+              reservedQty = reservedData.totalQty;
+              reservedByText = Array.from(reservedData.spkList).map(spk => `• ${spk}`).join("\n");
+            }
+            
+            // Ambil data master (Spec, warna, bahan)
+            const masterData = masterDataMap.get(b.ItemID) || { spec: "-", warna: "-", bahan: "-" };
+            
+            const kekurangan = Math.max(0, totalNeeded - stockAkhir);
+            
+            if (materialMap.has(key)) {
+              const existing = materialMap.get(key);
+              existing.totalNeeded += totalNeeded;
+              existing.kekurangan = Math.max(0, existing.totalNeeded - existing.stockAkhir);
+            } else {
+              materialMap.set(key, {
+                kode: b.ItemID,
+                nama: b.ItemName,
+                nama_china: b.ItemName2 || "-",
+                spec: masterData.spec,
+                warna: masterData.warna,
+                bahan: masterData.bahan,
+                departemen: b.Departemen || "UNKNOWN",
+                totalNeeded: totalNeeded,
+                stockAkhir: stockAkhir,
+                stockWincp: stockWincp,
+                reserved: reservedQty,
+                reservedBy: reservedByText,
+                kekurangan: kekurangan
+              });
+            }
+          }
+        }
       } else {
-        materialMap.set(key, {
-          kode: b.ItemID,
-          nama: b.ItemName,
-          nama_china: b.ItemName2 || "-",
-          departemen: b.Departemen || "-",
-          totalNeeded: totalNeeded,
-          stockAkhir: stockAkhir,
-          stockWincp: stockWincp,
-          reserved: reservedQty,
-          reservedBy: reservedByText,
-          kekurangan: kekurangan
+        const filteredBom = order.bom.flat.filter(b => !isINJECTIONDepartment(b.Departemen));
+        for (const b of filteredBom.filter(b => b.Level > 0)) {
+          const key = b.ItemID;
+          const totalNeeded = b.Qty * order.order.QTY;
+          const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
+          const stockAkhir = stockItem?.stockAkhir || 0;
+          const stockWincp = stockItem?.physicalStock || 0;
+          
+          const reservedData = reservationsByItem.get(b.ItemID);
+          let reservedQty = 0;
+          let reservedByText = "-";
+          if (reservedData) {
+            reservedQty = reservedData.totalQty;
+            reservedByText = Array.from(reservedData.spkList).map(spk => `• ${spk}`).join("\n");
+          }
+          
+          // Ambil data master (Spec, warna, bahan)
+          const masterData = masterDataMap.get(b.ItemID) || { spec: "-", warna: "-", bahan: "-" };
+          
+          const kekurangan = Math.max(0, totalNeeded - stockAkhir);
+          
+          if (materialMap.has(key)) {
+            const existing = materialMap.get(key);
+            existing.totalNeeded += totalNeeded;
+            existing.kekurangan = Math.max(0, existing.totalNeeded - existing.stockAkhir);
+          } else {
+            materialMap.set(key, {
+              kode: b.ItemID,
+              nama: b.ItemName,
+              nama_china: b.ItemName2 || "-",
+              spec: masterData.spec,
+              warna: masterData.warna,
+              bahan: masterData.bahan,
+              departemen: b.Departemen || "UNKNOWN",
+              totalNeeded: totalNeeded,
+              stockAkhir: stockAkhir,
+              stockWincp: stockWincp,
+              reserved: reservedQty,
+              reservedBy: reservedByText,
+              kekurangan: kekurangan
+            });
+          }
+        }
+      }
+    }
+
+    // Tambahkan item yang di-reserve tapi tidak ada di BOM
+    for (const [itemId, data] of reservationsByItem) {
+      if (!materialMap.has(itemId)) {
+        const masterData = masterDataMap.get(itemId) || { spec: "-", warna: "-", bahan: "-" };
+        materialMap.set(itemId, {
+          kode: itemId,
+          nama: data.itemName,
+          nama_china: "-",
+          spec: masterData.spec,
+          warna: masterData.warna,
+          bahan: masterData.bahan,
+          departemen: "RESERVED ONLY",
+          totalNeeded: 0,
+          stockAkhir: 0,
+          stockWincp: 0,
+          reserved: data.totalQty,
+          reservedBy: Array.from(data.spkList).map(spk => `• ${spk}`).join("\n"),
+          kekurangan: 0
         });
       }
     }
-  }
-}
 
-// Tambahkan item yang di-reserve tapi tidak ada di BOM
-for (const [itemId, data] of reservationsByItem) {
-  if (!materialMap.has(itemId)) {
-    materialMap.set(itemId, {
-      kode: itemId,
-      nama: data.itemName,
+    // Buat materialData dengan urutan kolom: Barang Jadi di A, QTY PO di B
+    const materialDataRows: any[][] = [];
+    
+    const headers = [
+      "Barang Jadi",
+      "QTY PO Dipesan",
+      "Kode Material",
+      "Nama Material",
+      "Nama China",
+      "Spesifikasi",
+      "Warna",
+      "Bahan",
+      "Departemen",
+      "Total Kebutuhan",
+      "Stok Akhir",
+      "Stok Wincp (Real)",
+      "Reserved (Qty PO Lain)",
+      "Reserved Oleh SPK",
+      "Kekurangan",
+      "Status"
+    ];
+
+    for (const [itemId, value] of materialMap) {
+      const poList = materialToPOs.get(itemId) || [];
+      const uniquePOs = Array.from(new Map(poList.map(po => [po.noSPK, po])).values());
+      // - ${po.namaBarang.substring(0, 35)}${po.namaBarang.length > 35 ? '...' : ''}`).join('\n')
+      const barangJadiList = uniquePOs.map(po => 
+        `${po.kodeBarang}`);
       
-      departemen: "RESERVED ONLY",
-      totalNeeded: 0,
-      stockAkhir: 0,
-      stockWincp: 0,
-      reserved: data.totalQty,
-      reservedBy: Array.from(data.spkList).map(spk => `• ${spk}`).join("\n"),
-      kekurangan: 0
-    });
-  }
-}
+      const qtyPOList = uniquePOs.map(po => po.qtyPO.toLocaleString()).join('\n');
+      
+      materialDataRows.push([
+        barangJadiList,
+        qtyPOList,
+        value.kode,
+        value.nama,
+        value.nama_china,
+        value.spec,
+        value.warna,
+        value.bahan,
+        value.departemen,
+        value.totalNeeded,
+        value.stockAkhir,
+        value.stockWincp,
+        value.reserved,
+        value.reservedBy,
+        value.kekurangan,
+        value.kekurangan > 0 ? "KURANG" : "CUKUP"
+      ]);
+    }
 
-const materialData: any[] = [];
-for (const [_, value] of materialMap) {
-  materialData.push({
-    "Kode Material": value.kode,
-    "Nama Material": value.nama,
-    "Nama China": value.nama_china,
-    "Departemen": value.departemen,
-    "Total Kebutuhan": value.totalNeeded,
-    "Stok Akhir": value.stockAkhir,
-    "Stok Wincp (Real)": value.stockWincp,
-    "Reserved (Qty)": value.reserved,
-    "Reserved Oleh SPK": value.reservedBy,
-    "Kekurangan": value.kekurangan,
-    "Status": value.kekurangan > 0 ? "KURANG" : "CUKUP"
-  });
-}
+    // Urutkan berdasarkan Kode Material
+    materialDataRows.sort((a, b) => a[2].localeCompare(b[2]));
 
-// Sort by kode
-materialData.sort((a, b) => a["Kode Material"].localeCompare(b["Kode Material"]));
+    // Kelompokkan berdasarkan departemen
+    const materialsByDept = new Map<string, any[][]>();
+    for (const row of materialDataRows) {
+      const dept = row[8] || "UNKNOWN";
+      if (!materialsByDept.has(dept)) {
+        materialsByDept.set(dept, []);
+      }
+      materialsByDept.get(dept)!.push(row);
+    }
 
-const ws3 = XLSX.utils.json_to_sheet(materialData);
+    const sortedDepartments = Array.from(materialsByDept.keys()).sort();
 
-// Set column widths
-const colWidths3 = [
-  { wch: 15 }, // Kode Material
-  { wch: 40 }, // Nama Material
-  { wch: 40}, //Nama China
-  { wch: 20 }, // Departemen
-  { wch: 15 }, // Total Kebutuhan
-  { wch: 15 }, // Stok Akhir
-  { wch: 15 }, // Stok Wincp (Real)
-  { wch: 15 }, // Reserved (Qty)
-  { wch: 50 }, // Reserved Oleh SPK
-  { wch: 15 }, // Kekurangan
-  { wch: 15 }, // Status
-];
-ws3["!cols"] = colWidths3;
+    // Lebar kolom
+    const deptColWidths = [
+      { wch: 50 }, // Barang Jadi
+      { wch: 20 }, // QTY PO Dipesan
+      { wch: 15 }, // Kode Material
+      { wch: 40 }, // Nama Material
+      { wch: 35 }, // Nama China
+      { wch: 30 }, // Spesifikasi
+      { wch: 20 }, // Warna
+      { wch: 25 }, // Bahan
+      { wch: 20 }, // Departemen
+      { wch: 15 }, // Total Kebutuhan
+      { wch: 15 }, // Stok Akhir
+      { wch: 15 }, // Stok Wincp (Real)
+      { wch: 15 }, // Reserved (Qty)
+      { wch: 50 }, // Reserved Oleh SPK
+      { wch: 15 }, // Kekurangan
+      { wch: 15 }, // Status
+    ];
 
-XLSX.utils.book_append_sheet(wb, ws3, "Total Kebutuhan Material");
-const timestamp = new Date().toISOString().split("T")[0];
-const filename = `Production_Plan_${timestamp}_${selectedOrders.length}PO.xlsx`;
+    // Buat sheet per departemen
+    for (const dept of sortedDepartments) {
+      const deptMaterials = materialsByDept.get(dept) || [];
+      
+      const totalNeeded = deptMaterials.reduce((sum, row) => sum + (row[9] || 0), 0);
+      const totalShortage = deptMaterials.reduce((sum, row) => sum + (row[14] || 0), 0);
+      const totalReserved = deptMaterials.reduce((sum, row) => sum + (row[12] || 0), 0);
+      
+      const wsData = [
+        [`LAPORAN KEBUTUHAN MATERIAL - DEPARTEMEN ${dept.toUpperCase()}`],
+        [`Tanggal Export: ${new Date().toLocaleDateString('id-ID')} ${new Date().toLocaleTimeString('id-ID')}`],
+        [],
+        ["DETAIL MATERIAL"],
+        headers,
+        ...deptMaterials
+      ];
+      
+      wsData.push([]);
+      wsData.push([`Total Keseluruhan: ${deptMaterials.length} material, Kebutuhan: ${totalNeeded.toLocaleString()}, Kekurangan: ${totalShortage.toLocaleString()}`]);
+      
+      const wsDept = XLSX.utils.aoa_to_sheet(wsData);
+      wsDept["!cols"] = deptColWidths;
+      
+      if (!wsDept["!merges"]) wsDept["!merges"] = [];
+      wsDept["!merges"].push({ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } });
+      wsDept["!merges"].push({ s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } });
+      
+      let sheetName = dept.toUpperCase().replace(/[\\/*?:\[\]]/g, "");
+      if (sheetName.length > 31) sheetName = sheetName.substring(0, 31);
+      
+      XLSX.utils.book_append_sheet(wb, wsDept, sheetName);
+    }
 
-XLSX.writeFile(wb, filename);
+    // Sheet rekap per departemen
+    const allDeptSummary: any[] = [
+      ["REKAP KEBUTUHAN MATERIAL PER DEPARTEMEN"],
+      [`Tanggal Export: ${new Date().toLocaleDateString('id-ID')} ${new Date().toLocaleTimeString('id-ID')}`],
+      [],
+      ["Departemen", "Jumlah Material", "Total Kebutuhan", "Total Kekurangan", "Total Reserved", "Status"]
+    ];
 
-setExportProgress({ visible: false, current: 0, total: 0, message: "" });
+    for (const dept of sortedDepartments) {
+      const deptMaterials = materialsByDept.get(dept) || [];
+      const totalNeeded = deptMaterials.reduce((sum, row) => sum + (row[9] || 0), 0);
+      const totalShortage = deptMaterials.reduce((sum, row) => sum + (row[14] || 0), 0);
+      const totalReserved = deptMaterials.reduce((sum, row) => sum + (row[12] || 0), 0);
+      const status = totalShortage > 0 ? "PERHATIAN - ADA KEKURANGAN" : "AMAN";
+      
+      allDeptSummary.push([dept, deptMaterials.length, totalNeeded.toLocaleString(), totalShortage.toLocaleString(), totalReserved.toLocaleString(), status]);
+    }
 
-const materialDenganReserved = materialData.filter(m => m["Reserved (Qty)"] > 0).length;
-alert(`✅ Export berhasil!\nFile: ${filename}\n\n` +
+    const totalAllMaterials = materialDataRows.length;
+    const totalAllNeeded = materialDataRows.reduce((sum, row) => sum + (row[9] || 0), 0);
+    const totalAllShortage = materialDataRows.reduce((sum, row) => sum + (row[14] || 0), 0);
+    const totalAllReserved = materialDataRows.reduce((sum, row) => sum + (row[12] || 0), 0);
+
+    allDeptSummary.push([]);
+    allDeptSummary.push([
+      "TOTAL KESELURUHAN",
+      totalAllMaterials,
+      totalAllNeeded.toLocaleString(),
+      totalAllShortage.toLocaleString(),
+      totalAllReserved.toLocaleString(),
+      totalAllShortage > 0 ? "PERHATIAN - ADA KEKURANGAN" : "SEMUA AMAN"
+    ]);
+
+    const wsSummary = XLSX.utils.aoa_to_sheet(allDeptSummary);
+    wsSummary["!cols"] = [
+      { wch: 25 }, { wch: 18 }, { wch: 20 }, { wch: 20 }, { wch: 18 }, { wch: 30 }
+    ];
+
+    if (!wsSummary["!merges"]) wsSummary["!merges"] = [];
+    wsSummary["!merges"].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } });
+    wsSummary["!merges"].push({ s: { r: 1, c: 0 }, e: { r: 1, c: 5 } });
+
+    XLSX.utils.book_append_sheet(wb, wsSummary, "REKAP_PER_DEPARTEMEN");
+
+    // ==================== SAVE FILE ====================
+    const timestamp = new Date().toISOString().split("T")[0];
+    const filename = `Production_Plan_${timestamp}_${selectedOrders.length}PO.xlsx`;
+
+    XLSX.writeFile(wb, filename);
+
+    setExportProgress({ visible: false, current: 0, total: 0, message: "" });
+
+    const materialDenganReserved = materialDataRows.filter(row => row[12] > 0).length;
+    alert(`✅ Export berhasil!\nFile: ${filename}\n\n` +
       `📦 Total PO: ${selectedOrders.length}\n` +
-      `🔢 Total Material: ${materialData.length}\n` +
-      `📌 Material dengan Reserved: ${materialDenganReserved}`); 
+      `🔢 Total Material: ${totalAllMaterials}\n` +
+      `📌 Material dengan Reserved: ${materialDenganReserved}\n` +
+      `📋 Jumlah Departemen: ${sortedDepartments.length}`);
 
   } catch (error) {
     console.error("Error export:", error);
-    alert("Gagal mengekspor data");
+    alert("Gagal mengekspor数据: " + (error instanceof Error ? error.message : "Unknown error"));
     setExportProgress({ visible: false, current: 0, total: 0, message: "" });
   } finally {
     setExportLoading(false);
   }
 };
+
   const OrderRow = ({
     plan,
     index,
@@ -4407,17 +4710,24 @@ alert(`✅ Export berhasil!\nFile: ${filename}\n\n` +
     );
   };
 
-  // ==================== USE EFFECT ====================
-
-  useEffect(() => {
-    refreshAllData();
-  }, []);
-
-  useEffect(() => {
-    if (committedPOs.length > 0) {
-      syncCommitStatus();
+// ==================== USE EFFECT ====================
+useEffect(() => {
+  const initializeData = async () => {
+    setLoading(true);
+    try {
+      // Load committed POs terlebih dahulu
+      await loadCommittedPOs();
+      // Setelah itu baru fetch orders
+      await fetchOrders(dateFilter.startDate, dateFilter.endDate);
+    } catch (error) {
+      console.error("Error initializing data:", error);
+    } finally {
+      setLoading(false);
     }
-  }, [committedPOs, syncCommitStatus]);
+  };
+  
+  initializeData();
+}, []); // Hanya dijalankan sekali saat mount
 
   const combinedStats = useMemo(() => {
     const totalOriginalOrders = filteredOrders.reduce((total, order) => {
@@ -4501,15 +4811,15 @@ alert(`✅ Export berhasil!\nFile: ${filename}\n\n` +
             </p>
           </div>
           <div className="flex gap-2">
-            <Button
-              onClick={refreshAllData}
+            {/* <Button
+              // onClick={refreshAllData}
               disabled={loading}
               variant="outline"
               className="gap-2"
             >
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
               Refresh Data
-            </Button>
+            </Button> */}
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -4553,6 +4863,7 @@ alert(`✅ Export berhasil!\nFile: ${filename}\n\n` +
           committedPOs={committedPOs}
           stockReservations={stockReservations}
           onRefresh={loadCommittedPOs}
+          //  onUncommit={handleUncommitFromPanel}
         />
 
         <Card>

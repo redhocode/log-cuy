@@ -328,18 +328,21 @@ export interface logType{
   TransDateTime: Date;
 }
 
-export interface masterType{
+export interface masterType {
   ItemID: string;
   ItemName: string;
-  ItemName2: string;
-  ItemNameBuy: string;
-  Mark: string;
-  KodeJenis: string;
-  SatuanKecil: string;
-  Spec: string;  
-  UserName: string;
-  UserDateTime: string;
-  NamaJenis: string;
+  ItemName2?: string;
+  ItemNameBuy?: string;  // Alias untuk ItemName2
+  warna?: string;
+  Mark?: string;  // Alias untuk Departemen
+  KodeJenis?: string;
+  SatuanKecil?: string;
+  Spec?: string;
+  Bahan?: string;
+  NamaJenis?: string;
+  Departemen?: string;  // Dari Mark
+  UserName?: string;
+  UserDateTime?: string;
 }
 
 export interface loguserType{
