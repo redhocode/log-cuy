@@ -4046,8 +4046,8 @@ const exportSelectedToExcel = async (): Promise<void> => {
       "Total Kebutuhan",
       "Reserved (Qty PO Lain)",
       "Total Dibutuhkan",
-      "Stok Akhir",
       "Stok Wincp (Real)",
+      "Stok Akhir",
       "Sisa Stok",
       "Reserved Oleh SPK",
       "Status"
@@ -4083,8 +4083,8 @@ const exportSelectedToExcel = async (): Promise<void> => {
         value.totalNeeded,
         value.reserved,
         value.totalDibutuhkan,
-        value.stockAkhir,
         value.stockWincp,
+        value.stockAkhir,
         value.sisaStok,
         value.reservedBy,
         status
@@ -4120,8 +4120,8 @@ const exportSelectedToExcel = async (): Promise<void> => {
       { wch: 15 }, // Total Kebutuhan
       { wch: 15 }, // Reserved (Qty PO Lain)
       { wch: 15 }, // Total Dibutuhkan
-      { wch: 15 }, // Stok Akhir
       { wch: 15 }, // Stok Wincp (Real)
+      { wch: 15 }, // Stok Akhir
       { wch: 15 }, // Sisa Stok
       { wch: 50 }, // Reserved Oleh SPK
       { wch: 15 }, // Status
