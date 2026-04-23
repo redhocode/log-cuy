@@ -144,6 +144,8 @@ interface ProductionOrder {
   isCombined?: boolean;
   combinedItems?: ProductionOrder[];
   originalOrders?: ProductionOrder[];
+   Completed?: boolean;      
+  FinishedDate?: string;
 }
 
 interface BomItem {
@@ -222,7 +224,6 @@ interface StockReservation {
   reservationID: number;
   CommitID: number;
   itemID: string;
-  itemName2: string;
   itemName: string;
   reservedQty: number;
   reservationDate: string;
@@ -2519,32 +2520,32 @@ export default function ProductionPlanPage() {
     );
   }, [committedPOs]);
 
-const loadCommittedPOs = async (): Promise<void> => {
-  try {
-    const response = await fetch("/api/ppic/committed-pos", {
-      cache: "no-store",
-    });
+  const loadCommittedPOs = async (): Promise<void> => {
+    try {
+      const response = await fetch("/api/ppic/committed-pos", {
+        cache: "no-store",
+      });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        const newCommittedPOs = result.data.committedPOs || [];
+        const newReservations = result.data.reservations || [];
+
+        setCommittedPOs(newCommittedPOs);
+        setStockReservations(newReservations);
+
+        // Refresh orders setelah mendapatkan data commit terbaru
+        await fetchOrders(dateFilter.startDate, dateFilter.endDate);
+      }
+    } catch (error) {
+      console.error("Error loading committed POs:", error);
     }
-
-    const result = await response.json();
-
-    if (result.success) {
-      const newCommittedPOs = result.data.committedPOs || [];
-      const newReservations = result.data.reservations || [];
-
-      setCommittedPOs(newCommittedPOs);
-      setStockReservations(newReservations);
-
-      // Refresh orders setelah mendapatkan data commit terbaru
-      await fetchOrders(dateFilter.startDate, dateFilter.endDate);
-    }
-  } catch (error) {
-    console.error("Error loading committed POs:", error);
-  }
-};
+  };
 
 const refreshAllData = useCallback(async (): Promise<void> => {
   try {
@@ -2597,16 +2598,19 @@ const fetchOrders = async (startDate?: string, endDate?: string) => {
     }
 
     const response = await axios.get<ProductionOrder[]>(url);
-    const combinedOrders = combineDuplicatePOs(response.data);
+    
+    // FILTER: Hanya SPK yang BELUM selesai (Completed = false)
+    const activeOrders = response.data.filter(order => !order.Completed);
+    
+    const combinedOrders = combineDuplicatePOs(activeOrders);
 
-    // Ambil daftar PO yang sudah di-commit
+    // FILTER: Hanya SPK yang BELUM di-commit
     const committedSPKs = new Set(
       committedPOs
         .filter(po => po.status === "COMMITTED")
         .map(po => po.noSPK)
     );
 
-    // FILTER: Hanya tampilkan PO yang BELUM di-commit
     const filteredOrders = combinedOrders.filter(order => !committedSPKs.has(order.No_SPK));
 
     const productionPlans: ProductionPlan[] = filteredOrders.map((order) => {
@@ -3907,10 +3911,17 @@ const exportSelectedToExcel = async (): Promise<void> => {
           
           for (const b of filteredBom.filter(b => b.Level > 0)) {
             const key = b.ItemID;
-            const totalNeeded = b.Qty * item.QTY;
+            
+            // Hitung accumulated quantity
+            const accumulatedQty = calculateAccumulatedQty(b, filteredBom);
+            const totalNeeded = accumulatedQty * item.QTY;
+            
             const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
             const stockAkhir = stockItem?.stockAkhir || 0;
             const stockWincp = stockItem?.physicalStock || 0;
+            
+            // Stok Valid: jika minus dianggap 0
+            const stokValid = Math.max(0, stockAkhir);
             
             const reservedData = reservationsByItem.get(b.ItemID);
             let reservedQty = 0;
@@ -3920,15 +3931,21 @@ const exportSelectedToExcel = async (): Promise<void> => {
               reservedByText = Array.from(reservedData.spkList).map(spk => `• ${spk}`).join("\n");
             }
             
-            // Ambil data master (Spec, warna, bahan)
-            const masterData = masterDataMap.get(b.ItemID) || { spec: "-", warna: "-", bahan: "-" };
+            // Total yang dibutuhkan (kebutuhan + reserved dari PO lain)
+            const totalDibutuhkan = totalNeeded + reservedQty;
             
-            const kekurangan = Math.max(0, totalNeeded - stockAkhir);
+            // SISA STOK = Stok Valid - Total Dibutuhkan
+            // Bisa positif (kelebihan) atau negatif (kekurangan)
+            const sisaStok = stokValid - totalDibutuhkan;
+            
+            const masterData = masterDataMap.get(b.ItemID) || { spec: "-", warna: "-", bahan: "-" };
             
             if (materialMap.has(key)) {
               const existing = materialMap.get(key);
               existing.totalNeeded += totalNeeded;
-              existing.kekurangan = Math.max(0, existing.totalNeeded - existing.stockAkhir);
+              const newTotalDibutuhkan = existing.totalNeeded + existing.reserved;
+              const newStokValid = Math.max(0, existing.stockAkhir);
+              existing.sisaStok = newStokValid - newTotalDibutuhkan;
             } else {
               materialMap.set(key, {
                 kode: b.ItemID,
@@ -3942,8 +3959,10 @@ const exportSelectedToExcel = async (): Promise<void> => {
                 stockWincp: stockWincp,
                 reserved: reservedQty,
                 stockAkhir: stockAkhir,
-                reservedBy: reservedByText,
-                kekurangan: kekurangan
+                stokValid: stokValid,
+                totalDibutuhkan: totalDibutuhkan,
+                sisaStok: sisaStok,
+                reservedBy: reservedByText
               });
             }
           }
@@ -3952,10 +3971,15 @@ const exportSelectedToExcel = async (): Promise<void> => {
         const filteredBom = order.bom.flat.filter(b => !isINJECTIONDepartment(b.Departemen));
         for (const b of filteredBom.filter(b => b.Level > 0)) {
           const key = b.ItemID;
-          const totalNeeded = b.Qty * order.order.QTY;
+          
+          const accumulatedQty = calculateAccumulatedQty(b, filteredBom);
+          const totalNeeded = accumulatedQty * order.order.QTY;
+          
           const stockItem = order.stock?.find(s => s.itemid === b.ItemID);
           const stockAkhir = stockItem?.stockAkhir || 0;
           const stockWincp = stockItem?.physicalStock || 0;
+          
+          const stokValid = Math.max(0, stockAkhir);
           
           const reservedData = reservationsByItem.get(b.ItemID);
           let reservedQty = 0;
@@ -3965,15 +3989,17 @@ const exportSelectedToExcel = async (): Promise<void> => {
             reservedByText = Array.from(reservedData.spkList).map(spk => `• ${spk}`).join("\n");
           }
           
-          // Ambil data master (Spec, warna, bahan)
-          const masterData = masterDataMap.get(b.ItemID) || { spec: "-", warna: "-", bahan: "-" };
+          const totalDibutuhkan = totalNeeded + reservedQty;
+          const sisaStok = stokValid - totalDibutuhkan;
           
-          const kekurangan = Math.max(0, totalNeeded - stockAkhir);
+          const masterData = masterDataMap.get(b.ItemID) || { spec: "-", warna: "-", bahan: "-" };
           
           if (materialMap.has(key)) {
             const existing = materialMap.get(key);
             existing.totalNeeded += totalNeeded;
-            existing.kekurangan = Math.max(0, existing.totalNeeded - existing.stockAkhir);
+            const newTotalDibutuhkan = existing.totalNeeded + existing.reserved;
+            const newStokValid = Math.max(0, existing.stockAkhir);
+            existing.sisaStok = newStokValid - newTotalDibutuhkan;
           } else {
             materialMap.set(key, {
               kode: b.ItemID,
@@ -3987,42 +4013,24 @@ const exportSelectedToExcel = async (): Promise<void> => {
               stockWincp: stockWincp,
               reserved: reservedQty,
               stockAkhir: stockAkhir,
-              reservedBy: reservedByText,
-              kekurangan: kekurangan
+              stokValid: stokValid,
+              totalDibutuhkan: totalDibutuhkan,
+              sisaStok: sisaStok,
+              reservedBy: reservedByText
             });
           }
         }
       }
     }
 
-    // Tambahkan item yang di-reserve tapi tidak ada di BOM
-    for (const [itemId, data] of reservationsByItem) {
-      if (!materialMap.has(itemId)) {
-        const masterData = masterDataMap.get(itemId) || { spec: "-", warna: "-", bahan: "-" };
-        materialMap.set(itemId, {
-          kode: itemId,
-          nama: data.itemName,
-          nama_china: "-",
-          spec: masterData.spec,
-          warna: masterData.warna,
-          bahan: masterData.bahan,
-          departemen: "RESERVED ONLY",
-          totalNeeded: 0,
-          stockWincp: 0,
-          reserved: data.totalQty,
-          stockAkhir: 0,
-          reservedBy: Array.from(data.spkList).map(spk => `• ${spk}`).join("\n"),
-          kekurangan: 0
-        });
+    // Hapus item dengan departemen RESERVED ONLY
+    for (const [key, value] of materialMap) {
+      if (value.departemen === "RESERVED ONLY") {
+        materialMap.delete(key);
       }
     }
-for (const [key, value] of materialMap) {
-  if (value.departemen === "RESERVED ONLY") {
-    materialMap.delete(key);
-  }
-}
 
-    // Buat materialData dengan urutan kolom: Barang Jadi di A, QTY PO di B
+    // Buat materialData dengan urutan kolom
     const materialDataRows: any[][] = [];
     
     const headers = [
@@ -4036,22 +4044,31 @@ for (const [key, value] of materialMap) {
       "Bahan",
       "Departemen",
       "Total Kebutuhan",
-      "Stok Wincp (Real)",
       "Reserved (Qty PO Lain)",
+      "Total Dibutuhkan",
       "Stok Akhir",
+      "Stok Wincp (Real)",
+      "Sisa Stok",
       "Reserved Oleh SPK",
-      "Kekurangan",
       "Status"
     ];
 
     for (const [itemId, value] of materialMap) {
       const poList = materialToPOs.get(itemId) || [];
       const uniquePOs = Array.from(new Map(poList.map(po => [po.noSPK, po])).values());
-      // - ${po.namaBarang.substring(0, 35)}${po.namaBarang.length > 35 ? '...' : ''}`).join('\n')
-      const barangJadiList = uniquePOs.map(po => 
-        `${po.kodeBarang}`);
       
+      const barangJadiList = uniquePOs.map(po => `${po.kodeBarang}`).join('\n');
       const qtyPOList = uniquePOs.map(po => po.qtyPO.toLocaleString()).join('\n');
+      
+      // Tentukan status berdasarkan sisa stok
+      let status = "";
+      if (value.sisaStok > 0) {
+        status = "KELEBIHAN";
+      } else if (value.sisaStok < 0) {
+        status = "KURANG";
+      } else {
+        status = "CUKUP";
+      }
       
       materialDataRows.push([
         barangJadiList,
@@ -4064,12 +4081,13 @@ for (const [key, value] of materialMap) {
         value.bahan,
         value.departemen,
         value.totalNeeded,
-        value.stockWincp,
         value.reserved,
+        value.totalDibutuhkan,
         value.stockAkhir,
+        value.stockWincp,
+        value.sisaStok,
         value.reservedBy,
-        value.kekurangan,
-        value.kekurangan > 0 ? "KURANG" : "CUKUP"
+        status
       ]);
     }
 
@@ -4100,11 +4118,12 @@ for (const [key, value] of materialMap) {
       { wch: 25 }, // Bahan
       { wch: 20 }, // Departemen
       { wch: 15 }, // Total Kebutuhan
+      { wch: 15 }, // Reserved (Qty PO Lain)
+      { wch: 15 }, // Total Dibutuhkan
       { wch: 15 }, // Stok Akhir
       { wch: 15 }, // Stok Wincp (Real)
-      { wch: 15 }, // Reserved (Qty)
+      { wch: 15 }, // Sisa Stok
       { wch: 50 }, // Reserved Oleh SPK
-      { wch: 15 }, // Kekurangan
       { wch: 15 }, // Status
     ];
 
@@ -4113,8 +4132,7 @@ for (const [key, value] of materialMap) {
       const deptMaterials = materialsByDept.get(dept) || [];
       
       const totalNeeded = deptMaterials.reduce((sum, row) => sum + (row[9] || 0), 0);
-      const totalShortage = deptMaterials.reduce((sum, row) => sum + (row[14] || 0), 0);
-      const totalReserved = deptMaterials.reduce((sum, row) => sum + (row[12] || 0), 0);
+      const totalSisa = deptMaterials.reduce((sum, row) => sum + (row[14] || 0), 0);
       
       const wsData = [
         [`LAPORAN KEBUTUHAN MATERIAL - DEPARTEMEN ${dept.toUpperCase()}`],
@@ -4126,7 +4144,7 @@ for (const [key, value] of materialMap) {
       ];
       
       wsData.push([]);
-      wsData.push([`Total Keseluruhan: ${deptMaterials.length} material, Kebutuhan: ${totalNeeded.toLocaleString()}, Kekurangan: ${totalShortage.toLocaleString()}`]);
+      wsData.push([`Total Keseluruhan: ${deptMaterials.length} material, Total Kebutuhan: ${totalNeeded.toLocaleString()}, Total Sisa Stok: ${totalSisa.toLocaleString()}`]);
       
       const wsDept = XLSX.utils.aoa_to_sheet(wsData);
       wsDept["!cols"] = deptColWidths;
@@ -4146,42 +4164,39 @@ for (const [key, value] of materialMap) {
       ["REKAP KEBUTUHAN MATERIAL PER DEPARTEMEN"],
       [`Tanggal Export: ${new Date().toLocaleDateString('id-ID')} ${new Date().toLocaleTimeString('id-ID')}`],
       [],
-      ["Departemen", "Jumlah Material", "Total Kebutuhan", "Total Kekurangan", "Total Reserved", "Status"]
+      ["Departemen", "Jumlah Material", "Total Kebutuhan", "Total Sisa Stok", "Status"]
     ];
 
     for (const dept of sortedDepartments) {
       const deptMaterials = materialsByDept.get(dept) || [];
       const totalNeeded = deptMaterials.reduce((sum, row) => sum + (row[9] || 0), 0);
-      const totalShortage = deptMaterials.reduce((sum, row) => sum + (row[14] || 0), 0);
-      const totalReserved = deptMaterials.reduce((sum, row) => sum + (row[12] || 0), 0);
-      const status = totalShortage > 0 ? "PERHATIAN - ADA KEKURANGAN" : "AMAN";
+      const totalSisa = deptMaterials.reduce((sum, row) => sum + (row[14] || 0), 0);
+      const status = totalSisa > 0 ? "KELEBIHAN" : (totalSisa < 0 ? "KEKURANGAN" : "CUKUP");
       
-      allDeptSummary.push([dept, deptMaterials.length, totalNeeded.toLocaleString(), totalShortage.toLocaleString(), totalReserved.toLocaleString(), status]);
+      allDeptSummary.push([dept, deptMaterials.length, totalNeeded.toLocaleString(), totalSisa.toLocaleString(), status]);
     }
 
     const totalAllMaterials = materialDataRows.length;
     const totalAllNeeded = materialDataRows.reduce((sum, row) => sum + (row[9] || 0), 0);
-    const totalAllShortage = materialDataRows.reduce((sum, row) => sum + (row[14] || 0), 0);
-    const totalAllReserved = materialDataRows.reduce((sum, row) => sum + (row[12] || 0), 0);
+    const totalAllSisa = materialDataRows.reduce((sum, row) => sum + (row[14] || 0), 0);
 
     allDeptSummary.push([]);
     allDeptSummary.push([
       "TOTAL KESELURUHAN",
       totalAllMaterials,
       totalAllNeeded.toLocaleString(),
-      totalAllShortage.toLocaleString(),
-      totalAllReserved.toLocaleString(),
-      totalAllShortage > 0 ? "PERHATIAN - ADA KEKURANGAN" : "SEMUA AMAN"
+      totalAllSisa.toLocaleString(),
+      totalAllSisa > 0 ? "KELEBIHAN" : (totalAllSisa < 0 ? "KEKURANGAN" : "CUKUP")
     ]);
 
     const wsSummary = XLSX.utils.aoa_to_sheet(allDeptSummary);
     wsSummary["!cols"] = [
-      { wch: 25 }, { wch: 18 }, { wch: 20 }, { wch: 20 }, { wch: 18 }, { wch: 30 }
+      { wch: 25 }, { wch: 18 }, { wch: 20 }, { wch: 20 }, { wch: 20 }
     ];
 
     if (!wsSummary["!merges"]) wsSummary["!merges"] = [];
-    wsSummary["!merges"].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } });
-    wsSummary["!merges"].push({ s: { r: 1, c: 0 }, e: { r: 1, c: 5 } });
+    wsSummary["!merges"].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } });
+    wsSummary["!merges"].push({ s: { r: 1, c: 0 }, e: { r: 1, c: 4 } });
 
     XLSX.utils.book_append_sheet(wb, wsSummary, "REKAP_PER_DEPARTEMEN");
 
@@ -4193,7 +4208,7 @@ for (const [key, value] of materialMap) {
 
     setExportProgress({ visible: false, current: 0, total: 0, message: "" });
 
-    const materialDenganReserved = materialDataRows.filter(row => row[12] > 0).length;
+    const materialDenganReserved = materialDataRows.filter(row => row[10] > 0).length;
     alert(`✅ Export berhasil!\nFile: ${filename}\n\n` +
       `📦 Total PO: ${selectedOrders.length}\n` +
       `🔢 Total Material: ${totalAllMaterials}\n` +
@@ -4202,13 +4217,12 @@ for (const [key, value] of materialMap) {
 
   } catch (error) {
     console.error("Error export:", error);
-    alert("Gagal mengekspor数据: " + (error instanceof Error ? error.message : "Unknown error"));
+    alert("Gagal mengekspor data: " + (error instanceof Error ? error.message : "Unknown error"));
     setExportProgress({ visible: false, current: 0, total: 0, message: "" });
   } finally {
     setExportLoading(false);
   }
 };
-
   const OrderRow = ({
     plan,
     index,

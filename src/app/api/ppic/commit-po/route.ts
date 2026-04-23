@@ -43,7 +43,8 @@ export async function POST(
       .input("KodeBarang", sql.VarChar(500), kodeBarang)
       .input("NamaPO", sql.VarChar(500), namaPO)
       .input("Qty", sql.Decimal(18, 2), qty)
-      .input("UserID", sql.VarChar(50), userID).query(`
+      .input("UserID", sql.VarChar(50), userID)
+      .query(`
         INSERT INTO [dbo].[taCommitPO] (No_SPK, KodeBarang, NamaPO, Qty, UserID)
         OUTPUT INSERTED.CommitID
         VALUES (@No_SPK, @KodeBarang, @NamaPO, @Qty, @UserID)
@@ -69,7 +70,8 @@ export async function POST(
           .input("StockAfter", sql.Decimal(18, 2), material.stockAfter)
           .input("QtyUsed", sql.Decimal(18, 2), material.qtyUsed)
           .input("Departemen", sql.VarChar(100), material.departemen || null)
-          .input("Level", sql.Int, material.level).query(`
+          .input("Level", sql.Int, material.level)
+          .query(`
             INSERT INTO [dbo].[taCommitPODetail] 
             (CommitID, ItemID, ItemName, QtyPerUnit, TotalNeeded, StockBefore, StockAfter, QtyUsed, Departemen, Level)
             VALUES 
@@ -83,7 +85,8 @@ export async function POST(
           .input("ItemID", sql.VarChar(50), material.itemId)
           .input("ItemName", sql.VarChar(500), material.itemName)
           .input("ReservedQty", sql.Decimal(18, 2), material.qtyUsed)
-          .input("No_SPK", sql.VarChar(50), noSPK).query(`
+          .input("No_SPK", sql.VarChar(50), noSPK)
+          .query(`
             INSERT INTO [dbo].[taStockReservation] 
             (CommitID, ItemID, ItemName, ReservedQty, No_SPK, ExpiryDate)
             VALUES 
@@ -105,11 +108,8 @@ export async function POST(
       .input("OldStatus", sql.VarChar(20), null)
       .input("NewStatus", sql.VarChar(20), "COMMITTED")
       .input("UserID", sql.VarChar(50), userID)
-      .input(
-        "Remarks",
-        sql.VarChar(1000),
-        `Commit PO dengan ${totalMaterials} material, total reserved: ${totalQtyReserved}`
-      ).query(`
+      .input("Remarks", sql.VarChar(1000), `Commit PO dengan ${totalMaterials} material, total reserved: ${totalQtyReserved}`)
+      .query(`
         INSERT INTO [dbo].[taCommitPOHistory] 
         (CommitID, No_SPK, KodeBarang, Action, OldStatus, NewStatus, UserID, Remarks)
         VALUES 
@@ -119,9 +119,7 @@ export async function POST(
     // Commit transaction
     await transaction.commit();
 
-    console.log(
-      `✅ Commit PO ${noSPK} berhasil: ${totalMaterials} materials, ${totalQtyReserved} qty reserved`
-    );
+    console.log(`✅ Commit PO ${noSPK} berhasil: ${totalMaterials} materials, ${totalQtyReserved} qty reserved`);
 
     return NextResponse.json({
       success: true,

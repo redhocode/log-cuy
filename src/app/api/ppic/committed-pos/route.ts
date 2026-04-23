@@ -1,6 +1,5 @@
 // app/api/committed-pos/route.ts
 import { NextResponse } from "next/server";
-//import sql from "mssql";
 import { getPool } from "@/lib/config";
 import { CommittedPOsResponse } from "@/lib/types";
 
@@ -12,7 +11,20 @@ export async function GET(): Promise<NextResponse<CommittedPOsResponse>> {
 
     console.log("📋 Mengambil data committed POs...");
 
-    // Ambil daftar committed PO
+    // 1. Ambil daftar SPK yang sudah selesai (Completed = 1)
+    const completedSPKResult = await pool.request().query(`
+      SELECT OrderID 
+      FROM [cp].[dbo].[taPROrder] 
+      WHERE Completed = 1
+    `);
+    
+    const completedSPKSet = new Set(
+      completedSPKResult.recordset.map((row: any) => row.OrderID)
+    );
+
+    console.log(`SPK yang sudah selesai: ${Array.from(completedSPKSet).join(', ')}`);
+
+    // 2. Ambil daftar committed PO (tanpa filter dulu)
     const committedPOsResult = await pool.request().query(`
       SELECT 
         cp.CommitID,
@@ -30,7 +42,12 @@ export async function GET(): Promise<NextResponse<CommittedPOsResponse>> {
       ORDER BY cp.CreatedAt DESC
     `);
 
-    // Ambil daftar reservasi stok
+    // FILTER: Hanya committed PO untuk SPK yang BELUM selesai
+    const filteredCommittedPOs = (committedPOsResult.recordset || []).filter(
+      (po: any) => !completedSPKSet.has(po.noSPK)
+    );
+
+    // 3. Ambil daftar reservasi stok (tanpa filter dulu)
     const reservationsResult = await pool.request().query(`
       SELECT 
         sr.ReservationID as reservationID,
@@ -48,18 +65,21 @@ export async function GET(): Promise<NextResponse<CommittedPOsResponse>> {
       ORDER BY sr.ReservationDate DESC
     `);
 
-    const committedPOs = committedPOsResult.recordset || [];
-    const reservations = reservationsResult.recordset || [];
+    // FILTER: Hanya reservasi untuk SPK yang BELUM selesai
+    const filteredReservations = (reservationsResult.recordset || []).filter(
+      (reservation: any) => !completedSPKSet.has(reservation.noSPK)
+    );
 
     console.log(
-      `✅ Data committed POs berhasil diambil: ${committedPOs.length} PO, ${reservations.length} reservations`
+      `✅ Data committed POs: ${filteredCommittedPOs.length} PO (total ${committedPOsResult.recordset.length}), ` +
+      `Reservations: ${filteredReservations.length} (total ${reservationsResult.recordset.length})`
     );
 
     return NextResponse.json({
       success: true,
       data: {
-        committedPOs: committedPOs,
-        reservations: reservations,
+        committedPOs: filteredCommittedPOs,
+        reservations: filteredReservations,
       },
     });
   } catch (error) {
@@ -68,10 +88,7 @@ export async function GET(): Promise<NextResponse<CommittedPOsResponse>> {
     return NextResponse.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Gagal mengambil data committed PO",
+        error: error instanceof Error ? error.message : "Gagal mengambil data committed PO",
         data: {
           committedPOs: [],
           reservations: [],
