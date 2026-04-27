@@ -2733,132 +2733,141 @@ export default function ProductionPlanPage() {
     return masterDataMap;
   };
 
-  const exportSelectedToExcel = async (): Promise<void> => {
-    try {
-      setExportLoading(true);
-      setExportProgress({
-        visible: true,
-        current: 0,
-        total: 100,
-        message: "Memulai proses export...",
-      });
+const exportSelectedToExcel = async (): Promise<void> => {
+  try {
+    setExportLoading(true);
+    setExportProgress({
+      visible: true,
+      current: 0,
+      total: 100,
+      message: "Memulai proses export...",
+    });
 
-      // 🔥 ========== FORCE REFRESH STOCK UNTUK SELECTED ORDERS ==========
-      setExportProgress({ visible: true, current: 5, total: 100, message: "Menyegarkan data stok terbaru..." });
-      
-      // Ambil semua selected orders yang belum di-commit
-      const selectedOrdersBefore = filteredOrders.filter(
-        (order) => order.selected && !order.committed
-      );
-      
-      if (selectedOrdersBefore.length === 0) {
-        alert("Tidak ada PO yang dipilih untuk di-export!");
-        setExportLoading(false);
-        setExportProgress({ visible: false, current: 0, total: 0, message: "" });
-        return;
-      }
-      
-      // Kumpulkan semua material IDs dari selected orders
-      const allMaterialIds: string[] = [];
-      for (const order of selectedOrdersBefore) {
-        if (order.bom && order.bom.flat) {
-          order.bom.flat.forEach((item: BomItem) => {
-            if (item.ItemID) {
-              allMaterialIds.push(normalizeItemId(item.ItemID));
-            }
-          });
-        }
-        if (order.bom && order.bom.combinedBoms) {
-          Object.values(order.bom.combinedBoms).forEach((bom: any) => {
-            if (bom.flat) {
-              bom.flat.forEach((item: BomItem) => {
-                if (item.ItemID) {
-                  allMaterialIds.push(normalizeItemId(item.ItemID));
-                }
-              });
-            }
-          });
-        }
-      }
-      
-      const uniqueMaterialIds = Array.from(new Set(allMaterialIds));
-      console.log(`📦 Total unique materials untuk refresh: ${uniqueMaterialIds.length}`);
-      
-      // Fetch stock untuk semua material sekaligus
-      setExportProgress({ visible: true, current: 10, total: 100, message: `Mengambil stok untuk ${uniqueMaterialIds.length} material...` });
-      
-      const orderDate = selectedOrdersBefore[0]?.order.Tanggal_Order || new Date().toISOString().split("T")[0];
-      const freshStockData = await fetchStockForItemsWithCommitment(uniqueMaterialIds, orderDate);
-      
-      console.log(`✅ Fresh stock data: ${freshStockData.length} items`);
-      
-      // Update stock di setiap selected order
-      for (const order of selectedOrdersBefore) {
-        const orderIndex = filteredOrders.findIndex(o => o.order.No_SPK === order.order.No_SPK);
-        if (orderIndex !== -1) {
-          // Gabungkan stock lama dengan yang baru
-          const updatedStock = [...(order.stock || [])];
-          
-          for (const freshStock of freshStockData) {
-            const normalizedFreshId = normalizeItemId(freshStock.itemid);
-            const existingIndex = updatedStock.findIndex(s => normalizeItemId(s.itemid) === normalizedFreshId);
-            if (existingIndex !== -1) {
-              updatedStock[existingIndex] = freshStock;
-            } else {
-              updatedStock.push(freshStock);
-            }
-          }
-          
-          // Update state orders
-          setOrders(prev => prev.map((item, idx) => 
-            idx === orderIndex 
-              ? { ...item, stock: updatedStock, stockLastUpdated: new Date().toISOString() }
-              : item
-          ));
-          
-          // Update order object langsung untuk export
-          order.stock = updatedStock;
-          order.stockLastUpdated = new Date().toISOString();
-        }
-      }
-      
-      // Tunggu sebentar agar state terupdate
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
-      // Gunakan selectedOrders yang sudah dipastikan stocknya benar
-      const finalSelectedOrders = filteredOrders.filter(
-        (order) => order.selected && !order.committed
-      );
-      
-      const wb = await generateExportWorkbook(finalSelectedOrders, committedPOs, stockReservations, setExportProgress);
-      
-      if (wb) {
-        const timestamp = new Date().toISOString().split("T")[0];
-        const filename = `Production_Plan_${timestamp}_${finalSelectedOrders.length}PO.xlsx`;
-        XLSX.writeFile(wb, filename);
-        
-        setExportProgress({ visible: false, current: 0, total: 0, message: "" });
-        alert(`✅ Export berhasil!\nFile: ${filename}\n\n📦 Total PO: ${finalSelectedOrders.length}`);
-      }
-      
+    // 🔥 TAMBAHKAN: Gunakan tanggal hari ini untuk semua fetch stock
+    const today = new Date().toISOString().split("T")[0];
+    console.log(`📅 Menggunakan tanggal export: ${today}`);
+
+    // 🔥 ========== FORCE REFRESH STOCK DENGAN TANGGAL HARI INI ==========
+    setExportProgress({ visible: true, current: 5, total: 100, message: "Menyegarkan data stok terbaru (tanggal hari ini)..." });
+    
+    // Ambil semua selected orders yang belum di-commit
+    const selectedOrdersBefore = filteredOrders.filter(
+      (order) => order.selected && !order.committed
+    );
+    
+    if (selectedOrdersBefore.length === 0) {
+      alert("Tidak ada PO yang dipilih untuk di-export!");
       setExportLoading(false);
-    } catch (error) {
-      console.error("Error export:", error);
-      alert("Gagal mengekspor data: " + (error instanceof Error ? error.message : "Unknown error"));
       setExportProgress({ visible: false, current: 0, total: 0, message: "" });
-      setExportLoading(false);
+      return;
     }
-  };
+    
+    // Kumpulkan semua material IDs dari selected orders
+    const allMaterialIds: string[] = [];
+    for (const order of selectedOrdersBefore) {
+      if (order.bom && order.bom.flat) {
+        order.bom.flat.forEach((item: BomItem) => {
+          if (item.ItemID) {
+            allMaterialIds.push(normalizeItemId(item.ItemID));
+          }
+        });
+      }
+      if (order.bom && order.bom.combinedBoms) {
+        Object.values(order.bom.combinedBoms).forEach((bom: any) => {
+          if (bom.flat) {
+            bom.flat.forEach((item: BomItem) => {
+              if (item.ItemID) {
+                allMaterialIds.push(normalizeItemId(item.ItemID));
+              }
+            });
+          }
+        });
+      }
+    }
+    
+    const uniqueMaterialIds = Array.from(new Set(allMaterialIds));
+    console.log(`📦 Total unique materials untuk refresh: ${uniqueMaterialIds.length}`);
+    
+    // 🔥 FETCH STOCK DENGAN TANGGAL HARI INI (bukan tanggal order)
+    setExportProgress({ visible: true, current: 10, total: 100, message: `Mengambil stok untuk ${uniqueMaterialIds.length} material (tanggal ${today})...` });
+    
+    const freshStockData = await fetchStockForItemsWithCommitment(uniqueMaterialIds, today);
+    
+    console.log(`✅ Fresh stock data: ${freshStockData.length} items (tanggal: ${today})`);
+    
+    // Update stock di setiap selected order dengan tanggal hari ini
+    for (const order of selectedOrdersBefore) {
+      const orderIndex = filteredOrders.findIndex(o => o.order.No_SPK === order.order.No_SPK);
+      if (orderIndex !== -1) {
+        // Gabungkan stock lama dengan yang baru
+        const updatedStock = [...(order.stock || [])];
+        
+        for (const freshStock of freshStockData) {
+          const normalizedFreshId = normalizeItemId(freshStock.itemid);
+          const existingIndex = updatedStock.findIndex(s => normalizeItemId(s.itemid) === normalizedFreshId);
+          if (existingIndex !== -1) {
+            updatedStock[existingIndex] = freshStock;
+          } else {
+            updatedStock.push(freshStock);
+          }
+        }
+        
+        // Update state orders
+        setOrders(prev => prev.map((item, idx) => 
+          idx === orderIndex 
+            ? { ...item, stock: updatedStock, stockLastUpdated: new Date().toISOString() }
+            : item
+        ));
+        
+        // Update order object langsung untuk export
+        order.stock = updatedStock;
+        order.stockLastUpdated = new Date().toISOString();
+      }
+    }
+    
+    // Tunggu sebentar agar state terupdate
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    // Gunakan selectedOrders yang sudah dipastikan stocknya benar
+    const finalSelectedOrders = filteredOrders.filter(
+      (order) => order.selected && !order.committed
+    );
+    
+    // 🔥 Kirimkan tanggal hari ini ke generateExportWorkbook untuk digunakan di master data
+    const wb = await generateExportWorkbook(finalSelectedOrders, committedPOs, stockReservations, setExportProgress, today);
+    
+    if (wb) {
+      const timestamp = new Date().toISOString().split("T")[0];
+      const filename = `Production_Plan_${timestamp}_${finalSelectedOrders.length}PO.xlsx`;
+      XLSX.writeFile(wb, filename);
+      
+      setExportProgress({ visible: false, current: 0, total: 0, message: "" });
+      alert(`✅ Export berhasil!\nFile: ${filename}\n\n📦 Total PO: ${finalSelectedOrders.length}\n📅 Stok per tanggal: ${today}`);
+    }
+    
+    setExportLoading(false);
+  } catch (error) {
+    console.error("Error export:", error);
+    alert("Gagal mengekspor data: " + (error instanceof Error ? error.message : "Unknown error"));
+    setExportProgress({ visible: false, current: 0, total: 0, message: "" });
+    setExportLoading(false);
+  }
+};
 
 const generateExportWorkbook = async (
   selectedOrders: ProductionPlan[],
   currentCommittedPOs: CommittedPO[],
   currentStockReservations: StockReservation[],
-  setExportProgress: React.Dispatch<React.SetStateAction<{ visible: boolean; current: number; total: number; message: string }>>
+  setExportProgress: React.Dispatch<React.SetStateAction<{ visible: boolean; current: number; total: number; message: string }>>,
+  exportDate?: string
 ): Promise<XLSX.WorkBook | null> => {
   const wb = XLSX.utils.book_new();
+  
+  // Gunakan tanggal hari ini untuk stok
+  const today = exportDate || new Date().toISOString().split("T")[0];
+  console.log(`📅 generateExportWorkbook menggunakan tanggal stok: ${today}`);
 
-  // ==================== 🔥 AMBIL MASTER DATA (SPEC, WARNA, BAHAN) ====================
+  // ==================== AMBIL MASTER DATA (SPEC, WARNA, BAHAN) ====================
   setExportProgress({ visible: true, current: 5, total: 100, message: "Mengambil data master (spec, warna, bahan)..." });
   
   // Kumpulkan semua item IDs dari selected orders
@@ -2902,7 +2911,8 @@ const generateExportWorkbook = async (
       order.order.combinedItems!.forEach((item) => {
         poData.push({
           "No SPK": order.order.No_SPK,
-          "Tanggal": order.order.Tanggal_Order,
+          "Tanggal Order": order.order.Tanggal_Order,
+          "Tanggal Stok": today,
           "Nama PO": item.Nama_PO,
           "Kode Barang Jadi": item.Kode_Barang,
           "QTY PO": item.QTY
@@ -2911,7 +2921,8 @@ const generateExportWorkbook = async (
     } else {
       poData.push({
         "No SPK": order.order.No_SPK,
-        "Tanggal": order.order.Tanggal_Order,
+        "Tanggal Order": order.order.Tanggal_Order,
+        "Tanggal Stok": today,
         "Nama PO": order.order.Nama_PO,
         "Kode Barang Jadi": order.order.Kode_Barang,
         "QTY PO": order.order.QTY
@@ -2920,7 +2931,7 @@ const generateExportWorkbook = async (
   });
 
   const ws1 = XLSX.utils.json_to_sheet(poData);
-  ws1["!cols"] = [{ wch: 15 }, { wch: 12 }, { wch: 40 }, { wch: 15 }, { wch: 12 }];
+  ws1["!cols"] = [{ wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 40 }, { wch: 15 }, { wch: 12 }];
   XLSX.utils.book_append_sheet(wb, ws1, "PO");
 
   // ==================== SHEET 2: BOM ====================
@@ -3060,6 +3071,21 @@ const generateExportWorkbook = async (
     "QTY PO": "",
     "Level": "",
     "Kode Komponen": "",
+    "Nama Komponen": `* Stok dihitung berdasarkan tanggal: ${today}`,
+    "Nama Komponen China": "",
+    "Qty per Unit (BOM)": "",
+    "Accumulated Qty": "",
+    "Total Kebutuhan": "",
+    "Stok": "",
+    "Status": ""
+  });
+  bomData.push({
+    "No SPK": "INFORMASI",
+    "Kode Barang Jadi": "",
+    "Nama Barang Jadi": "",
+    "QTY PO": "",
+    "Level": "",
+    "Kode Komponen": "",
     "Nama Komponen": `* Komponen dengan departemen INJECTION tidak ditampilkan (${totalINJECTIONRemoved} item dihapus)`,
     "Nama Komponen China": "",
     "Qty per Unit (BOM)": "",
@@ -3141,7 +3167,7 @@ const generateExportWorkbook = async (
         console.log(`🎯 03I095 DITEMUKAN! needed=${item.needed}, stock=${item.availableStock}`);
       }
       
-      // 🔥 AMBIL MASTER DATA UNTUK MATERIAL INI
+      // Ambil master data untuk material ini
       const masterInfo = masterDataMap.get(key) || { spec: "-", warna: "-", bahan: "-" };
       
       // Ambil reserved data
@@ -3169,7 +3195,6 @@ const generateExportWorkbook = async (
           qtyPO: order.order.QTY
         });
       } else {
-        // 🔥 SEKARANG SPEC, WARNA, BAHAN DIAMBIL DARI MASTER DATA
         materialMap.set(key, {
           kode: item.ItemID,
           nama: item.ItemName,
@@ -3311,6 +3336,7 @@ const generateExportWorkbook = async (
     const wsData = [
       [`LAPORAN KEBUTUHAN MATERIAL - DEPARTEMEN ${dept.toUpperCase()}`],
       [`Tanggal Export: ${new Date().toLocaleDateString('id-ID')} ${new Date().toLocaleTimeString('id-ID')}`],
+      [`Tanggal Stok: ${today}`],
       [],
       ["DETAIL MATERIAL"],
       headers,
@@ -3326,6 +3352,7 @@ const generateExportWorkbook = async (
     if (!wsDept["!merges"]) wsDept["!merges"] = [];
     wsDept["!merges"].push({ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } });
     wsDept["!merges"].push({ s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } });
+    wsDept["!merges"].push({ s: { r: 2, c: 0 }, e: { r: 2, c: headers.length - 1 } });
     
     let sheetName = dept.toUpperCase().replace(/[\\/*?:\[\]]/g, "");
     if (sheetName.length > 31) sheetName = sheetName.substring(0, 31);
@@ -3339,6 +3366,7 @@ const generateExportWorkbook = async (
   const allDeptSummary: any[] = [
     ["REKAP KEBUTUHAN MATERIAL PER DEPARTEMEN"],
     [`Tanggal Export: ${new Date().toLocaleDateString('id-ID')} ${new Date().toLocaleTimeString('id-ID')}`],
+    [`Tanggal Stok: ${today}`],
     [],
     ["Departemen", "Jumlah Material", "Total Kebutuhan", "Total Sisa Stok", "Status"]
   ];
@@ -3373,6 +3401,7 @@ const generateExportWorkbook = async (
   if (!wsSummary["!merges"]) wsSummary["!merges"] = [];
   wsSummary["!merges"].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } });
   wsSummary["!merges"].push({ s: { r: 1, c: 0 }, e: { r: 1, c: 4 } });
+  wsSummary["!merges"].push({ s: { r: 2, c: 0 }, e: { r: 2, c: 4 } });
 
   XLSX.utils.book_append_sheet(wb, wsSummary, "REKAP_PER_DEPARTEMEN");
 
