@@ -8,6 +8,8 @@ import Loading from "@/app/loading";
 import { Input } from "../ui/input";
 import { itemGudangInjeksi } from "./iteminjeksi";
 import { itemGudangUtama } from "./itemUtama";
+import { itemAsalLC } from "./itemAsalLC";
+import { itemLC } from "./itemLC";
 import {
   Select,
   SelectContent,
@@ -261,6 +263,8 @@ const StockPergudang: React.FC = () => {
       const utamaNormalized = normalizeFilterList(itemGudangUtama);
       const injeksiNormalized = normalizeFilterList(itemGudangInjeksi);
       const importNormalized = normalizeFilterList(itemImport);
+      const lcNormalized = normalizeFilterList(itemLC);
+      const asalLcNormalized = normalizeFilterList(itemAsalLC);
 
       if (filterOption === "utama") {
         result = result.filter((item) =>
@@ -274,7 +278,15 @@ const StockPergudang: React.FC = () => {
         result = result.filter((item) =>
           importNormalized.includes(normalizeItemId(item.itemid))
         );
-      }
+      } else if (filterOption == "lc"){
+        result = result.filter((item)=>
+        lcNormalized.includes(normalizeItemId(item.itemid))
+        );
+      } else if (filterOption == "asallc"){
+        result = result.filter((item)=>
+        asalLcNormalized.includes(normalizeItemId(item.itemid))
+        );
+      } 
 
       if (qtyFilter === "zero") {
         result = result.filter((item) => item.stockAkhir === 0);
@@ -457,13 +469,17 @@ const StockPergudang: React.FC = () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Stock");
 
-    const gudang =
+      const gudang =
       filterOption === "utama"
         ? "Gudang_Utama"
         : filterOption === "injeksi"
         ? "Gudang_Injeksi"
         : filterOption === "import"
         ? "Item_Import"
+        : filterOption === "lc"        
+        ? "Item_LC"                         
+        : filterOption === "asallc"   
+        ? "Item_Asal_LC"                    
         : "Semua_Gudang";
 
     const selectionInfo =
@@ -573,6 +589,8 @@ const StockPergudang: React.FC = () => {
               <SelectItem value="utama">Gudang Utama</SelectItem>
               <SelectItem value="injeksi">Gudang Injeksi</SelectItem>
               <SelectItem value="import">Item Import</SelectItem>
+              <SelectItem value="lc">Kode LC </SelectItem>
+              <SelectItem value="asallc">Kode Asal LC</SelectItem>
             </SelectContent>
           </Select>
         </div>
