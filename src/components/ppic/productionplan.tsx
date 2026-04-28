@@ -2870,7 +2870,6 @@ const generateExportWorkbook = async (
   // ==================== AMBIL MASTER DATA (SPEC, WARNA, BAHAN) ====================
   setExportProgress({ visible: true, current: 5, total: 100, message: "Mengambil data master (spec, warna, bahan)..." });
   
-  // Kumpulkan semua item IDs dari selected orders
   const allItemIdsForMaster: string[] = [];
   for (const order of selectedOrders) {
     if (order.bom && order.bom.flat) {
@@ -3105,8 +3104,8 @@ const generateExportWorkbook = async (
 
   // ==================== SHEET 3: TOTAL KEBUTUHAN MATERIAL ====================
   setExportProgress({ visible: true, current: 60, total: 100, message: "Menghitung kebutuhan material..." });
-  
-  const materialMap = new Map<string, any>();
+
+  // 🔥 MAP UNTUK RESERVASI
   const reservationsByItem = new Map<string, { totalQty: number; spkList: Set<string>; itemName: string }>();
 
   // Kumpulkan reservasi
@@ -3133,120 +3132,9 @@ const generateExportWorkbook = async (
     itemData.spkList.add(noSPK);
   }
 
-  // ==================== PERHITUNGAN MATERIAL ====================
-  for (const order of selectedOrders) {
-    if (!order.bom || !order.stock) continue;
-    
-    const isCombined = order.order.combinedItems && order.order.combinedItems.length > 1;
-    
-    let materialNeeds;
-    if (isCombined && order.order.combinedItems) {
-      materialNeeds = calculateMaterialNeedsForCombinedPO(
-        order.bom,
-        order.order.combinedItems,
-        order.stock
-      );
-    } else {
-      materialNeeds = calculateMaterialNeeds(
-        order.bom.flat,
-        order.order.QTY,
-        order.stock
-      );
-    }
-    
-    console.log(`Order ${order.order.No_SPK}: ${materialNeeds.items.length} materials`);
-    
-    for (const item of materialNeeds.items) {
-      // Filter INJECTION
-      if (isINJECTIONDepartment(item.Departemen)) continue;
-      
-      const key = normalizeItemId(item.ItemID);
-      
-      // DEBUG khusus untuk 03I095
-      if (key === '03I095') {
-        console.log(`🎯 03I095 DITEMUKAN! needed=${item.needed}, stock=${item.availableStock}`);
-      }
-      
-      // Ambil master data untuk material ini
-      const masterInfo = masterDataMap.get(key) || { spec: "-", warna: "-", bahan: "-" };
-      
-      // Ambil reserved data
-      const reservedData = reservationsByItem.get(key);
-      let reservedQty = 0;
-      let reservedByText = "-";
-      if (reservedData) {
-        reservedQty = reservedData.totalQty;
-        reservedByText = Array.from(reservedData.spkList).map(spk => `• ${spk}`).join("\n");
-      }
-      
-      // Hitung total dibutuhkan (termasuk reserved dari PO lain)
-      const totalDibutuhkan = item.needed + reservedQty;
-      const sisaStok = item.availableStock - totalDibutuhkan;
-      
-      if (materialMap.has(key)) {
-        const existing = materialMap.get(key);
-        existing.totalNeeded += item.needed;
-        existing.totalDibutuhkan = existing.totalNeeded + existing.reserved;
-        existing.sisaStok = existing.stockAkhir - existing.totalDibutuhkan;
-        existing.sourcePOs.push({
-          noSPK: order.order.No_SPK,
-          kodeBarang: isCombined && order.order.combinedItems?.[0] ? order.order.combinedItems[0].Kode_Barang : order.order.Kode_Barang,
-          namaBarang: order.order.Nama_PO,
-          qtyPO: order.order.QTY
-        });
-      } else {
-        materialMap.set(key, {
-          kode: item.ItemID,
-          nama: item.ItemName,
-          nama_china: item.ItemName2 || "-",
-          spec: masterInfo.spec,
-          warna: masterInfo.warna,
-          bahan: masterInfo.bahan,
-          departemen: item.Departemen || "UNKNOWN",
-          totalNeeded: item.needed,
-          stockWincp: item.availableStock,
-          reserved: reservedQty,
-          stockAkhir: item.availableStock,
-          stokValid: item.availableStock,
-          totalDibutuhkan: totalDibutuhkan,
-          sisaStok: sisaStok,
-          reservedBy: reservedByText,
-          sourcePOs: [{
-            noSPK: order.order.No_SPK,
-            kodeBarang: isCombined && order.order.combinedItems?.[0] ? order.order.combinedItems[0].Kode_Barang : order.order.Kode_Barang,
-            namaBarang: order.order.Nama_PO,
-            qtyPO: order.order.QTY
-          }]
-        });
-      }
-    }
-  }
-
-  // Debug: Cek apakah 03I095 ada di materialMap
-  console.log(`🔍 03I095 ada di materialMap? ${materialMap.has('03I095')}`);
-  if (materialMap.has('03I095')) {
-    console.log(`📊 Data 03I095:`, materialMap.get('03I095'));
-  }
-
-  // Hapus item dengan departemen RESERVED ONLY
-  for (const [key, value] of materialMap) {
-    if (value.departemen === "RESERVED ONLY") {
-      materialMap.delete(key);
-    }
-  }
-
-  // Mapping material ke PO
-  const materialToPOs = new Map<string, Array<{ noSPK: string; kodeBarang: string; namaBarang: string; qtyPO: number }>>();
-  
-  for (const [key, value] of materialMap) {
-    if (value.sourcePOs) {
-      materialToPOs.set(key, value.sourcePOs);
-    }
-  }
-
-  // Buat materialDataRows
+  // ==================== MEMBUAT MATERIAL DATA ROWS ====================
   const materialDataRows: any[][] = [];
-  
+
   const headers = [
     "Barang Jadi",
     "QTY PO Dipesan",
@@ -3267,39 +3155,161 @@ const generateExportWorkbook = async (
     "Status"
   ];
 
-  for (const [itemId, value] of materialMap) {
-    const poList = materialToPOs.get(itemId) || [];
-    const uniquePOs = Array.from(new Map(poList.map(po => [po.noSPK, po])).values());
+  // 🔥 MAP UNTUK AGREGASI MATERIAL
+  const materialAggMap = new Map();
+
+  // 🔥 LOOP SEMUA SELECTED ORDERS
+  for (const order of selectedOrders) {
+    if (!order.bom || !order.stock) continue;
     
-    const barangJadiList = uniquePOs.map(po => `${po.kodeBarang}`).join('\n');
-    const qtyPOList = uniquePOs.map(po => po.qtyPO.toLocaleString()).join('\n');
+    const isCombined = order.order.combinedItems && order.order.combinedItems.length > 1;
     
-    let status = "";
-    if (value.sisaStok > 0) {
-      status = "KELEBIHAN";
-    } else if (value.sisaStok < 0) {
-      status = "KURANG";
+    // Kumpulkan semua barang jadi dari order ini
+    const barangJadiItems: Array<{ kode: string; qty: number }> = [];
+    
+    if (isCombined && order.order.combinedItems) {
+      for (const item of order.order.combinedItems) {
+        barangJadiItems.push({ kode: item.Kode_Barang, qty: item.QTY });
+      }
     } else {
-      status = "CUKUP";
+      barangJadiItems.push({ kode: order.order.Kode_Barang, qty: order.order.QTY });
     }
     
+    // Proses setiap barang jadi
+    for (const barangJadi of barangJadiItems) {
+      const kodeBarangJadi = barangJadi.kode;
+      const qtyPO = barangJadi.qty;
+      
+      // Dapatkan BOM untuk barang jadi ini
+      let bomFlat: BomItem[] = [];
+      if (isCombined && order.bom?.combinedBoms) {
+        const bomItem = order.bom.combinedBoms[kodeBarangJadi];
+        if (bomItem) {
+          bomFlat = bomItem.flat;
+        }
+      } else {
+        bomFlat = order.bom.flat;
+      }
+      
+      if (bomFlat.length === 0) continue;
+      
+      // Filter komponen (Level > 0) dan exclude INJECTION
+      const components = bomFlat.filter(b => Number(b.Level) > 0 && !isINJECTIONDepartment(b.Departemen));
+      
+      // 🔥 MAP SEMENTARA UNTUK MENGHINDARI DOUBLE DALAM SATU BARANG JADI
+      const tempNeeds = new Map();
+      
+      for (const component of components) {
+        const materialId = normalizeItemId(component.ItemID);
+        const needed = component.Qty * qtyPO;
+        
+        if (tempNeeds.has(materialId)) {
+          tempNeeds.set(materialId, tempNeeds.get(materialId) + needed);
+        } else {
+          tempNeeds.set(materialId, needed);
+        }
+      }
+      
+      // 🔥 GABUNGKAN KE MATERIAL AGGREGATION MAP
+      for (const [materialId, needed] of tempNeeds) {
+        // Cari stock untuk material ini
+        const stockItem = order.stock?.find(s => normalizeItemId(s.itemid) === materialId);
+        const stock = stockItem?.stockAkhir || 0;
+        
+        // Cari master data
+        const masterInfo = masterDataMap.get(materialId) || { spec: "-", warna: "-", bahan: "-" };
+        
+        // Cari reserved data
+        const reservedData = reservationsByItem.get(materialId);
+        const reservedQty = reservedData?.totalQty || 0;
+        const reservedByText = reservedData ? Array.from(reservedData.spkList).map(spk => `• ${spk}`).join("\n") : "-";
+        
+        // Cari data material dari komponen
+        const component = components.find(c => normalizeItemId(c.ItemID) === materialId);
+        
+        if (!materialAggMap.has(materialId)) {
+          // BUAT ENTRY BARU
+          materialAggMap.set(materialId, {
+            kode: materialId,
+            nama: component?.ItemName || materialId,
+            nama_china: component?.ItemName2 || "-",
+            spec: masterInfo.spec,
+            warna: masterInfo.warna,
+            bahan: masterInfo.bahan,
+            departemen: component?.Departemen || "UNKNOWN",
+            stockWincp: stock,
+            reserved: reservedQty,
+            reservedBy: reservedByText,
+            totalNeeded: 0,
+            barangJadiSet: new Map()
+          });
+        }
+        
+        const agg = materialAggMap.get(materialId);
+        
+        // AKUMULASI TOTAL KEBUTUHAN
+        agg.totalNeeded += needed;
+        
+        // UPDATE STOCK
+        agg.stockWincp = stock;
+        agg.reserved = reservedQty;
+        agg.reservedBy = reservedByText;
+        
+        // TAMBAHKAN BARANG JADI
+        if (!agg.barangJadiSet.has(kodeBarangJadi)) {
+          agg.barangJadiSet.set(kodeBarangJadi, qtyPO);
+        }
+      }
+    }
+  }
+
+  // 🔥 DEBUG: Lihat hasil materialAggMap
+  console.log("\n========== MATERIAL AGGREGATION MAP ==========");
+  console.log(`Total material unik: ${materialAggMap.size}`);
+  for (const [materialId, agg] of materialAggMap) {
+    console.log(`\n📦 ${materialId} - ${agg.nama}`);
+    console.log(`   Total Kebutuhan: ${agg.totalNeeded}`);
+    console.log(`   Stock: ${agg.stockWincp}`);
+    console.log(`   Barang Jadi: ${Array.from(agg.barangJadiSet.keys()).join(', ')}`);
+  }
+  console.log("================================================\n");
+
+  // 🔥 BUAT MATERIAL DATA ROWS
+  for (const [materialId, agg] of materialAggMap) {
+    // Buat daftar barang jadi
+    const barangJadiDetails: string[] = [];
+    const qtyPODetails: string[] = [];
+    
+    for (const [kodeBarangJadi, qtyPO] of agg.barangJadiSet) {
+      barangJadiDetails.push(`${kodeBarangJadi} (${qtyPO.toLocaleString()})`);
+      qtyPODetails.push(qtyPO.toLocaleString());
+    }
+    
+    const totalDibutuhkan = agg.totalNeeded + agg.reserved;
+    const sisaStok = agg.stockWincp - totalDibutuhkan;
+    
+    let status = "";
+    if (sisaStok > 0) status = "KELEBIHAN";
+    else if (sisaStok < 0) status = "KURANG";
+    else status = "CUKUP";
+    
     materialDataRows.push([
-      barangJadiList,
-      qtyPOList,
-      value.kode,
-      value.nama,
-      value.nama_china,
-      value.spec,
-      value.warna,
-      value.bahan,
-      value.departemen,
-      value.totalNeeded,
-      value.reserved,
-      value.totalDibutuhkan,
-      value.stockWincp,
-      value.stockAkhir,
-      value.sisaStok,
-      value.reservedBy,
+      barangJadiDetails.join('\n'),
+      qtyPODetails.join('\n'),
+      agg.kode,
+      agg.nama,
+      agg.nama_china,
+      agg.spec,
+      agg.warna,
+      agg.bahan,
+      agg.departemen,
+      agg.totalNeeded,
+      agg.reserved,
+      totalDibutuhkan,
+      agg.stockWincp,
+      agg.stockWincp,
+      sisaStok,
+      agg.reservedBy,
       status
     ]);
   }
@@ -3317,6 +3327,10 @@ const generateExportWorkbook = async (
     materialsByDept.get(dept)!.push(row);
   }
 
+  console.log(`\n✅ Total baris material: ${materialDataRows.length}`);
+  console.log(`✅ Total departemen: ${materialsByDept.size}`);
+
+  // ==================== LANJUTKAN KE SHEET PER DEPARTEMEN ====================
   const sortedDepartments = Array.from(materialsByDept.keys()).sort();
 
   const deptColWidths = [
@@ -3362,7 +3376,7 @@ const generateExportWorkbook = async (
 
   // Sheet rekap per departemen
   setExportProgress({ visible: true, current: 90, total: 100, message: "Membuat sheet rekap..." });
-  
+
   const allDeptSummary: any[] = [
     ["REKAP KEBUTUHAN MATERIAL PER DEPARTEMEN"],
     [`Tanggal Export: ${new Date().toLocaleDateString('id-ID')} ${new Date().toLocaleTimeString('id-ID')}`],
@@ -3409,6 +3423,7 @@ const generateExportWorkbook = async (
   
   return wb;
 };
+
   // ==================== KOMPONEN ORDER ROW ====================
   
   const OrderRow = ({
