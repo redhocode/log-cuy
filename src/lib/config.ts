@@ -6,7 +6,9 @@ import dotenv from "dotenv";
 import pino from "pino";
 import pretty from "pino-pretty";
 
-dotenv.config();
+dotenv.config({
+  path: `.env.${process.env.NODE_ENV || "development"}`,
+});
 
 const logger = pino({ level: process.env.LOG_LEVEL || "info" }, pretty());
 

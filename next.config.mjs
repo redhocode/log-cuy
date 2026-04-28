@@ -10,9 +10,9 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
-  eslint: {
-    ignoreDuringBuilds: false,
-  },
+  // eslint: {
+  //   ignoreDuringBuilds: false,
+  // },
   // Pastikan output untuk development
   // output: 'standalone', // Hapus jika tidak perlu
 };
