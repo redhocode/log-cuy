@@ -138,3 +138,16 @@ export const itemsWithVariants = [
   "LC-09A028BK",
   "LC-09A028BK",
 ];
+
+// Fungsi untuk mengecek apakah item memiliki variant
+export const hasVariant = (itemId: string): boolean => {
+  return itemsWithVariants.includes(itemId.toUpperCase());
+};
+
+// Fungsi untuk mendapatkan keterangan variant
+export const getVariantInfo = (itemId: string): string => {
+  if (hasVariant(itemId)) {
+    return "Ada (Grade A, B, C)";
+  }
+  return "-";
+};
