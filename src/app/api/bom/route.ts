@@ -55,7 +55,7 @@ export async function GET(request: Request) {
             dt.ItemID, 
             ISNULL(gdt.ItemName, '') AS ItemName,
             ISNULL(gdt.ItemName2, '') AS ItemName2, 
-            ISNULL(dt.BahanQty, 0) AS BahanQty,
+            ISNULL(gdt.BahanQty, 0) AS BahanQty,
             ISNULL(dt.BahanPackSatuan, '') AS BahanPackSatuan,  -- TAMBAHKAN INI
             ISNULL(gdt.Mark, '') AS Departemen,
             ISNULL(got.NamaJenis, '') AS NamaJenis
