@@ -20,6 +20,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -68,6 +69,7 @@ import {
   Info,
   TreePine,
   Table as TableIcon,
+  ChevronUp, ChevronDown, ChevronsUpDown
 } from "lucide-react";
 // Import itemsWithVariants di bagian atas file
 import {
@@ -903,6 +905,9 @@ const CommittedPOsPanel: React.FC<{
   );
 };
 
+// ==================== KOMPONEN PREVIEW DIALOG ====================
+
+
 // ==================== KOMPONEN UTAMA ====================
 export default function ProductionPlanPage() {
   const [orders, setOrders] = useState<ProductionPlan[]>([]);
@@ -923,6 +928,14 @@ export default function ProductionPlanPage() {
     current: 0,
     total: 0,
     message: "",
+  });
+  // Di dalam komponen ProductionPlanPage, tambahkan state:
+  const [previewDialog, setPreviewDialog] = useState({
+    open: false,
+    data: null as any[] | null,
+    fileName: "",
+    totalPO: 0,
+    totalMaterial: 0,
   });
   const [isMounted, setIsMounted] = useState(false);
 
@@ -2498,7 +2511,581 @@ export default function ProductionPlanPage() {
     setSearchQuery("");
     setCurrentPage(1);
   };
+  
+  // ==================== FUNGSI PREVIEW EXPORT (SAMA PERSIS DENGAN EXPORTSELECTEDTOEXCEL) ====================
+  const previewExport = async () => {
+    try {
+      setExportLoading(true);
+      setExportProgress({
+        visible: true,
+        current: 0,
+        total: 100,
+        message: "Mempersiapkan preview data...",
+      });
+      showToast("Mempersiapkan preview data...", "loading");
 
+      const today = new Date().toISOString().split("T")[0];
+      const selectedOrders = filteredOrders.filter(
+        (order) => order.selected && !order.committed,
+      );
+
+      if (selectedOrders.length === 0) {
+        alert("Tidak ada PO yang dipilih untuk di-preview!");
+        setExportLoading(false);
+        setExportProgress({ visible: false, current: 0, total: 0, message: "" });
+        return;
+      }
+
+      setExportProgress({
+        visible: true,
+        current: 20,
+        total: 100,
+        message: `Memuat BOM & stok untuk ${selectedOrders.length} PO...`,
+      });
+      const ordersWithBom = await loadBomAndStockForExport(selectedOrders);
+
+      setExportProgress({
+        visible: true,
+        current: 50,
+        total: 100,
+        message: "Mengambil data master...",
+      });
+
+      const allMaterialIds: string[] = [];
+      for (const order of ordersWithBom) {
+        if (order.bom?.flat) {
+          order.bom.flat.forEach((item: BomItem) => {
+            if (item.ItemID && Number(item.Level) > 0)
+              allMaterialIds.push(normalizeItemId(item.ItemID));
+          });
+        }
+      }
+      const masterDataMap = await fetchMasterDataForItems(allMaterialIds);
+
+      setExportProgress({
+        visible: true,
+        current: 70,
+        total: 100,
+        message: "Membuat data preview...",
+      });
+
+      // ==================== COPY PASTE LENGKAP DARI EXPORTSELECTEDTOEXCEL ====================
+
+      // Reservations by item
+      const reservationsByItem = new Map<
+        string,
+        { totalQty: number; spkList: Set<string>; itemName: string }
+      >();
+
+      for (const reservation of stockReservations) {
+        if (
+          reservation.status !== "RESERVED" ||
+          reservation.reservedQty <= 0 ||
+          !reservation.noSPK
+        )
+          continue;
+        const itemId = normalizeItemId(reservation.itemID);
+        if (!reservationsByItem.has(itemId))
+          reservationsByItem.set(itemId, {
+            totalQty: 0,
+            spkList: new Set(),
+            itemName: reservation.itemName || itemId,
+          });
+        const itemData = reservationsByItem.get(itemId)!;
+        itemData.totalQty += reservation.reservedQty;
+        itemData.spkList.add(reservation.noSPK);
+      }
+
+      // 🔥 FUNGSI CALCULATE ACCUMULATED QTY UNTUK MATERIAL (LEVEL-BASED) - SAMA PERSIS DENGAN EXPORT
+      const calculateAccumulatedQtyForMaterial = (flatBom: BomItem[]): Map<string, number> => {
+        const cache = new Map<string, number>();
+
+        // Kelompokkan item berdasarkan level
+        const itemsByLevel = new Map<number, BomItem[]>();
+        for (const item of flatBom) {
+          const level = Number(item.Level);
+          if (!itemsByLevel.has(level)) itemsByLevel.set(level, []);
+          itemsByLevel.get(level)!.push(item);
+        }
+
+        // Hitung accumulated qty untuk setiap item
+        for (const item of flatBom) {
+          const level = Number(item.Level);
+          const itemId = normalizeItemId(item.ItemID);
+
+          if (level === 1) {
+            cache.set(itemId, item.Qty);
+          } else {
+            // Kalikan dengan semua Qty dari level 1 sampai level-1
+            let accumulated = item.Qty;
+            for (let l = level - 1; l >= 1; l--) {
+              const parents = itemsByLevel.get(l);
+              if (parents && parents.length > 0) {
+                accumulated = accumulated * parents[0].Qty;
+              }
+            }
+            cache.set(itemId, accumulated);
+          }
+        }
+
+        return cache;
+      };
+
+      // 🔥 FUNGSI CALCULATE ACCUMULATED QTY LAINNYA (SAMA DENGAN DI EXPORT)
+      const calculateAccumulatedQty = (flatBom: BomItem[]): Map<string, number> => {
+        const cache = new Map<string, number>();
+
+        const itemMap = new Map<string, BomItem>();
+        for (const item of flatBom) {
+          itemMap.set(normalizeItemId(item.ItemID), item);
+        }
+
+        for (const item of flatBom) {
+          const itemId = normalizeItemId(item.ItemID);
+          const level = Number(item.Level);
+
+          if (level === 1) {
+            cache.set(itemId, item.Qty);
+          } else {
+            let parent: BomItem | undefined = undefined;
+
+            if (item.ParentItemID) {
+              parent = itemMap.get(normalizeItemId(item.ParentItemID));
+            }
+
+            if (!parent) {
+              parent = flatBom.find(p => Number(p.Level) === level - 1);
+            }
+
+            if (parent) {
+              const parentId = normalizeItemId(parent.ItemID);
+              const parentAccumulated = cache.get(parentId);
+              if (parentAccumulated !== undefined) {
+                const accumulated = item.Qty * parentAccumulated;
+                cache.set(itemId, accumulated);
+              } else {
+                cache.set(itemId, item.Qty);
+              }
+            } else {
+              cache.set(itemId, item.Qty);
+            }
+          }
+        }
+
+        return cache;
+      };
+
+      // 🔥 MATERIAL AGGREGATION MAP - SAMA PERSIS DENGAN EXPORT
+      const materialAggMap = new Map<string, any>();
+
+      for (const order of ordersWithBom) {
+        if (!order.bom || !order.stock) continue;
+        const isCombined = order.order.combinedItems && order.order.combinedItems.length > 1;
+        const barangJadiItems: Array<{ kode: string; qty: number; nama: string }> = [];
+
+        if (isCombined && order.order.combinedItems) {
+          order.order.combinedItems.forEach((item) =>
+            barangJadiItems.push({
+              kode: item.Kode_Barang,
+              qty: item.QTY,
+              nama: item.Nama_PO,
+            })
+          );
+        } else {
+          barangJadiItems.push({
+            kode: order.order.Kode_Barang,
+            qty: order.order.QTY,
+            nama: order.order.Nama_PO,
+          });
+        }
+
+        for (const barangJadi of barangJadiItems) {
+          let bomFlat: BomItem[] = [];
+          if (isCombined && order.bom?.combinedBoms) {
+            const bomItem = order.bom.combinedBoms[barangJadi.kode];
+            if (bomItem) bomFlat = bomItem.flat;
+          } else {
+            bomFlat = order.bom.flat;
+          }
+          if (bomFlat.length === 0) continue;
+
+          // Filter komponen (Level > 0) dan exclude INJECTION
+          const components = bomFlat.filter(
+            (b) => Number(b.Level) > 0 && !isINJECTIONDepartment(b.Departemen)
+          );
+
+          if (components.length === 0) continue;
+
+          // 🔥 HITUNG ACCUMULATED QTY UNTUK BOM INI (MENGGUNAKAN KEDUA FUNGSI SEPERTI DI EXPORT)
+          const accumulatedCache = calculateAccumulatedQtyForMaterial(bomFlat);
+          const accumulatedMap = calculateAccumulatedQty(bomFlat);
+          const tempNeeds = new Map<string, number>();
+
+          for (const component of components) {
+            const materialId = normalizeItemId(component.ItemID);
+            // 🔥 MENGGUNAKAN accumulatedMap, BUKAN accumulatedCache (SAMA DENGAN EXPORT)
+            const accumulatedQty = accumulatedMap.get(materialId) || component.Qty;
+            const needed = accumulatedQty * barangJadi.qty;
+            tempNeeds.set(materialId, (tempNeeds.get(materialId) || 0) + needed);
+          }
+
+          for (const [materialId, needed] of tempNeeds) {
+            const stockItem = order.stock?.find(
+              (s) => normalizeItemId(s.itemid) === materialId
+            );
+            const stock = stockItem?.stockAkhir || 0;
+            const masterInfo = masterDataMap.get(materialId) || {
+              spec: "-",
+              warna: "-",
+              bahan: "-",
+            };
+            const reservedData = reservationsByItem.get(materialId);
+            const reservedQty = reservedData?.totalQty || 0;
+            const reservedByText = reservedData
+              ? Array.from(reservedData.spkList)
+                .map((spk) => `• ${spk}`)
+                .join("\n")
+              : "-";
+            const component = components.find(
+              (c) => normalizeItemId(c.ItemID) === materialId
+            );
+
+            if (!materialAggMap.has(materialId)) {
+              materialAggMap.set(materialId, {
+                kode: materialId,
+                nama: component?.ItemName || materialId,
+                nama_china: component?.ItemName2 || "-",
+                spec: masterInfo.spec,
+                warna: masterInfo.warna,
+                bahan: masterInfo.bahan,
+                departemen: component?.Departemen || "UNKNOWN",
+                stockWincp: stock,
+                reserved: reservedQty,
+                reservedBy: reservedByText,
+                totalNeeded: 0,
+                barangJadiSet: new Map(),
+              });
+            }
+            const agg = materialAggMap.get(materialId);
+            agg.totalNeeded += needed;
+            if (stock > agg.stockWincp) agg.stockWincp = stock;
+            agg.reserved = reservedQty;
+            agg.reservedBy = reservedByText;
+            if (!agg.barangJadiSet.has(barangJadi.kode)) {
+              agg.barangJadiSet.set(barangJadi.kode, {
+                qty: barangJadi.qty,
+                nama: barangJadi.nama,
+                kode: barangJadi.kode,
+              });
+            }
+          }
+        }
+      }
+
+      // 🔥 BUAT MATERIAL DATA ROWS (SAMA PERSIS DENGAN EXPORT)
+      const materialDataRows: any[][] = [];
+
+      for (const agg of materialAggMap.values()) {
+        const barangJadiDetails: string[] = [];
+        const qtyPODetails: string[] = [];
+
+        for (const [kode, info] of agg.barangJadiSet) {
+          // 🔥 TAMPILKAN KODE BARANG, BUKAN NAMA PO (SAMA DENGAN EXPORT)
+          barangJadiDetails.push(`${kode}`);
+          qtyPODetails.push(info.qty.toLocaleString());
+        }
+
+        const totalDibutuhkan = agg.totalNeeded + agg.reserved;
+        const sisaStok = agg.stockWincp - totalDibutuhkan;
+        // 🔥 STATUS SAMA PERSIS DENGAN EXPORT: "CUKUP", "KURANG", "HABIS"
+        let status = sisaStok > 0 ? "CUKUP" : sisaStok < 0 ? "KURANG" : "HABIS";
+        const variantInfo = getVariantInfo(agg.kode);
+
+        materialDataRows.push([
+          barangJadiDetails.join("\n"),
+          qtyPODetails.join("\n"),
+          agg.kode,
+          agg.nama,
+          agg.nama_china,
+          agg.spec,
+          agg.warna,
+          agg.bahan,
+          agg.departemen,
+          agg.totalNeeded,
+          agg.reserved,
+          totalDibutuhkan,
+          agg.stockWincp,
+          agg.stockWincp,
+          sisaStok,
+          agg.reservedBy,
+          status,
+          variantInfo,
+        ]);
+      }
+
+      // Urutkan berdasarkan kode material
+      materialDataRows.sort((a, b) => a[2].localeCompare(b[2]));
+
+      // 🔥 KONVERSI KE FORMAT PREVIEW UNTUK DITAMPILKAN
+      const previewMaterialData = materialDataRows.map(row => ({
+        "Barang Jadi": row[0],
+        "QTY PO Dipesan": row[1],
+        "Kode Material": row[2],
+        "Nama Material": row[3],
+        "Nama China": row[4],
+        "Spesifikasi": row[5],
+        "Warna": row[6],
+        "Bahan": row[7],
+        "Departemen": row[8],
+        "Total Kebutuhan": typeof row[9] === 'number' ? row[9].toLocaleString() : row[9],
+        "Reserved": typeof row[10] === 'number' ? row[10].toLocaleString() : row[10],
+        "Total Dibutuhkan": typeof row[11] === 'number' ? row[11].toLocaleString() : row[11],
+        "Stok Tersedia": typeof row[12] === 'number' ? row[12].toLocaleString() : row[12],
+        "Sisa Stok": typeof row[14] === 'number' ? row[14].toLocaleString() : row[14],
+        "Reserved Oleh SPK": row[15],
+        "Status": row[16],
+        "Keterangan Variant": row[17],
+      }));
+
+      // Buat nama file preview
+      let fileName = "";
+      if (selectedOrders.length === 1) {
+        const singlePO = selectedOrders[0];
+        const poName = singlePO.order.Nama_PO || singlePO.order.No_SPK;
+        fileName = poName.replace(/[\\/*?:"<>|]/g, "").replace(/\s+/g, "_").substring(0, 50);
+      } else {
+        const firstPO = selectedOrders[0];
+        const firstPOName = firstPO.order.Nama_PO || firstPO.order.No_SPK;
+        fileName = firstPOName.replace(/[\\/*?:"<>|]/g, "").replace(/\s+/g, "_").substring(0, 40);
+      }
+
+      setPreviewDialog({
+        open: true,
+        data: previewMaterialData,
+        fileName: fileName,
+        totalPO: selectedOrders.length,
+        totalMaterial: previewMaterialData.length,
+      });
+
+      setExportProgress({ visible: false, current: 0, total: 0, message: "" });
+      showToast("Preview siap", "success");
+    } catch (error) {
+      console.error("Error preview:", error);
+      showToast(
+        `❌ Gagal preview: ${error instanceof Error ? error.message : "Unknown error"}`,
+        "error",
+      );
+    } finally {
+      setExportLoading(false);
+      setExportProgress({ visible: false, current: 0, total: 0, message: "" });
+    }
+  };
+
+  const PreviewDialog: React.FC<{
+    open: boolean;
+    data: any[] | null;
+    fileName: string;
+    totalPO: number;
+    totalMaterial: number;
+    onClose: () => void;
+    onExport: () => void;
+  }> = ({ open, data, fileName, totalPO, totalMaterial, onClose, onExport }) => {
+    const [searchTerm, setSearchTerm] = useState("");
+    const [sortField, setSortField] = useState<string>("Kode Material");
+    const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
+    const filteredAndSortedData = useMemo(() => {
+      if (!data) return [];
+
+      let filtered = data;
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        filtered = data.filter(
+          (item) =>
+            item["Kode Material"]?.toLowerCase().includes(term) ||
+            item["Nama Material"]?.toLowerCase().includes(term) ||
+            item["Departemen"]?.toLowerCase().includes(term)
+        );
+      }
+
+      filtered = [...filtered].sort((a, b) => {
+        const aVal = a[sortField] || "";
+        const bVal = b[sortField] || "";
+        const comparison = String(aVal).localeCompare(String(bVal));
+        return sortDirection === "asc" ? comparison : -comparison;
+      });
+
+      return filtered;
+    }, [data, searchTerm, sortField, sortDirection]);
+
+    const handleSort = (field: string) => {
+      if (sortField === field) {
+        setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+      } else {
+        setSortField(field);
+        setSortDirection("asc");
+      }
+    };
+
+    const getSortIcon = (field: string) => {
+      if (sortField !== field) return <ChevronsUpDown className="h-3 w-3 ml-1" />;
+      return sortDirection === "asc" ? <ChevronUp className="h-3 w-3 ml-1" /> : <ChevronDown className="h-3 w-3 ml-1" />;
+    };
+
+    if (!open || !data) return null;
+
+    const totalKebutuhan = data.reduce((sum, item) => sum + (parseInt(String(item["Total Kebutuhan"]).replace(/,/g, '')) || 0), 0);
+    const totalKurang = data.filter(item => item["Status"] === "KURANG").length;
+    const totalLebih = data.filter(item => item["Status"] === "KELEBIHAN").length;
+    const totalCukup = data.filter(item => item["Status"] === "CUKUP").length;
+
+    return (
+      <Dialog open={open} onOpenChange={onClose}>
+        <DialogContent className="max-w-7xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5" />
+              Preview Export Data - Material Requirements
+            </DialogTitle>
+            <DialogDescription>
+              {totalPO} PO dipilih | {totalMaterial} material unik | Total Kebutuhan: {totalKebutuhan.toLocaleString()}
+              {fileName && ` | Nama file: ${fileName}.xlsx`}
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Summary Cards */}
+          <div className="grid grid-cols-4 gap-3 mb-4">
+            <Card className="bg-blue-50">
+              <CardContent className="pt-4 pb-2">
+                <div className="text-sm text-blue-600">Total Material</div>
+                <div className="text-2xl font-bold text-blue-700">{totalMaterial}</div>
+              </CardContent>
+            </Card>
+            <Card className="bg-green-50">
+              <CardContent className="pt-4 pb-2">
+                <div className="text-sm text-green-600">Stok CUKUP</div>
+                <div className="text-2xl font-bold text-green-700">{totalCukup}</div>
+              </CardContent>
+            </Card>
+            <Card className="bg-yellow-50">
+              <CardContent className="pt-4 pb-2">
+                <div className="text-sm text-yellow-600">Stok KELEBIHAN</div>
+                <div className="text-2xl font-bold text-yellow-700">{totalLebih}</div>
+              </CardContent>
+            </Card>
+            <Card className="bg-red-50">
+              <CardContent className="pt-4 pb-2">
+                <div className="text-sm text-red-600">Stok KURANG</div>
+                <div className="text-2xl font-bold text-red-700">{totalKurang}</div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Search */}
+          <div className="flex gap-4 items-center mb-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Cari Kode Material, Nama Material, atau Departemen..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-8"
+              />
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Menampilkan {filteredAndSortedData.length} dari {data.length} material
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="overflow-auto flex-1 border rounded-md">
+            <Table>
+              <TableHeader className="sticky top-0 bg-background z-10">
+                <TableRow>
+                  <TableHead className="min-w-[150px] cursor-pointer" onClick={() => handleSort("Kode Material")}>
+                    Kode Material {getSortIcon("Kode Material")}
+                  </TableHead>
+                  <TableHead className="min-w-[200px] cursor-pointer" onClick={() => handleSort("Nama Material")}>
+                    Nama Material {getSortIcon("Nama Material")}
+                  </TableHead>
+                  <TableHead className="min-w-[150px] cursor-pointer" onClick={() => handleSort("Departemen")}>
+                    Departemen {getSortIcon("Departemen")}
+                  </TableHead>
+                  <TableHead className="min-w-[200px]">Barang Jadi</TableHead>
+                  <TableHead className="text-right min-w-[120px] cursor-pointer" onClick={() => handleSort("Total Kebutuhan")}>
+                    Total Kebutuhan {getSortIcon("Total Kebutuhan")}
+                  </TableHead>
+                  <TableHead className="text-right min-w-[120px] cursor-pointer" onClick={() => handleSort("Stok Tersedia")}>
+                    Stok Tersedia {getSortIcon("Stok Tersedia")}
+                  </TableHead>
+                  <TableHead className="text-right min-w-[100px] cursor-pointer" onClick={() => handleSort("Sisa Stok")}>
+                    Sisa Stok {getSortIcon("Sisa Stok")}
+                  </TableHead>
+                  <TableHead className="text-center min-w-[100px] cursor-pointer" onClick={() => handleSort("Status")}>
+                    Status {getSortIcon("Status")}
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredAndSortedData.map((item, idx) => {
+                  const sisaStok = parseInt(String(item["Sisa Stok"]).replace(/,/g, '')) || 0;
+                  const status = item["Status"];
+                  return (
+                    <TableRow key={idx} className={
+                      status === "KURANG" ? "bg-red-50" : status === "KELEBIHAN" ? "bg-yellow-50" : ""
+                    }>
+                      <TableCell className="font-mono text-sm">{item["Kode Material"]}</TableCell>
+                      <TableCell className="text-sm">{item["Nama Material"]}</TableCell>
+                      <TableCell className="text-sm">{item["Departemen"]}</TableCell>
+                      <TableCell className="text-sm whitespace-pre-wrap max-w-[250px]">{item["Barang Jadi"]}</TableCell>
+                      <TableCell className="text-right font-mono">{item["Total Kebutuhan"]}</TableCell>
+                      <TableCell className="text-right font-mono">{item["Stok Tersedia"]}</TableCell>
+                      <TableCell className={`text-right font-mono ${sisaStok < 0 ? "text-red-600 font-bold" : sisaStok > 0 ? "text-green-600" : ""}`}>
+                        {item["Sisa Stok"]}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant={
+                          status === "KURANG" ? "destructive" :
+                            status === "KELEBIHAN" ? "default" :
+                              "secondary"
+                        }>
+                          {status}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {filteredAndSortedData.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                      Tidak ada data yang sesuai
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          <DialogFooter className="flex justify-between items-center mt-4">
+            <div className="text-sm text-muted-foreground">
+              Total Kebutuhan: <span className="font-bold">{totalKebutuhan.toLocaleString()}</span>
+              {totalKurang > 0 && <span className="ml-2 text-red-600">| {totalKurang} material KURANG</span>}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={onClose}>
+                Tutup
+              </Button>
+              <Button onClick={onExport} className="gap-2">
+                <Download className="h-4 w-4" />
+                Export Sekarang
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  };
+  
   const paginatedOrders = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     return filteredOrders.slice(startIndex, startIndex + itemsPerPage);
@@ -2559,6 +3146,19 @@ export default function ProductionPlanPage() {
             />
           </div>
         </DialogContent>
+      
+        <PreviewDialog
+          open={previewDialog.open}
+          data={previewDialog.data}
+          fileName={previewDialog.fileName}
+          totalPO={previewDialog.totalPO}
+          totalMaterial={previewDialog.totalMaterial}
+          onClose={() => setPreviewDialog({ open: false, data: null, fileName: "", totalPO: 0, totalMaterial: 0 })}
+          onExport={() => {
+            setPreviewDialog({ open: false, data: null, fileName: "", totalPO: 0, totalMaterial: 0 });
+            exportSelectedToExcel();
+          }}
+        />
       </Dialog>
 
       {/* Header */}
@@ -2573,15 +3173,24 @@ export default function ProductionPlanPage() {
         </div>
         <div className="flex gap-2">
           <Button onClick={refreshAllData} disabled={loading} variant="outline">
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />{" "}
-            Refresh
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Refresh
+          </Button>
+          <Button
+            onClick={previewExport}
+            disabled={exportLoading || selectedCount === 0}
+            variant="outline"
+            className="gap-2"
+          >
+            <Eye className="h-4 w-4" />
+            Preview ({selectedCount} PO)
           </Button>
           <Button
             onClick={exportSelectedToExcel}
             disabled={exportLoading || selectedCount === 0}
             className="gap-2"
           >
-            <Download className="h-4 w-4" /> Export ({selectedCount} PO)
+            <Download className="h-4 w-4" />
+            Export ({selectedCount} PO)
           </Button>
         </div>
       </div>
