@@ -137,6 +137,7 @@ export const itemsWithVariants = [
   "LC-09A008BK",
   "LC-09A028BK",
   "LC-09A028BK",
+  "LC-05P018BK",
 ];
 
 // Fungsi untuk mengecek apakah item memiliki variant
