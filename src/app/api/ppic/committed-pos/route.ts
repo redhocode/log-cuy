@@ -1,4 +1,4 @@
-// app/api/committed-pos/route.ts
+// app/api/ppic/committed-pos/route.ts
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/config";
 import { CommittedPOsResponse } from "@/lib/types";
@@ -17,14 +17,16 @@ export async function GET(): Promise<NextResponse<CommittedPOsResponse>> {
       FROM [cp].[dbo].[taPROrder] 
       WHERE Completed = 1
     `);
-    
+
     const completedSPKSet = new Set(
-      completedSPKResult.recordset.map((row: any) => row.OrderID)
+      completedSPKResult.recordset.map((row: any) => row.OrderID),
     );
 
-    console.log(`SPK yang sudah selesai: ${Array.from(completedSPKSet).join(', ')}`);
+    console.log(
+      `SPK yang sudah selesai: ${Array.from(completedSPKSet).join(", ")}`,
+    );
 
-    // 2. Ambil daftar committed PO (tanpa filter dulu)
+    // 2. Ambil daftar committed PO
     const committedPOsResult = await pool.request().query(`
       SELECT 
         cp.CommitID,
@@ -44,10 +46,10 @@ export async function GET(): Promise<NextResponse<CommittedPOsResponse>> {
 
     // FILTER: Hanya committed PO untuk SPK yang BELUM selesai
     const filteredCommittedPOs = (committedPOsResult.recordset || []).filter(
-      (po: any) => !completedSPKSet.has(po.noSPK)
+      (po: any) => !completedSPKSet.has(po.noSPK),
     );
 
-    // 3. Ambil daftar reservasi stok (tanpa filter dulu)
+    // 3. Ambil daftar reservasi stok dengan JOIN ke taCommitPO untuk mendapatkan NamaPO
     const reservationsResult = await pool.request().query(`
       SELECT 
         sr.ReservationID as reservationID,
@@ -58,7 +60,8 @@ export async function GET(): Promise<NextResponse<CommittedPOsResponse>> {
         sr.ReservationDate as reservationDate,
         sr.Status as status,
         sr.ExpiryDate as expiryDate,
-        cp.No_SPK as noSPK
+        sr.No_SPK as noSPK,
+        cp.NamaPO as namaPO  -- 🔥 Tambahkan NamaPO dari JOIN ke taCommitPO
       FROM [dbo].[taStockReservation] sr
       INNER JOIN [dbo].[taCommitPO] cp ON sr.CommitID = cp.CommitID
       WHERE sr.Status IN ('RESERVED', 'RELEASED')
@@ -67,12 +70,12 @@ export async function GET(): Promise<NextResponse<CommittedPOsResponse>> {
 
     // FILTER: Hanya reservasi untuk SPK yang BELUM selesai
     const filteredReservations = (reservationsResult.recordset || []).filter(
-      (reservation: any) => !completedSPKSet.has(reservation.noSPK)
+      (reservation: any) => !completedSPKSet.has(reservation.noSPK),
     );
 
     console.log(
       `✅ Data committed POs: ${filteredCommittedPOs.length} PO (total ${committedPOsResult.recordset.length}), ` +
-      `Reservations: ${filteredReservations.length} (total ${reservationsResult.recordset.length})`
+        `Reservations: ${filteredReservations.length} (total ${reservationsResult.recordset.length})`,
     );
 
     return NextResponse.json({
@@ -88,13 +91,16 @@ export async function GET(): Promise<NextResponse<CommittedPOsResponse>> {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Gagal mengambil data committed PO",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Gagal mengambil data committed PO",
         data: {
           committedPOs: [],
           reservations: [],
         },
       },
-      { status: 500 }
+      { status: 500 },
     );
   } finally {
     if (pool) {
