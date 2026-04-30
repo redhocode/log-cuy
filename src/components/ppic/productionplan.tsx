@@ -2176,15 +2176,18 @@ export default function ProductionPlanPage() {
       for (const agg of materialAggMap.values()) {
         const barangJadiDetails: string[] = [];
         const qtyPODetails: string[] = [];
+
         for (const [kode, info] of agg.barangJadiSet) {
-          barangJadiDetails.push(
-            `${info.nama || kode} (${info.qty.toLocaleString()})`
-          );
+          // 🔥 TAMPILKAN KODE BARANG, BUKAN NAMA PO
+          barangJadiDetails.push(`${kode}`);
           qtyPODetails.push(info.qty.toLocaleString());
         }
         const totalDibutuhkan = agg.totalNeeded + agg.reserved;
         const sisaStok = agg.stockWincp - totalDibutuhkan;
-        let status = sisaStok > 0 ? "KELEBIHAN" : sisaStok < 0 ? "KURANG" : "CUKUP";
+        let status =
+          sisaStok > 0 ? "CUKUP" :
+            sisaStok < 0 ? "KURANG" :
+              "HABIS";
         const variantInfo = getVariantInfo(agg.kode);
         materialDataRows.push([
           barangJadiDetails.join("\n"),
