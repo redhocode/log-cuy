@@ -156,6 +156,7 @@ interface StockReservation {
   status: string;
   expiryDate: string;
   noSPK: string;
+  namaPO?:string;
 }
 
 // ==================== FUNGSI BANTU ====================
@@ -1997,10 +1998,35 @@ export default function ProductionPlanPage() {
         { wch: 15 }, { wch: 50 }, { wch: 35 }, { wch: 15 }, { wch: 15 },
         { wch: 15 }, { wch: 12 }, { wch: 10 }, { wch: 60 }
       ];
-      XLSX.utils.book_append_sheet(wb, wsBOM, "BOM");      // ==================== SHEET 3: TOTAL KEBUTUHAN MATERIAL (DIPERBAIKI) ====================
+      XLSX.utils.book_append_sheet(wb, wsBOM, "BOM");     
+       // ==================== SHEET 3: TOTAL KEBUTUHAN MATERIAL (DIPERBAIKI) ====================
+      
+      // ==================== DI DALAM FUNGSI exportSelectedToExcel ====================
+
+      // ==================== SHEET 3: TOTAL KEBUTUHAN MATERIAL (DIPERBAIKI) ====================
+
+      // Buat Map untuk mencari Nama PO berdasarkan CommitID (lebih cepat)
+      const poNameByCommitID = new Map<number, string>();
+      const poNoSPKByCommitID = new Map<number, string>();
+
+      for (const committedPO of committedPOs) {
+        if (committedPO.status === "COMMITTED") {
+          poNameByCommitID.set(committedPO.CommitID, committedPO.namaPO);
+          poNoSPKByCommitID.set(committedPO.CommitID, committedPO.noSPK);
+        }
+      }
+
+      // Kemudian reservationsByItem
       const reservationsByItem = new Map<
         string,
-        { totalQty: number; spkList: Set<string>; itemName: string }
+        {
+          totalQty: number;
+          spkList: Set<{
+            namaPO: string;
+            qtyReserved: number;
+          }>;
+          itemName: string
+        }
       >();
 
       for (const reservation of stockReservations) {
@@ -2010,17 +2036,40 @@ export default function ProductionPlanPage() {
           !reservation.noSPK
         )
           continue;
+
         const itemId = normalizeItemId(reservation.itemID);
-        if (!reservationsByItem.has(itemId))
+        if (!reservationsByItem.has(itemId)) {
           reservationsByItem.set(itemId, {
             totalQty: 0,
             spkList: new Set(),
             itemName: reservation.itemName || itemId,
           });
+        }
+
         const itemData = reservationsByItem.get(itemId)!;
         itemData.totalQty += reservation.reservedQty;
-        itemData.spkList.add(reservation.noSPK);
+
+        // 🔥 Langsung pakai namaPO dari reservation (sudah ada dari JOIN)
+        const namaPO = reservation.namaPO || reservation.noSPK;
+
+        let existing: { namaPO: string; qtyReserved: number } | undefined;
+        for (const item of itemData.spkList) {
+          if (item.namaPO === namaPO) {
+            existing = item;
+            break;
+          }
+        }
+
+        if (existing) {
+          existing.qtyReserved += reservation.reservedQty;
+        } else {
+          itemData.spkList.add({
+            namaPO: namaPO,
+            qtyReserved: reservation.reservedQty,
+          });
+        }
       }
+     
 
       // ==================== FUNGSI CALCULATE ACCUMULATED QTY UNTUK MATERIAL (LEVEL-BASED) ====================
       const calculateAccumulatedQtyForMaterial = (flatBom: BomItem[]): Map<string, number> => {
@@ -2148,7 +2197,7 @@ export default function ProductionPlanPage() {
             const reservedQty = reservedData?.totalQty || 0;
             const reservedByText = reservedData
               ? Array.from(reservedData.spkList)
-                .map((spk) => `• ${spk}`)
+                .map((item) => `${item.namaPO} (QTY : ${item.qtyReserved.toLocaleString()})`)
                 .join("\n")
               : "-";
             const component = components.find(
